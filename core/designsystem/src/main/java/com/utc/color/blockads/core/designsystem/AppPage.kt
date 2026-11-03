@@ -1,13 +1,16 @@
 package com.utc.color.blockads.core.designsystem
 
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,6 +34,7 @@ import androidx.navigation3.ui.defaultTransitionSpec
 import io.github.suqi8.coui.kmp.basic.*
 import io.github.suqi8.coui.kmp.blur.*
 import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.Filter
 import io.github.suqi8.coui.kmp.icon.extended.HorizontalSplit
 import io.github.suqi8.coui.kmp.icon.extended.Search
@@ -102,11 +106,15 @@ fun <T : Any> AppNavDisplay(
 
 private val LocalTabBarHeight = compositionLocalOf { 0.dp }
 
-/** Hosts the bottom tab bar outside the pages so it stays put while pages slide underneath. */
+/**
+ * Hosts the bottom tab bar outside the pages so it stays put while pages slide underneath. Sub-pages
+ * pass [showBar] false and the bar slides away.
+ */
 @Composable
 fun AppTabHost(
     selectedTab: AppTab,
     onTab: (AppTab) -> Unit,
+    showBar: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val surface = COUITheme.colorScheme.surface
@@ -120,12 +128,17 @@ fun AppTabHost(
         Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
             CompositionLocalProvider(LocalTabBarHeight provides barHeight) { content() }
         }
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {
-                barHeight = with(density) { it.height.toDp() }
-            }
+        AnimatedVisibility(
+            visible = showBar,
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
         ) {
-            BlurredBar(backdrop) {
+            // Measured inside so the hidden bar keeps its height for the tab pages below.
+            BlurredBar(
+                backdrop,
+                Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+            ) {
                 NavigationBar(
                     modifier =
                         Modifier.windowInsetsPadding(
@@ -166,7 +179,8 @@ fun AppPage(
         drawContent()
     }
     val scrollBehavior = COUIScrollBehavior()
-    val tabBar = LocalTabBarHeight.current
+    // Sub-pages hide the tab bar, so only tab pages leave room for it.
+    val tabBar = if (onBack == null) LocalTabBarHeight.current else 0.dp
     Scaffold(
         modifier =
             Modifier.fillMaxSize()
@@ -177,7 +191,16 @@ fun AppPage(
                     title = title,
                     color = Color.Transparent,
                     scrollBehavior = scrollBehavior,
-                    navigationIcon = { if (onBack != null) AppAction("Quay lại", onBack) },
+                    navigationIcon = {
+                        if (onBack != null)
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = COUIIcons.Back,
+                                    contentDescription = "Quay lại",
+                                    tint = COUITheme.colorScheme.onSurface,
+                                )
+                            }
+                    },
                 )
             }
         },
@@ -214,9 +237,13 @@ fun AppPage(
 }
 
 @Composable
-private fun BlurredBar(backdrop: LayerBackdrop, content: @Composable () -> Unit) {
+private fun BlurredBar(
+    backdrop: LayerBackdrop,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
     Box(
-        Modifier.textureBlur(
+        modifier.textureBlur(
             backdrop = backdrop,
             shape = RectangleShape,
             blurRadius = BlurDefaults.BlurRadius,

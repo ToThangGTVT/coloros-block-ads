@@ -32,30 +32,32 @@ fun AppsScreen(
                     (it.label.contains(search, true) || it.packageName.contains(search, true))
             }
         }
-    Column(Modifier.fillMaxSize().padding(horizontal = AppSpacing.page)) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = AppSpacing.page),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+    ) {
         AppTextInput(search, "Tìm ứng dụng", onChange = { search = it })
-        AppSwitchPreference("Ứng dụng hệ thống", "Hiển thị app có quyền truy cập mạng", system) {
-            system = it
+        AppPreferenceGroup {
+            AppSwitchPreference("Hiện app hệ thống", "Chỉ app có dùng mạng", system) {
+                system = it
+            }
         }
-        AppText(
-            "Bỏ qua tunnel áp dụng lại VPN và ngắt kết nối đang mở. App chung UID dùng chung chính sách."
-        )
         error?.let { AppText(it) }
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+            contentPadding = PaddingValues(bottom = AppSpacing.page),
         ) {
             items(visible, key = { it.packageName }) { app ->
                 val icon by
                     produceState<android.graphics.Bitmap?>(null, app.packageName) {
                         value = repository.icon(app.packageName)
                     }
-                AppCard {
-                    AppIdentity(app.label, icon)
-                    AppText(app.packageName)
+                AppPreferenceGroup {
+                    AppItemHeader(app.label, app.packageName, icon)
                     AppSwitchPreference(
-                        "Xét lọc HTTPS",
-                        "Cần bật riêng, cài CA và chọn domain",
+                        "Lọc HTTPS",
+                        "Cần cài CA",
                         app.packageName in https.apps,
                     ) { checked ->
                         scope.launch {

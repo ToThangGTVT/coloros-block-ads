@@ -184,6 +184,19 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * Removes a list; presets are re-added by [parseLists], so one is turned off instead. Returns
+     * whether the list was removed.
+     */
+    suspend fun removeList(id: String): Boolean {
+        val preset = presets.any { it.id == id }
+        editLists { all ->
+            if (preset) all.map { if (it.id == id) it.copy(enabled = false) else it }
+            else all.filterNot { it.id == id }
+        }
+        return !preset
+    }
+
     private fun parseLists(json: String?): List<FilterList> {
         if (json == null) return presets
         return runCatching {
@@ -298,11 +311,17 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val Https = stringPreferencesKey("https_local_settings")
         val presets =
             listOf(
+                // AdGuard Home's default blocklist, same URL as in its registry.
+                FilterList(
+                    "adguard-dns",
+                    "AdGuard DNS filter",
+                    "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+                    enabled = true,
+                ),
                 FilterList(
                     "stevenblack",
                     "StevenBlack hosts",
                     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-                    enabled = true,
                 ),
                 FilterList(
                     "adguard-base",

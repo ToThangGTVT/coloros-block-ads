@@ -9,7 +9,11 @@ import com.utc.color.blockads.core.filter.FilterRepository
 import kotlinx.coroutines.launch
 
 @Composable
-fun FiltersScreen(filters: FilterRepository, settings: SettingsRepository) {
+fun FiltersScreen(
+    filters: FilterRepository,
+    settings: SettingsRepository,
+    onCatalog: () -> Unit,
+) {
     val lists by filters.lists.collectAsStateWithLifecycle(initialValue = emptyList())
     val status by filters.status.collectAsStateWithLifecycle()
     val saved by settings.customRules.collectAsStateWithLifecycle(initialValue = "")
@@ -24,44 +28,46 @@ fun FiltersScreen(filters: FilterRepository, settings: SettingsRepository) {
     }
     AppColumn {
         AppCard {
-            AppText("${status.loaded} rule đang hoạt động", prominent = true)
-            AppText(
-                if (status.loading) "Đang tải hoặc biên dịch…"
-                else "Bỏ qua ${status.ignored} rule không hỗ trợ"
+            AppText("${status.loaded} rule", prominent = true)
+            AppHint(
+                if (status.loading) "Đang tải…" else "${status.ignored} rule không hỗ trợ đã bỏ qua"
             )
             (error ?: status.error)?.let { AppText(it) }
         }
-        lists.forEach { list ->
-            AppPreferenceGroup {
+        AppSectionTitle("Danh sách lọc")
+        AppPreferenceGroup {
+            // Hide lists never downloaded, unless on (downloading or failed) so they can be turned off.
+            lists.filter { it.updatedAt != 0L || it.enabled }.forEach { list ->
                 AppSwitchPreference(
                     title = list.name,
                     summary =
-                        "${list.ruleCount} rule · " +
-                            if (list.updatedAt == 0L) "Chưa tải"
-                            else
-                                java.text.DateFormat.getDateTimeInstance()
-                                    .format(java.util.Date(list.updatedAt)),
+                        list.error
+                            ?: ("${list.ruleCount} rule · " +
+                                if (list.updatedAt == 0L) "Chưa tải"
+                                else
+                                    java.text.DateFormat.getDateTimeInstance()
+                                        .format(java.util.Date(list.updatedAt))),
                     checked = list.enabled,
                     onCheckedChange = { action { filters.setEnabled(list.id, it) } },
                 )
-                list.error?.let { AppText(it) }
-                AppAction("Tải / cập nhật") { action { filters.download(list.id) } }
+            }
+            AppArrowPreference("Chọn danh sách chặn", "Danh sách của AdGuard Home", onCatalog)
+            AppArrowPreference("Cập nhật tất cả") {
+                action { lists.filter { it.enabled }.forEach { filters.download(it.id) } }
             }
         }
         AppCard {
-            AppTextInput(value = url, label = "URL filter HTTPS", onChange = { url = it })
-            AppAction("Thêm danh sách") {
+            AppTextInput(value = url, label = "URL danh sách lọc", onChange = { url = it })
+            AppAction("Thêm danh sách", primary = true) {
                 action {
                     filters.addUrl(url)
                     url = ""
                 }
             }
         }
+        AppSectionTitle("Quy tắc riêng")
         AppCard {
-            AppText("Quy tắc riêng", prominent = true)
-            AppText(
-                "Hosts hoặc ||domain^ để chặn; @@||domain^ để cho phép. Cosmetic rule không áp dụng cho DNS."
-            )
+            AppHint("||domain^ để chặn · @@||domain^ để cho phép")
             AppTextInput(
                 value = custom ?: saved,
                 label = "Mỗi dòng một rule",
@@ -69,7 +75,7 @@ fun FiltersScreen(filters: FilterRepository, settings: SettingsRepository) {
                 error = error != null,
                 onChange = { custom = it },
             )
-            AppAction("Kiểm tra và lưu") {
+            AppAction("Lưu", primary = true) {
                 action {
                     filters.saveCustom(custom ?: saved)
                     custom = null

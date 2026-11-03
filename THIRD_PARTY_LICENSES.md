@@ -22,6 +22,11 @@ Network stack, DNS and rule-engine crates are not selected in Phase 0. Their
 licenses and transitive dependencies require review before Phase 1/2. Native code
 uses Rust/JNI as requested; no Go runtime or gomobile is distributed.
 
+The blocklist picker reads AdGuard Home's registry
+(https://adguardteam.github.io/HostlistsRegistry/assets/filters.json, GPL-3.0,
+https://github.com/AdguardTeam/HostlistsRegistry) at runtime. It is not bundled in
+the APK; the user downloads each list, which keeps its own license.
+
 ## Locked Rust dependency inventory
 
 Reviewed from Cargo.lock manifests, including host/target-specific crates.

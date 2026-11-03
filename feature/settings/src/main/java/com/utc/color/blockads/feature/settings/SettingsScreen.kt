@@ -22,6 +22,7 @@ private val themeLabels = listOf("Theo hệ thống", "Sáng", "Tối", "Monet")
 fun SettingsScreen(
     theme: ThemeMode,
     onTheme: (ThemeMode) -> Unit,
+    engineVersion: String,
     onApps: () -> Unit,
     onCertificate: () -> Unit,
     error: String?,
@@ -80,27 +81,28 @@ fun SettingsScreen(
         AppPreferenceGroup {
             AppSwitchPreference(
                 "Tự bật sau khởi động",
-                "Cần quyền VPN đã cấp trước đó",
+                "Cần đã cấp quyền VPN",
                 autoStart,
             ) {
                 action { settings.setAutoStart(it) }
             }
             AppSwitchPreference(
                 "IPv6",
-                "Tắt sẽ chặn lưu lượng IPv6 trong tunnel để tránh đi ngoài VPN",
+                "Tắt để chặn IPv6 trong VPN",
                 ipv6,
             ) {
                 action { settings.setIpv6(it) }
             }
             AppSwitchPreference(
                 "Chặn QUIC",
-                "Chặn UDP/443 để app có thể chuyển sang TCP/TLS",
+                "App chuyển sang TCP, dễ lọc hơn",
                 blockQuic,
             ) {
                 action { settings.setBlockQuic(it) }
             }
-            AppAction("Ứng dụng", onApps)
-            AppAction("VPN luôn bật · Settings hệ thống") {
+            AppArrowPreference("Ứng dụng", "Chặn, cho phép, bỏ qua theo app", onApps)
+            AppArrowPreference("Lọc HTTPS", "Chặn quảng cáo theo URL", onCertificate)
+            AppArrowPreference("VPN luôn bật", "Cài đặt hệ thống") {
                 runCatching {
                     context.startActivity(
                         android.content.Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
@@ -108,7 +110,6 @@ fun SettingsScreen(
                 }
                     .onFailure { feedback = "Không mở được cài đặt VPN" }
             }
-            AppAction("Lọc HTTPS và chứng chỉ", onCertificate)
         }
         AppSectionTitle("DNS")
         AppPreferenceGroup {
@@ -119,7 +120,7 @@ fun SettingsScreen(
             ) { selected ->
                 action { settings.setDns(dns.copy(upstream = DnsUpstream.entries[selected])) }
             }
-            if (dns.upstream == DnsUpstream.Custom) {
+            if (dns.upstream == DnsUpstream.Custom) AppGroupContent {
                 AppTextInput(
                     customUrl ?: dns.customUrl,
                     "URL https:// hoặc tls://",
@@ -130,7 +131,7 @@ fun SettingsScreen(
                     "IP bootstrap",
                     onChange = { bootstrap = it },
                 )
-                AppAction("Lưu DNS tùy chỉnh") {
+                AppAction("Lưu", primary = true) {
                     action("Đã lưu DNS tùy chỉnh") {
                         settings.setDns(
                             dns.copy(
@@ -152,7 +153,7 @@ fun SettingsScreen(
             }
             AppSwitchPreference(
                 "Nhật ký kết nối",
-                "Chỉ lưu metadata trên thiết bị; có thể xóa ở mục Dữ liệu",
+                "Chỉ lưu trên thiết bị",
                 dns.logging,
             ) { enabled ->
                 action { settings.setDns(dns.copy(logging = enabled)) }
@@ -181,20 +182,19 @@ fun SettingsScreen(
                     queries.prune()
                 }
             }
-            AppAction("Xóa nhật ký kết nối") { action("Đã xóa nhật ký") { queries.clearLogs() } }
-            AppAction("Xuất cấu hình") { export.launch("blockads-config.json") }
-            AppAction("Nhập cấu hình") { import.launch(arrayOf("application/json", "text/plain")) }
-            AppText(
-                "File chỉ chứa cài đặt và custom rules; không có query log, chứng chỉ hoặc khóa CA."
-            )
+            AppArrowPreference("Xuất cấu hình", "File JSON") { export.launch("blockads-config.json") }
+            AppArrowPreference("Nhập cấu hình", "Từ file JSON") {
+                import.launch(arrayOf("application/json", "text/plain"))
+            }
+            AppArrowPreference("Xóa nhật ký kết nối") {
+                action("Đã xóa nhật ký") { queries.clearLogs() }
+            }
         }
         AppSectionTitle("Giới thiệu")
         AppCard {
-            AppText("BlockAds · 0.5.0", prominent = true)
-            AppText("COUI 1.1.0 · ColorOS 16")
-            AppText(
-                "Lọc DNS, SNI/HTTP và theo ứng dụng. Thống kê tổng hợp vẫn hoạt động khi tắt log. HTTPS chỉ lọc khi bật riêng và đã cài CA."
-            )
+            AppText("BlockAds 0.5.0", prominent = true)
+            AppHint("Rust JNI · $engineVersion")
+            AppHint("COUI 1.1.0 · ColorOS 16")
         }
     }
 }

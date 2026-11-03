@@ -14,6 +14,7 @@ import com.utc.color.blockads.core.designsystem.AppTabHost
 import com.utc.color.blockads.core.designsystem.appTabMetadata
 import com.utc.color.blockads.feature.apps.AppsScreen
 import com.utc.color.blockads.feature.certificate.CertificateScreen
+import com.utc.color.blockads.feature.filters.FilterCatalogScreen
 import com.utc.color.blockads.feature.filters.FiltersScreen
 import com.utc.color.blockads.feature.home.HomeScreen
 import com.utc.color.blockads.feature.querylog.QueryLogScreen
@@ -28,6 +29,7 @@ private enum class Destination : NavKey {
     Settings,
     Apps,
     Certificate,
+    Catalog,
 }
 
 private val Destination.tab
@@ -35,7 +37,8 @@ private val Destination.tab
         when (this) {
             Destination.Home -> AppTab.Home
             Destination.Log -> AppTab.Log
-            Destination.Filters -> AppTab.Filters
+            Destination.Filters,
+            Destination.Catalog -> AppTab.Filters
             else -> AppTab.Settings
         }
 
@@ -70,7 +73,8 @@ fun BlockAdsApp(
             if (target != Destination.Home) backStack.add(target)
         }
     }
-    AppTabHost(selectedTab = (backStack.last() as Destination).tab, onTab = selectTab) {
+    val current = backStack.last() as Destination
+    AppTabHost(selectedTab = current.tab, onTab = selectTab, showBar = current.isTab) {
         AppNavDisplay(
             backStack = backStack,
             onBack = pop,
@@ -84,7 +88,8 @@ fun BlockAdsApp(
                         val title =
                             when (destination) {
                                 Destination.Apps -> "Ứng dụng"
-                                Destination.Certificate -> "Chứng chỉ HTTPS"
+                                Destination.Certificate -> "Lọc HTTPS"
+                                Destination.Catalog -> "Chọn danh sách chặn"
                                 else -> destination.tab.label
                             }
                         AppPage(
@@ -94,7 +99,8 @@ fun BlockAdsApp(
                             onBack =
                                 if (
                                     destination == Destination.Apps ||
-                                        destination == Destination.Certificate
+                                        destination == Destination.Certificate ||
+                                        destination == Destination.Catalog
                                 )
                                     pop
                                 else null,
@@ -102,7 +108,6 @@ fun BlockAdsApp(
                             when (destination) {
                                 Destination.Home ->
                                     HomeScreen(
-                                        version,
                                         tunnel,
                                         filterStatus,
                                         queries,
@@ -117,11 +122,18 @@ fun BlockAdsApp(
                                         onProtection,
                                     )
                                 Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
-                                Destination.Filters -> FiltersScreen(filters, settings)
+                                Destination.Filters ->
+                                    FiltersScreen(
+                                        filters,
+                                        settings,
+                                        onCatalog = { backStack.add(Destination.Catalog) },
+                                    )
+                                Destination.Catalog -> FilterCatalogScreen(filters)
                                 Destination.Settings ->
                                     SettingsScreen(
                                         theme,
                                         onTheme,
+                                        engineVersion = version,
                                         onApps = { backStack.add(Destination.Apps) },
                                         onCertificate = { backStack.add(Destination.Certificate) },
                                         error = error,

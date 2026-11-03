@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,15 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.asImageBitmap
+import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Switch
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.ListPreference
 import io.github.suqi8.coui.kmp.preference.ListPreferenceEntry
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -67,6 +71,18 @@ fun AppText(text: String, prominent: Boolean = false) {
     )
 }
 
+/**
+ * Short secondary line (footnote, summary color) for hints that should not compete with content.
+ */
+@Composable
+fun AppHint(text: String) {
+    Text(
+        text = text,
+        style = COUITheme.textStyles.footnote1,
+        color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    )
+}
+
 @Composable
 fun AppSectionTitle(text: String) {
     SmallTitle(text = text)
@@ -77,18 +93,27 @@ fun AppSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boo
     Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
 }
 
+/** Headline status with details under it and the switch at the end of the row. */
 @Composable
-fun AppProtectionSwitch(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().padding(vertical = AppSpacing.gap * 2),
-        contentAlignment = androidx.compose.ui.Alignment.Center,
-    ) {
-        Switch(
-            checked = checked,
-            enabled = enabled,
-            onCheckedChange = onChange,
-            modifier = Modifier.scale(1.5f),
-        )
+fun AppProtectionCard(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+    details: @Composable ColumnScope.() -> Unit,
+) {
+    AppCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                AppText(title, prominent = true)
+                details()
+            }
+            Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        }
     }
 }
 
@@ -99,8 +124,8 @@ fun AppStatistics(total: Long, blocked: Long) {
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         listOf(
-                "Tổng request" to total.toString(),
-                "Đã chặn" to blocked.toString(),
+                "Tổng request" to java.text.NumberFormat.getIntegerInstance().format(total),
+                "Đã chặn" to java.text.NumberFormat.getIntegerInstance().format(blocked),
                 "Tỷ lệ chặn" to
                     (if (total == 0L) "0%"
                     else
@@ -116,7 +141,7 @@ fun AppStatistics(total: Long, blocked: Long) {
                     horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
                 ) {
                     AppText(value, prominent = true)
-                    AppText(label)
+                    AppHint(label)
                 }
             }
     }
@@ -125,7 +150,7 @@ fun AppStatistics(total: Long, blocked: Long) {
 @Composable
 fun AppSwitchPreference(
     title: String,
-    summary: String,
+    summary: String? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -155,9 +180,48 @@ fun AppChoicePreference(
     )
 }
 
+/** Navigation or one-shot action row inside an [AppPreferenceGroup], aligned with other rows. */
 @Composable
-fun AppAction(label: String, onClick: () -> Unit) {
-    TextButton(text = label, onClick = onClick)
+fun AppArrowPreference(title: String, summary: String? = null, onClick: () -> Unit) {
+    ArrowPreference(title = title, summary = summary, onClick = onClick)
+}
+
+/** Padded content inside an [AppPreferenceGroup], e.g. text fields under a choice. */
+@Composable
+fun AppGroupContent(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(AppSpacing.card),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        content = content,
+    )
+}
+
+/** Buttons at the bottom of a card share its width equally so they line up. */
+@Composable
+fun AppButtonRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.gap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        content = content,
+    )
+}
+
+@Composable
+fun RowScope.AppButton(label: String, primary: Boolean = false, onClick: () -> Unit) {
+    TextButton(
+        text = label,
+        onClick = onClick,
+        modifier = Modifier.weight(1f),
+        colors =
+            if (primary) ButtonDefaults.textButtonColorsPrimary()
+            else ButtonDefaults.textButtonColors(),
+    )
+}
+
+/** Single full-width card button. */
+@Composable
+fun AppAction(label: String, primary: Boolean = false, onClick: () -> Unit) {
+    AppButtonRow { AppButton(label, primary, onClick) }
 }
 
 @Composable
@@ -242,4 +306,42 @@ fun AppIdentity(label: String, bitmap: android.graphics.Bitmap?) {
             )
         AppText(label)
     }
+}
+
+/** Non-clickable header row of an [AppPreferenceGroup], aligned with the preference rows below. */
+@Composable
+fun AppItemHeader(title: String, summary: String? = null, bitmap: android.graphics.Bitmap? = null) {
+    BasicComponent(
+        title = title,
+        summary = summary,
+        startAction =
+            bitmap?.let {
+                {
+                    io.github.suqi8.coui.kmp.basic.Icon(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color.Unspecified,
+                        modifier =
+                            Modifier.padding(end = AppSpacing.gap)
+                                .size(io.github.suqi8.coui.kmp.basic.NavigationBarDefaults.IconSize),
+                    )
+                }
+            },
+    )
+}
+
+/** Read-only row with a trailing value, aligned with preference rows. */
+@Composable
+fun AppValueRow(title: String, value: String) {
+    BasicComponent(
+        title = title,
+        endActions = {
+            Text(
+                text = value,
+                // Same style as the title so both share a baseline.
+                style = COUITheme.textStyles.headline1,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            )
+        },
+    )
 }

@@ -29,13 +29,13 @@ class PhaseZeroTest {
         val originalTheme = runBlocking { model.settings.theme.first() }
         try {
             assertEquals("0.5.0-phase5", EngineBridge().version())
+            compose.onNodeWithText("Cài đặt").performClick()
             compose.waitUntil(10_000) {
                 compose
                     .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.5.0-phase5"))
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }
-            compose.onNodeWithText("Cài đặt").performClick()
             Thread.sleep(600)
             for (mode in listOf("Sáng", "Tối", "Monet", "Theo hệ thống")) {
                 compose.onNodeWithText("Chủ đề").performScrollTo()

@@ -14,6 +14,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
+/** One blocklist from AdGuard Home's registry; [group] is the registry groupId. */
+data class CatalogEntry(val group: Int, val name: String, val url: String)
+
 class FilterRepository(
     context: Context,
     private val settings: SettingsRepository,
@@ -55,8 +58,8 @@ class FilterRepository(
             }
         }
         scope.launch {
-            if (lists.first().any { it.id == "stevenblack" && it.enabled && it.updatedAt == 0L })
-                download("stevenblack")
+            // Default lists, and presets added by an update, download on first start.
+            lists.first().filter { it.enabled && it.updatedAt == 0L }.forEach { download(it.id) }
         }
     }
 
@@ -136,7 +139,63 @@ class FilterRepository(
         if (enabled && !file(id).exists()) download(id)
     }
 
-    suspend fun addUrl(url: String) {
+    /**
+     * AdGuard Home's blocklist registry. It is fetched at runtime and cached for the registry's
+     * 4-day expiry, never bundled (the registry is GPL-3.0; each list keeps its own license).
+     */
+    suspend fun catalog(): List<CatalogEntry> =
+        withContext(Dispatchers.IO) {
+            val cache = File(directory, "catalog.json")
+            val fresh = System.currentTimeMillis() - cache.lastModified() < 4 * 24 * 3600 * 1000L
+            val text =
+                if (cache.exists() && fresh) cache.readText()
+                else
+                    runCatching { fetchCatalog() }
+                        .onSuccess { cache.writeText(it) }
+                        .getOrElse { if (cache.exists()) cache.readText() else throw it }
+            val filters = JSONObject(text).getJSONArray("filters")
+            (0 until filters.length())
+                .map { filters.getJSONObject(it) }
+                .filter { !it.optBoolean("deprecated") }
+                .sortedWith(
+                    compareBy({ it.optInt("groupId") }, { it.optInt("displayNumber") })
+                )
+                .mapNotNull { item ->
+                    val url = item.optString("downloadUrl")
+                    if (!url.startsWith("https://")) null
+                    else CatalogEntry(item.optInt("groupId"), item.getString("name").take(200), url)
+                }
+        }
+
+    private fun fetchCatalog(): String {
+        val connection = URI(CatalogUrl).toURL().openConnection() as HttpURLConnection
+        connection.connectTimeout = 15000
+        connection.readTimeout = 15000
+        connection.instanceFollowRedirects = false
+        return try {
+            check(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
+            connection.inputStream.use { readLimited(it, 2 * 1024 * 1024, "Danh sách vượt quá 2 MB") }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun readLimited(input: java.io.InputStream, limit: Int, message: String): String {
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(16384)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            check(output.size() + read <= limit) { message }
+            output.write(buffer, 0, read)
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
+
+    suspend fun remove(id: String) =
+        downloadLock.withLock { if (settings.removeList(id)) file(id).delete() }
+
+    suspend fun addUrl(url: String, name: String? = null) {
         val uri = URI(url.trim())
         require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) {
             "Cần URL HTTPS hợp lệ"
@@ -153,7 +212,7 @@ class FilterRepository(
             }
         settings.editLists { all ->
             if (all.any { it.url == normalized }) all
-            else all + FilterList(id, uri.host, normalized, enabled = true)
+            else all + FilterList(id, name ?: uri.host, normalized, enabled = true)
         }
         download(id)
     }
@@ -196,18 +255,8 @@ class FilterRepository(
                             }
                             etag = connection.getHeaderField("ETag")
                             modified = connection.getHeaderField("Last-Modified")
-                            connection.inputStream.use { input ->
-                                val output = java.io.ByteArrayOutputStream()
-                                val buffer = ByteArray(16384)
-                                while (true) {
-                                    val read = input.read(buffer)
-                                    if (read < 0) break
-                                    check(output.size() + read <= 20 * 1024 * 1024) {
-                                        "List vượt quá 20 MB"
-                                    }
-                                    output.write(buffer, 0, read)
-                                }
-                                output.toString(Charsets.UTF_8.name())
+                            connection.inputStream.use {
+                                readLimited(it, 20 * 1024 * 1024, "List vượt quá 20 MB")
                             }
                         } finally {
                             connection.disconnect()
@@ -274,5 +323,9 @@ class FilterRepository(
         }
         settings.setCustomRules(text)
         reload()
+    }
+
+    private companion object {
+        const val CatalogUrl = "https://adguardteam.github.io/HostlistsRegistry/assets/filters.json"
     }
 }

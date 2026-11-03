@@ -187,7 +187,7 @@ class PhaseTwoDnsTest {
                     hasText("blocked.blockads.test") and hasText("Đã chặn", substring = true)
                 )[0]
                 .performClick()
-            compose.onNodeWithText("Chặn domain này").assertExists()
+            compose.onNodeWithText("Chặn").assertExists()
             delay(600)
             android.os.ParcelFileDescriptor.AutoCloseInputStream(
                     androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()

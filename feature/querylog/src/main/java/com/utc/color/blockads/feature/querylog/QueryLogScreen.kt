@@ -46,8 +46,7 @@ fun QueryLogScreen(
         ) { index ->
             appUid = if (index == 0) -1 else choices[index - 1].uid
         }
-        if (rows.itemCount == 0)
-            AppCard { AppText("Chưa có truy vấn DNS. Bật VPN và mở một ứng dụng để xem nhật ký.") }
+        if (rows.itemCount == 0) AppCard { AppHint("Chưa có nhật ký. Bật VPN để bắt đầu.") }
         error?.let { AppText(it) }
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -85,8 +84,8 @@ fun QueryLogScreen(
         if (row != null)
             AppColumn {
                 AppText(if (row.blocked) "Đã chặn" else "Cho phép", prominent = true)
-                AppText("Rule: ${row.matchedRule ?: "Không có rule khớp"}")
-                AppText(
+                AppHint("Rule: ${row.matchedRule ?: "Không có rule khớp"}")
+                AppHint(
                     "Ứng dụng: " +
                         (installed
                             .filter { it.uid == row.uid }
@@ -97,24 +96,26 @@ fun QueryLogScreen(
                         " · " +
                         row.protocol.uppercase()
                 )
-                AppAction("Chặn domain này") {
-                    scope.launch {
-                        runCatching {
-                            filters.saveCustom(settings.customRules.first() + "\n||${row.domain}^")
+                AppButtonRow {
+                    AppButton("Cho phép") {
+                        scope.launch {
+                            runCatching {
+                                filters.saveCustom(
+                                    settings.customRules.first() + "\n@@||${row.domain}^"
+                                )
+                            }
+                                .onSuccess { selected = null }
+                                .onFailure { error = it.message }
                         }
-                            .onSuccess { selected = null }
-                            .onFailure { error = it.message }
                     }
-                }
-                AppAction("Cho phép domain này") {
-                    scope.launch {
-                        runCatching {
-                            filters.saveCustom(
-                                settings.customRules.first() + "\n@@||${row.domain}^"
-                            )
+                    AppButton("Chặn", primary = true) {
+                        scope.launch {
+                            runCatching {
+                                filters.saveCustom(settings.customRules.first() + "\n||${row.domain}^")
+                            }
+                                .onSuccess { selected = null }
+                                .onFailure { error = it.message }
                         }
-                            .onSuccess { selected = null }
-                            .onFailure { error = it.message }
                     }
                 }
             }

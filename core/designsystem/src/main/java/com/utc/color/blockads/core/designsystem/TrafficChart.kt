@@ -8,14 +8,13 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.compose.BarChart
+import com.github.mikephil.charting.compose.LineChart
 import com.github.mikephil.charting.compose.rememberTypeface
-import com.github.mikephil.charting.data.BarData
-import com.github.mikephil.charting.data.BarDataSet
-import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.IAxisValueFormatter
 import com.utc.color.blockads.core.common.TrafficDay
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.time.Instant
 import java.time.ZoneId
@@ -33,45 +32,55 @@ fun AppTrafficChart(days: List<TrafficDay>) {
     val style = COUITheme.textStyles.footnote1
     val font = rememberTypeface(style.fontFamily ?: FontFamily.Default)
     val textSize = style.fontSize.value * LocalDensity.current.fontScale
-    val radius = CardDefaults.CornerRadius.value
-    val labels =
-        remember(days) {
-            days.map {
-                DateTimeFormatter.ofPattern("dd/MM")
-                    .format(Instant.ofEpochMilli(it.day).atZone(ZoneId.systemDefault()))
-            }
+    fun format(pattern: String) =
+        days.map {
+            DateTimeFormatter.ofPattern(pattern, java.util.Locale.ENGLISH)
+                .format(Instant.ofEpochMilli(it.day).atZone(ZoneId.systemDefault()))
         }
+    // Axis shows weekdays (Mon, Tue, …); the accessibility text keeps the full date.
+    val labels = remember(days) { format("EEE") }
+    val dates = remember(days) { format("dd/MM") }
     val series =
-        remember(days, palette.primary, palette.error, radius) {
-            val entries = days.mapIndexed { index, day ->
-                BarEntry<Nothing>(
-                    index.toFloat(),
-                    stackValues =
-                        listOf(
-                            (day.total - day.blocked).coerceAtLeast(0).toFloat(),
-                            day.blocked.toFloat(),
-                        ),
-                    data = null,
-                )
-            }
-            BarData(
-                BarDataSet(entries, "").apply {
-                    this.colors = listOf(palette.primary.toArgb(), palette.error.toArgb())
-                    stackLabels = listOf("Cho phép", "Đã chặn")
-                    isDrawValuesEnabled = false
-                    barCornerRadius = radius
-                    isHighlightEnabled = false
-                }
+        remember(days, palette.primary, palette.error) {
+            // Total first so the blocked area, always within it, is drawn on top.
+            fun area(label: String, color: androidx.compose.ui.graphics.Color, value: (TrafficDay) -> Long) =
+                LineDataSet(
+                        days.mapIndexed { index, day ->
+                            Entry(index.toFloat(), value(day).toFloat())
+                        },
+                        label,
+                    )
+                    .apply {
+                        colors = listOf(color.toArgb())
+                        // Horizontal bezier stays smooth without dipping below zero.
+                        mode = LineDataSet.Mode.HORIZONTAL_BEZIER
+                        lineWidth = 2f
+                        isDrawCirclesEnabled = false
+                        isDrawValuesEnabled = false
+                        isHighlightEnabled = false
+                        isDrawFilledEnabled = true
+                        fillDrawable =
+                            android.graphics.drawable.GradientDrawable(
+                                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                                intArrayOf(
+                                    color.copy(alpha = 0.4f).toArgb(),
+                                    color.copy(alpha = 0f).toArgb(),
+                                ),
+                            )
+                    }
+            LineData(
+                area("Tất cả", palette.primary) { it.total },
+                area("Đã chặn", palette.error) { it.blocked },
             )
         }
-    BarChart(
+    LineChart(
         data = series,
         modifier = Modifier.fillMaxWidth().height(AppSpacing.page * 12),
         contentDescription =
             "Thống kê 7 ngày: " +
                 days
                     .mapIndexed { index, day ->
-                        "${labels[index]} tổng ${day.total}, chặn ${day.blocked}"
+                        "${dates[index]} tổng ${day.total}, chặn ${day.blocked}"
                     }
                     .joinToString("; "),
         setup = {
@@ -82,7 +91,10 @@ fun AppTrafficChart(days: List<TrafficDay>) {
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.granularity = 1f
             xAxis.isDrawGridLinesEnabled = false
+            xAxis.spaceMin = 0.4f
+            xAxis.spaceMax = 0.4f
             axisLeft.axisMinimum = 0f
+            axisLeft.isDrawAxisLineEnabled = false
             axisLeft.granularity = 1f
         },
         update = {
