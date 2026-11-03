@@ -18,6 +18,14 @@ import javax.inject.Singleton
 object AppModule {
     @Provides
     @Singleton
+    fun certificates(
+        @ApplicationContext context: Context,
+        settings: SettingsRepository,
+        engine: EngineBridge,
+    ) = com.utc.color.blockads.core.certificate.CertificateRepository(context, settings, engine)
+
+    @Provides
+    @Singleton
     fun apps(@ApplicationContext context: Context, settings: SettingsRepository) =
         com.utc.color.blockads.core.data.AppsRepository(context, settings)
 

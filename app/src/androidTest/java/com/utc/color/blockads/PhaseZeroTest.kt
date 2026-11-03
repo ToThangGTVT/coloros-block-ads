@@ -28,10 +28,10 @@ class PhaseZeroTest {
         }
         val originalTheme = runBlocking { model.settings.theme.first() }
         try {
-            assertEquals("0.4.0-phase4", EngineBridge().version())
+            assertEquals("0.5.0-phase5", EngineBridge().version())
             compose.waitUntil(10_000) {
                 compose
-                    .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.4.0-phase4"))
+                    .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.5.0-phase5"))
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }

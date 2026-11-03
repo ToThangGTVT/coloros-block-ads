@@ -15,13 +15,20 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.utc.color.blockads.core.designsystem.AppTheme
 import com.utc.color.blockads.core.designsystem.appUsesDarkColors
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { viewModel.certificates.refresh() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +78,7 @@ class MainActivity : ComponentActivity() {
                     viewModel.filters,
                     viewModel.queries,
                     viewModel.apps,
+                    viewModel.certificates,
                 ) { enabled ->
                     if (!enabled) viewModel.tunnel.stop()
                     else {

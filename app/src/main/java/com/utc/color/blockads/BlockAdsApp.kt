@@ -40,6 +40,7 @@ fun BlockAdsApp(
     filters: com.utc.color.blockads.core.filter.FilterRepository,
     queries: com.utc.color.blockads.core.data.QueryLogRepository,
     apps: com.utc.color.blockads.core.data.AppsRepository,
+    certificates: com.utc.color.blockads.core.certificate.CertificateRepository,
     onProtection: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -116,8 +117,14 @@ fun BlockAdsApp(
                                     filters = filters,
                                     queries = queries,
                                 )
-                            Destination.Apps -> AppsScreen(apps)
-                            Destination.Certificate -> CertificateScreen()
+                            Destination.Apps -> AppsScreen(apps, settings)
+                            Destination.Certificate ->
+                                CertificateScreen(
+                                    certificates,
+                                    settings,
+                                    apps,
+                                    onApps = { backStack.add(Destination.Apps) },
+                                )
                         }
                     }
                 }

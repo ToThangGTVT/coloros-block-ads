@@ -10,11 +10,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.common.*
 import com.utc.color.blockads.core.data.AppsRepository
 import com.utc.color.blockads.core.designsystem.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
-fun AppsScreen(repository: AppsRepository) {
+fun AppsScreen(
+    repository: AppsRepository,
+    settings: com.utc.color.blockads.core.data.SettingsRepository,
+) {
     val apps by repository.apps.collectAsStateWithLifecycle()
+    val https by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
     val policies by repository.policies.collectAsStateWithLifecycle(initialValue = emptyMap())
     var search by rememberSaveable { mutableStateOf("") }
     var system by rememberSaveable { mutableStateOf(false) }
@@ -48,6 +53,25 @@ fun AppsScreen(repository: AppsRepository) {
                 AppCard {
                     AppIdentity(app.label, icon)
                     AppText(app.packageName)
+                    AppSwitchPreference(
+                        "Xét lọc HTTPS",
+                        "Cần bật riêng, cài CA và chọn domain",
+                        app.packageName in https.apps,
+                    ) { checked ->
+                        scope.launch {
+                            runCatching {
+                                val saved = settings.https.first()
+                                settings.setHttps(
+                                    saved.copy(
+                                        apps =
+                                            if (checked) (saved.apps + app.packageName).distinct()
+                                            else saved.apps - app.packageName
+                                    )
+                                )
+                            }
+                                .onFailure { error = it.message }
+                        }
+                    }
                     AppChoicePreference(
                         "Chính sách · ${app.label}",
                         AppFilterMode.entries.map { it.title },

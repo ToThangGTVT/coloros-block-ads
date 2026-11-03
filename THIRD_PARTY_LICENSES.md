@@ -30,9 +30,13 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | --- | --- | --- | --- |
 | aho-corasick | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
+| asn1-rs | 0.7.2 | MIT OR Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
+| asn1-rs-derive | 0.6.0 | MIT OR Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
+| asn1-rs-impl | 0.2.0 | MIT/Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
+| bit-vec | 0.9.1 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
 | bitflags | 1.3.2 | MIT/Apache-2.0 | https://github.com/bitflags/bitflags |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
 | bumpalo | 3.20.3 | MIT OR Apache-2.0 | https://github.com/fitzgen/bumpalo |
@@ -54,6 +58,8 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | defmt | 1.2.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | defmt-macros | 1.2.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | defmt-parser | 1.1.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
+| der-parser | 10.0.0 | MIT OR Apache-2.0 | https://github.com/rusticata/der-parser.git |
+| deranged | 0.5.9 | MIT OR Apache-2.0 | https://github.com/jhpratt/deranged |
 | displaydoc | 0.2.7 | MIT OR Apache-2.0 | https://github.com/yaahc/displaydoc |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
@@ -80,6 +86,12 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | hickory-proto | 0.26.3 | MIT OR Apache-2.0 | https://github.com/hickory-dns/hickory-dns |
 | hickory-resolver | 0.26.3 | MIT OR Apache-2.0 | https://github.com/hickory-dns/hickory-dns |
 | http | 1.5.0 | MIT OR Apache-2.0 | https://github.com/hyperium/http |
+| http-body | 1.1.0 | MIT | https://github.com/hyperium/http-body |
+| http-body-util | 0.1.5 | MIT | https://github.com/hyperium/http-body |
+| httparse | 1.10.1 | MIT OR Apache-2.0 | https://github.com/seanmonstar/httparse |
+| httpdate | 1.0.3 | MIT OR Apache-2.0 | https://github.com/pyfisch/httpdate |
+| hyper | 1.12.0 | MIT | https://github.com/hyperium/hyper |
+| hyper-util | 0.1.21 | MIT | https://github.com/hyperium/hyper-util |
 | icu_collections | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | icu_locale_core | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | icu_normalizer | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
@@ -99,6 +111,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-sys |
 | jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-sys |
 | js-sys | 0.3.107 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys |
+| lazy_static | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | litemap | 0.8.3 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
@@ -106,10 +119,16 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | lru-slab | 0.1.3 | MIT OR Apache-2.0 OR Zlib | https://github.com/Ralith/lru-slab |
 | managed | 0.8.0 | 0BSD | https://github.com/m-labs/rust-managed.git |
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
+| minimal-lexical | 0.2.1 | MIT/Apache-2.0 | https://github.com/Alexhuszagh/minimal-lexical |
 | mio | 1.2.4 | MIT | https://github.com/tokio-rs/mio |
 | moka | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 | https://github.com/moka-rs/moka |
 | netstack-smoltcp | 0.2.4 | MIT OR Apache-2.0 | https://github.com/cavivie/netstack-smoltcp |
+| nom | 7.1.3 | MIT | https://github.com/Geal/nom |
+| num-bigint | 0.4.8 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
+| num-conv | 0.2.2 | MIT OR Apache-2.0 | https://github.com/jhpratt/num-conv |
+| num-integer | 0.1.47 | MIT OR Apache-2.0 | https://github.com/rust-num/num-integer |
 | num-traits | 0.2.19 | MIT OR Apache-2.0 | https://github.com/rust-num/num-traits |
+| oid-registry | 0.8.1 | MIT OR Apache-2.0 | https://github.com/rusticata/oid-registry.git |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 | https://github.com/matklad/once_cell |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
@@ -117,6 +136,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
 | portable-atomic | 1.15.0 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic |
 | potential_utf | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| powerfmt | 0.2.1 | MIT OR Apache-2.0 | https://github.com/jhpratt/powerfmt |
 | ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | prefix-trie | 0.8.4 | MIT OR Apache-2.0 | https://github.com/tiborschneider/prefix-trie |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
@@ -131,6 +151,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | rand_core | 0.10.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand_core |
 | rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_pcg | 0.10.2 | MIT OR Apache-2.0 | https://github.com/rust-random/rngs |
+| rcgen | 0.14.10 | MIT OR Apache-2.0 | https://github.com/rustls/rcgen |
 | redox_syscall | 0.5.18 | MIT | https://gitlab.redox-os.org/redox-os/syscall |
 | regex | 1.13.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
@@ -138,6 +159,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 | https://github.com/djc/rustc-version-rs |
+| rusticata-macros | 4.1.0 | MIT/Apache-2.0 | https://github.com/rusticata/rusticata-macros.git |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
 | rustls-webpki | 0.103.16 | ISC | https://github.com/rustls/webpki |
@@ -161,12 +183,16 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | subtle | 2.6.1 | BSD-3-Clause | https://github.com/dalek-cryptography/subtle |
 | syn | 2.0.119 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | syn | 3.0.9 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
+| synstructure | 0.13.2 | MIT | https://github.com/mystor/synstructure |
 | synstructure | 0.14.0 | MIT | https://github.com/mystor/synstructure |
 | tagptr | 0.2.0 | MIT/Apache-2.0 | https://github.com/oliver-giersch/tagptr.git |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
+| time | 0.3.55 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
+| time-core | 0.1.9 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
+| time-macros | 0.2.32 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
 | tinystr | 0.8.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT | https://github.com/Lokathor/tinyvec |
 | tokio | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
@@ -176,6 +202,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | tracing | 0.1.44 | MIT | https://github.com/tokio-rs/tracing |
 | tracing-attributes | 0.1.31 | MIT | https://github.com/tokio-rs/tracing |
 | tracing-core | 0.1.36 | MIT | https://github.com/tokio-rs/tracing |
+| try-lock | 0.2.5 | MIT | https://github.com/seanmonstar/try-lock |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
 | untrusted | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
 | url | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
@@ -183,6 +210,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | utf_types | 1.0.0 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf_types |
 | uuid | 1.29.0 | Apache-2.0 OR MIT | https://github.com/uuid-rs/uuid |
 | walkdir | 2.5.0 | Unlicense/MIT | https://github.com/BurntSushi/walkdir |
+| want | 0.3.2 | MIT | https://github.com/seanmonstar/want |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
 | wasm-bindgen | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
 | wasm-bindgen-macro | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro |
@@ -213,6 +241,8 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | windows_x86_64_msvc | 0.42.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_msvc | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | writeable | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| x509-parser | 0.18.1 | MIT OR Apache-2.0 | https://github.com/rusticata/x509-parser.git |
+| yasna | 0.6.0 | MIT OR Apache-2.0 | https://github.com/qnighy/yasna.rs |
 | yoke | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | yoke-derive | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
@@ -274,3 +304,16 @@ COUI colors, typography, spacing and accessible text summaries. JitPack is
 restricted to the com.github.PhilJay.MPAndroidChart group; no chart implementation leaks into
 feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
 2.4.0 are Apache-2.0 and used for profile generation/install.
+
+## Phase 5 TLS/HTTP dependencies (review before integration)
+
+- rcgen 0.14.10: MIT OR Apache-2.0, https://github.com/rustls/rcgen.
+- hyper 1.12.0, hyper-util 0.1.21, http-body-util 0.1.5: MIT,
+  https://github.com/hyperium/hyper, https://github.com/hyperium/hyper-util,
+  https://github.com/hyperium/http-body.
+- Rustls 0.23.46 / tokio-rustls 0.26.6 / WebPKI roots 1.0.11 are already present
+  in the Phase 2 locked inventory. Ring provider, TLS hostname/chain verification;
+  no insecure verifier. All raw upstream sockets use core/sockets protection.
+- Root CA signing uses Android Keystore through a narrowly scoped JNI signer;
+  private key bytes are never serialized or returned to Rust. User-created root
+  certificates are public, local, excluded from configuration export.

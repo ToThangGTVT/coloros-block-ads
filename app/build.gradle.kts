@@ -14,8 +14,8 @@ android {
         applicationId = "com.utc.color.blockads"
         minSdk = 33
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 8
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -41,6 +41,7 @@ dependencies {
     baselineProfile(project(":baselineprofile"))
     implementation(libs.androidx.profileinstaller)
     implementation(project(":core:common"))
+    implementation(project(":core:certificate"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:engine-bridge"))

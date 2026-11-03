@@ -1,7 +1,8 @@
 # BlockAds
 
 Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN, triển khai theo từng
-phase. **Phase 4: lọc DNS/SNI/HTTP, per-app, thống kê và cập nhật nền.**
+phase. **Phase 5: lọc HTTPS tùy chọn bằng CA cục bộ, trên nền DNS/SNI/HTTP, per-app,
+thống kê và cập nhật nền của Phase 4.**
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -50,7 +51,9 @@ Home có tổng/blocked/tỷ lệ, top domain và chart 7 ngày bằng MPAndroid
 WorkManager cập nhật list mỗi 24 giờ với ETag/Last-Modified. Settings có custom
 DoH/DoT + IP bootstrap, retention 1/7/30 ngày, auto-start, IPv6, export/import JSON.
 Baseline Profile đã tạo từ Home và Query log với 5.000 dòng mẫu trên emulator.
-HTTPS MITM mặc định tắt và chưa được triển khai ở Phase 4.
+Lọc HTTPS (Phase 5) mặc định tắt: cần tạo CA trong Android Keystore, tự cài CA qua
+Settings hệ thống, chọn app và domain cho phép. Ngân hàng/thanh toán/y tế luôn bỏ qua;
+app pinning được relay nguyên trạng ở lần kết nối kế tiếp.
 
 Android 17 / target 37 cần quyền ACCESS_LOCAL_NETWORK để chuyển tiếp LAN. App xin
 quyền khi bật VPN; từ chối vẫn cho phép dùng Internet, nhưng LAN bị nền tảng chặn.
@@ -63,6 +66,6 @@ ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh
 ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh -Pandroid.testInstrumentationRunnerArguments.externalNetworkChecks=true
 ```
 
-Xem [biên bản Phase 4](docs/phase-4.md), [biên bản Phase 3](docs/phase-3.md), [biên bản Phase 2](docs/phase-2.md), [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
+Xem [biên bản Phase 5](docs/phase-5.md), [biên bản Phase 4](docs/phase-4.md), [biên bản Phase 3](docs/phase-3.md), [biên bản Phase 2](docs/phase-2.md), [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
 [nguồn API COUI](docs/coui-api.md) và [license](THIRD_PARTY_LICENSES.md).
 Tiếp tục các phase sau theo chỉ đạo mới của người dùng; mỗi phase có commit và biên bản riêng.

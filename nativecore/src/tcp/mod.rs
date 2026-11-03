@@ -61,20 +61,30 @@ pub async fn serve(
                     };
                     let decision = if owner.bypass { None } else { crate::filter::current().matches(&domain, url, &owner.packages) };
                     let blocked = decision.as_ref().is_some_and(|d| d.blocked);
-                    crate::dns::event(domain, blocked, decision.map(|d| d.rule), false, owner.uid, protocol);
+                    crate::dns::event(domain.clone(), blocked, decision.map(|d| d.rule), false, owner.uid, protocol);
                     if blocked {
                         if matches!(parsed, sniff::Parsed::Http { .. }) { let _ = client.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await; let _ = client.shutdown().await; }
                         else if let Some(packet) = resets.packet(source, destination) { let _ = raw.send(packet).await; }
                         return;
                     }
+
+                    if matches!(parsed, sniff::Parsed::Tls(_)) && matches!(destination.port(), 443 | 8443) && crate::mitm::eligible(&domain, &owner) {
+                        if let Ok(config) = crate::mitm::proxy::prepare(&domain).await {
+                            if crate::mitm::eligible(&domain, &owner) {
+                                match crate::mitm::proxy::upstream(destination, &domain, protector.as_ref(), &stats).await {
+                                    Ok(upstream) => {
+                                        let idle = idle_timeout(activity.clone());
+                                        tokio::select! { _ = crate::mitm::proxy::serve(client, config, initial, upstream, domain, destination, owner) => {}, _ = idle => {} }
+                                        return;
+                                    }
+                                    Err(_) => crate::dns::event(domain.clone(), false, Some("Bỏ qua HTTPS · upstream TLS không xác minh được; chuyển relay TLS cho app".into()), false, owner.uid, "tls-bypass"),
+                                }
+                            }
+                        }
+                    }
                     if let Ok(mut upstream) = sockets::connect_tcp(destination, protector.as_ref(), &stats).await {
                         if upstream.write_all(&initial).await.is_err() { return; }
-                        let idle = async {
-                            loop {
-                                tokio::time::sleep(Duration::from_secs(60)).await;
-                                if activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed() >= Duration::from_secs(7200) { break; }
-                            }
-                        };
+                        let idle = idle_timeout(activity.clone());
                         tokio::select! { _ = tokio::io::copy_bidirectional(&mut client, &mut upstream) => {}, _ = idle => {} }
                     }
                 });
@@ -139,5 +149,15 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for CountedStream<S
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
+    }
+}
+
+async fn idle_timeout(activity: Arc<std::sync::Mutex<std::time::Instant>>) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        if activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed() >= Duration::from_secs(7200)
+        {
+            break;
+        }
     }
 }

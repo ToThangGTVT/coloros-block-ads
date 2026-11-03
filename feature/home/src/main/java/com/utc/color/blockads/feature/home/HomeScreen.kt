@@ -44,7 +44,9 @@ fun HomeScreen(
                 enabled = tunnel.status != TunnelStatus.Connecting,
             )
             tunnel.detail?.let { AppText(it) }
-            AppText("Lọc DNS, SNI/HTTP và theo ứng dụng. HTTPS mã hóa chưa được giải mã.")
+            AppText(
+                "Lọc DNS, SNI/HTTP và theo ứng dụng. Lọc HTTPS là tùy chọn riêng tại màn Chứng chỉ."
+            )
         }
         if (tunnel.privateDns)
             AppCard {

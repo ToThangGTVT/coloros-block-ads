@@ -108,7 +108,7 @@ fun SettingsScreen(
                 }
                     .onFailure { feedback = "Không mở được cài đặt VPN" }
             }
-            AppAction("Chứng chỉ HTTPS · Phase 5", onCertificate)
+            AppAction("Lọc HTTPS và chứng chỉ", onCertificate)
         }
         AppSectionTitle("DNS")
         AppPreferenceGroup {
@@ -190,10 +190,10 @@ fun SettingsScreen(
         }
         AppSectionTitle("Giới thiệu")
         AppCard {
-            AppText("BlockAds · 0.4.0", prominent = true)
+            AppText("BlockAds · 0.5.0", prominent = true)
             AppText("COUI 1.1.0 · ColorOS 16")
             AppText(
-                "Lọc DNS, SNI/HTTP và theo ứng dụng. Thống kê tổng hợp vẫn hoạt động khi tắt log. HTTPS mã hóa chưa được giải mã."
+                "Lọc DNS, SNI/HTTP và theo ứng dụng. Thống kê tổng hợp vẫn hoạt động khi tắt log. HTTPS chỉ lọc khi bật riêng và đã cài CA."
             )
         }
     }

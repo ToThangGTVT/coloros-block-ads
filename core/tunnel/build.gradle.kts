@@ -20,6 +20,7 @@ android {
 dependencies {
     implementation(project(":core:engine-bridge"))
     implementation(project(":core:common"))
+    implementation(project(":core:certificate"))
     implementation(project(":core:data"))
     implementation(project(":core:filter"))
     implementation(libs.hilt.android)

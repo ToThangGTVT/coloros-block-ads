@@ -9,8 +9,8 @@ pub mod tun;
 pub mod udp;
 
 use jni::{
-    objects::{GlobalRef, JObject, JString, JValue},
-    sys::{jboolean, jint, jlongArray, jstring, JNI_FALSE, JNI_TRUE},
+    objects::{GlobalRef, JByteArray, JObject, JString, JValue},
+    sys::{jboolean, jbyteArray, jint, jlongArray, jstring, JNI_FALSE, JNI_TRUE},
     JNIEnv, JavaVM,
 };
 use sockets::Protector;
@@ -21,7 +21,7 @@ use std::{
 };
 use tun::{Engine, NetworkConfig};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase4");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase5");
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 struct AndroidProtector {
@@ -308,4 +308,126 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
         Some(json) => json.into_raw(),
         None => std::ptr::null_mut(),
     }
+}
+
+struct AndroidCaSigner {
+    vm: JavaVM,
+    callback: GlobalRef,
+    point: Vec<u8>,
+}
+impl rcgen::PublicKeyData for AndroidCaSigner {
+    fn der_bytes(&self) -> &[u8] {
+        &self.point
+    }
+    fn algorithm(&self) -> &'static rcgen::SignatureAlgorithm {
+        &rcgen::PKCS_ECDSA_P256_SHA256
+    }
+}
+impl rcgen::SigningKey for AndroidCaSigner {
+    fn sign(&self, data: &[u8]) -> Result<Vec<u8>, rcgen::Error> {
+        if data.len() > 8192 {
+            return Err(rcgen::Error::RemoteKeyError);
+        }
+        let result = (|| {
+            let mut env = self.vm.attach_current_thread().ok()?;
+            let bytes = JObject::from(env.byte_array_from_slice(data).ok()?);
+            let value = env
+                .call_method(
+                    self.callback.as_obj(),
+                    "sign",
+                    "([B)[B",
+                    &[JValue::Object(&bytes)],
+                )
+                .and_then(|value| value.l());
+            match value {
+                Ok(value) if !value.is_null() => env
+                    .convert_byte_array(JByteArray::from(value))
+                    .ok()
+                    .filter(|v| !v.is_empty() && v.len() <= 128),
+                _ => {
+                    let _ = env.exception_clear();
+                    None
+                }
+            }
+        })();
+        result.ok_or(rcgen::Error::RemoteKeyError)
+    }
+}
+fn ca_signer(
+    env: &mut JNIEnv,
+    callback: JObject,
+    public: JByteArray,
+) -> Option<Arc<dyn mitm::ca::CaSigner>> {
+    let point = env.convert_byte_array(public).ok()?;
+    if point.len() != 65 || point[0] != 4 {
+        return None;
+    }
+    Some(Arc::new(AndroidCaSigner {
+        vm: env.get_java_vm().ok()?,
+        callback: env.new_global_ref(callback).ok()?,
+        point,
+    }))
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeGenerateCa(
+    mut env: JNIEnv,
+    _: JObject,
+    callback: JObject,
+    public: JByteArray,
+) -> jbyteArray {
+    let Some(signer) = ca_signer(&mut env, callback, public) else {
+        return std::ptr::null_mut();
+    };
+    mitm::ca::generate(signer)
+        .ok()
+        .and_then(|der| env.byte_array_from_slice(&der).ok())
+        .map_or(std::ptr::null_mut(), |array| array.into_raw())
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeSetCa(
+    mut env: JNIEnv,
+    _: JObject,
+    callback: JObject,
+    public: JByteArray,
+    certificate: JByteArray,
+) -> jboolean {
+    if callback.is_null() {
+        mitm::ca::set(None, vec![]);
+        return JNI_TRUE;
+    }
+    let Some(signer) = ca_signer(&mut env, callback, public) else {
+        return JNI_FALSE;
+    };
+    let Ok(der) = env.convert_byte_array(certificate) else {
+        return JNI_FALSE;
+    };
+    if mitm::ca::set(Some(signer), der) {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeConfigureHttps(
+    mut env: JNIEnv,
+    _: JObject,
+    json: JString,
+) -> jboolean {
+    if env
+        .get_string(&json)
+        .ok()
+        .is_some_and(|text| mitm::configure(&String::from(text)))
+    {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeHttpsApiVersion(
+    _: JNIEnv,
+    _: JObject,
+) -> jint {
+    1
 }

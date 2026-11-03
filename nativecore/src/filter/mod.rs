@@ -369,7 +369,15 @@ fn network_regex(pattern: &str) -> Result<String, &'static str> {
         if !valid_domain(&value[..end]) {
             return Err("Domain trong network rule không hợp lệ");
         }
-        (value, String::from("^[a-z][a-z0-9+.-]*://(?:[^/]*\\.)?"))
+        let prefix = String::from("^[a-z][a-z0-9+.-]*://(?:[^/]*\\.)?");
+        if value.as_bytes().get(end) == Some(&b'/') {
+            (
+                &value[end..],
+                format!("{prefix}{}(?::[0-9]+)?", regex::escape(&value[..end])),
+            )
+        } else {
+            (value, prefix)
+        }
     } else if let Some(value) = pattern.strip_prefix('|') {
         (value, String::from("^"))
     } else {

@@ -32,6 +32,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     @javax.inject.Inject lateinit var queries: com.utc.color.blockads.core.data.QueryLogRepository
     @javax.inject.Inject lateinit var settings: com.utc.color.blockads.core.data.SettingsRepository
     @javax.inject.Inject lateinit var trafficPolicy: TrafficPolicyRepository
+    @javax.inject.Inject
+    lateinit var certificates: com.utc.color.blockads.core.certificate.CertificateRepository
     private val engine = EngineBridge()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -159,6 +161,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         try {
             filters.awaitReady()
             trafficPolicy.awaitReady()
+            certificates.awaitReady()
+            certificates.refresh()
             check(prepare(this) == null) { "VPN permission required" }
             if (!monitoring) {
                 monitor.start()

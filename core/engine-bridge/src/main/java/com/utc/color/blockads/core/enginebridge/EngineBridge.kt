@@ -1,6 +1,36 @@
 package com.utc.color.blockads.core.enginebridge
 
 class EngineBridge {
+    fun supportsHttps(): Boolean =
+        try {
+            nativeHttpsApiVersion() == 1
+        } catch (_: UnsatisfiedLinkError) {
+            false
+        }
+
+    private external fun nativeHttpsApiVersion(): Int
+
+    fun generateCa(signer: RootCaSigner, publicPoint: ByteArray): ByteArray =
+        nativeGenerateCa(signer, publicPoint) ?: error("Không tạo được chứng chỉ CA")
+
+    fun setCa(
+        signer: RootCaSigner?,
+        publicPoint: ByteArray = byteArrayOf(),
+        certificate: ByteArray = byteArrayOf(),
+    ): Boolean = nativeSetCa(signer, publicPoint, certificate)
+
+    fun configureHttps(json: String): Boolean = nativeConfigureHttps(json)
+
+    private external fun nativeGenerateCa(signer: RootCaSigner, publicPoint: ByteArray): ByteArray?
+
+    private external fun nativeSetCa(
+        signer: RootCaSigner?,
+        publicPoint: ByteArray,
+        certificate: ByteArray,
+    ): Boolean
+
+    private external fun nativeConfigureHttps(json: String): Boolean
+
     fun configurePolicy(json: String): Boolean = nativeConfigurePolicy(json)
 
     private external fun nativeConfigurePolicy(json: String): Boolean
@@ -66,4 +96,8 @@ fun interface SocketProtector {
 
 fun interface DnsEventSink {
     fun onDnsEvents(events: String)
+}
+
+fun interface RootCaSigner {
+    fun sign(data: ByteArray): ByteArray
 }

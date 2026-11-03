@@ -33,6 +33,7 @@ include(":app")
 
 include(
     ":core:common",
+    ":core:certificate",
     ":core:designsystem",
     ":core:data",
     ":core:engine-bridge",

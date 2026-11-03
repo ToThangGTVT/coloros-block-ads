@@ -40,6 +40,48 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             if (error is IOException) emit(emptyPreferences()) else throw error
         }
     val customRules = preferences.map { it[CustomRules] ?: "" }.distinctUntilChanged()
+    val https =
+        preferences
+            .map { prefs ->
+                runCatching {
+                        val json = JSONObject(prefs[Https] ?: "{}")
+                        fun names(key: String, default: List<String>): List<String> =
+                            json.optJSONArray(key)?.let { array ->
+                                (0 until array.length()).map { array.getString(it) }
+                            } ?: default
+                        HttpsSettings(
+                            json.optBoolean("enabled", false),
+                            names("apps", HttpsSettings().apps),
+                            names("domains", emptyList()),
+                            names("excluded", emptyList()),
+                        )
+                    }
+                    .getOrDefault(HttpsSettings())
+            }
+            .distinctUntilChanged()
+
+    suspend fun setHttps(value: HttpsSettings) {
+        require(
+            value.apps.size <= 100 && value.domains.size <= 100 && value.excluded.size <= 1000
+        ) {
+            "Danh sách HTTPS quá dài"
+        }
+        require(value.apps.all { it.matches(Regex("[A-Za-z0-9_.]+")) }) {
+            "Package ứng dụng không hợp lệ"
+        }
+        val domains = value.domains.map(::normalizeHttpsDomain).distinct()
+        val excluded = value.excluded.map(::normalizeHttpsDomain).distinct()
+        store.edit {
+            it[Https] =
+                JSONObject()
+                    .put("enabled", value.enabled)
+                    .put("apps", JSONArray(value.apps.distinct()))
+                    .put("domains", JSONArray(domains))
+                    .put("excluded", JSONArray(excluded))
+                    .toString()
+        }
+    }
+
     val autoStart = preferences.map { it[AutoStart] ?: false }.distinctUntilChanged()
     val ipv6 = preferences.map { it[Ipv6] ?: true }.distinctUntilChanged()
     val logRetentionDays =
@@ -253,6 +295,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     private companion object {
+        val Https = stringPreferencesKey("https_local_settings")
         val presets =
             listOf(
                 FilterList(
