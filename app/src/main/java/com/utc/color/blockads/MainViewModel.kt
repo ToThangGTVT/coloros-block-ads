@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.utc.color.blockads.core.common.ThemeMode
 import com.utc.color.blockads.core.data.SettingsRepository
 import com.utc.color.blockads.core.enginebridge.EngineBridge
+import com.utc.color.blockads.core.tunnel.TunnelController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import javax.inject.Inject
@@ -19,7 +20,11 @@ import kotlinx.coroutines.withContext
 @HiltViewModel
 class MainViewModel
 @Inject
-constructor(private val settings: SettingsRepository, engine: EngineBridge) : ViewModel() {
+constructor(
+    private val settings: SettingsRepository,
+    engine: EngineBridge,
+    val tunnel: TunnelController,
+) : ViewModel() {
     val theme =
         settings.theme.stateIn(
             viewModelScope,

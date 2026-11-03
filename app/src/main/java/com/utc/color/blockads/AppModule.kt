@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.utc.color.blockads.core.data.QueryDatabase
 import com.utc.color.blockads.core.data.SettingsRepository
 import com.utc.color.blockads.core.enginebridge.EngineBridge
+import com.utc.color.blockads.core.tunnel.TunnelController
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -20,6 +21,10 @@ object AppModule {
     fun settings(@ApplicationContext context: Context) = SettingsRepository(context)
 
     @Provides @Singleton fun engine() = EngineBridge()
+
+    @Provides
+    @Singleton
+    fun tunnel(@ApplicationContext context: Context) = TunnelController(context)
 
     @Provides
     @Singleton

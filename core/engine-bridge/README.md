@@ -1,5 +1,5 @@
 # core/engine-bridge
 
-Kotlin JNI wrapper for Rust nativecore. Build scripts/build-native.sh before Gradle. R8 consumer rules preserve JNI names.
+Rust JNI boundary: version, owned-fd start/stop, protected-socket callback, network barrier, health and metadata counters.
 
-See [Phase 0](../../docs/phase-0.md).
+See [Phase 1](../../docs/phase-1.md).

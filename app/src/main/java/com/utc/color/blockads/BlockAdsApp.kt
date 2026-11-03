@@ -5,6 +5,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.utc.color.blockads.core.common.ThemeMode
+import com.utc.color.blockads.core.common.TunnelState
 import com.utc.color.blockads.core.designsystem.AppNavDisplay
 import com.utc.color.blockads.core.designsystem.AppPage
 import com.utc.color.blockads.core.designsystem.AppTab
@@ -27,7 +28,14 @@ private enum class Destination : NavKey {
 }
 
 @Composable
-fun BlockAdsApp(theme: ThemeMode, onTheme: (ThemeMode) -> Unit, version: String, error: String?) {
+fun BlockAdsApp(
+    theme: ThemeMode,
+    onTheme: (ThemeMode) -> Unit,
+    version: String,
+    error: String?,
+    tunnel: TunnelState,
+    onProtection: (Boolean) -> Unit,
+) {
     val backStack = rememberNavBackStack(Destination.Home)
     val pop: () -> Unit = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     val selectTab: (AppTab) -> Unit = { tab ->
@@ -71,7 +79,7 @@ fun BlockAdsApp(theme: ThemeMode, onTheme: (ThemeMode) -> Unit, version: String,
                             else null,
                     ) {
                         when (destination) {
-                            Destination.Home -> HomeScreen(version)
+                            Destination.Home -> HomeScreen(version, tunnel, onProtection)
                             Destination.Log -> QueryLogScreen()
                             Destination.Filters -> FiltersScreen()
                             Destination.Settings ->

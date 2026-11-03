@@ -1,27 +1,74 @@
-//! Android native engine boundary. Packet processing starts in Phase 1.
-
+//! Rust full-tunnel engine. Only connection metadata counters cross JNI in Phase 1.
 pub mod dns;
 pub mod filter;
 pub mod mitm;
+pub mod sockets;
 pub mod tcp;
 pub mod tun;
 pub mod udp;
 
-use jni::{objects::JObject, sys::jstring, JNIEnv};
+use jni::{
+    objects::{GlobalRef, JObject, JString, JValue},
+    sys::{jboolean, jint, jlongArray, jstring, JNI_FALSE, JNI_TRUE},
+    JNIEnv, JavaVM,
+};
+use sockets::Protector;
+use std::{
+    io,
+    os::fd::FromRawFd,
+    sync::{atomic::Ordering, Arc, Mutex},
+};
+use tun::{Engine, NetworkConfig};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase0");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase1");
+static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
-/// Called by EngineBridge.nativeVersion on the JVM's attached thread.
-/// No environment or local reference is retained beyond this call.
+struct AndroidProtector {
+    vm: JavaVM,
+    callback: GlobalRef,
+}
+impl Protector for AndroidProtector {
+    fn protect(&self, fd: i32) -> io::Result<()> {
+        let mut env = self.vm.attach_current_thread().map_err(io::Error::other)?;
+        let result = env.call_method(
+            self.callback.as_obj(),
+            "protect",
+            "(I)Z",
+            &[JValue::Int(fd)],
+        );
+        match result.and_then(|value| value.z()) {
+            Ok(true) => Ok(()),
+            _ => {
+                // Never permit a failed callback or pending Java exception to bypass protection.
+                let _ = env.exception_clear();
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "socket protection failed",
+                ))
+            }
+        }
+    }
+}
+fn config(env: &mut JNIEnv, dns: &JString) -> NetworkConfig {
+    let dns = env
+        .get_string(dns)
+        .ok()
+        .map(String::from)
+        .and_then(|s| s.split('%').next().unwrap_or("").parse().ok());
+    NetworkConfig {
+        dns,
+        ..NetworkConfig::default()
+    }
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeVersion(
     mut env: JNIEnv,
-    _instance: JObject,
+    _: JObject,
 ) -> jstring {
     match env.new_string(VERSION) {
         Ok(version) => version.into_raw(),
         Err(_) => {
-            // Preserve a pending allocation exception; otherwise report failure to Kotlin.
             if !env.exception_check().unwrap_or(true) {
                 let _ = env.throw_new(
                     "java/lang/IllegalStateException",
@@ -31,4 +78,104 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
             std::ptr::null_mut()
         }
     }
+}
+
+/// Takes ownership of fd on entry, including every startup failure path.
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeStart(
+    mut env: JNIEnv,
+    _: JObject,
+    fd: jint,
+    callback: JObject,
+    dns: JString,
+) -> jboolean {
+    if fd < 0 {
+        return JNI_FALSE;
+    }
+    // SAFETY: Kotlin transfers a detached descriptor exactly once to this function.
+    let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) };
+    let mut engine = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+    if engine.is_some() {
+        return JNI_FALSE;
+    }
+    let Ok(vm) = env.get_java_vm() else {
+        return JNI_FALSE;
+    };
+    let Ok(callback) = env.new_global_ref(callback) else {
+        return JNI_FALSE;
+    };
+    let network = config(&mut env, &dns);
+    match Engine::start(fd, Arc::new(AndroidProtector { vm, callback }), network) {
+        Ok(running) => {
+            *engine = Some(running);
+            JNI_TRUE
+        }
+        Err(_) => JNI_FALSE,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeStop(
+    _: JNIEnv,
+    _: JObject,
+) {
+    if let Some(mut engine) = ENGINE.lock().unwrap_or_else(|p| p.into_inner()).take() {
+        engine.shutdown();
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeUpdateNetwork(
+    mut env: JNIEnv,
+    _: JObject,
+    dns: JString,
+) -> jboolean {
+    let network = config(&mut env, &dns);
+    if ENGINE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .is_some_and(|engine| engine.update_network(network))
+    {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeIsRunning(
+    _: JNIEnv,
+    _: JObject,
+) -> jboolean {
+    if ENGINE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .is_some_and(|e| e.running.load(Ordering::Acquire))
+    {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeCounters(
+    env: JNIEnv,
+    _: JObject,
+) -> jlongArray {
+    let values = ENGINE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .map(|e| e.stats.snapshot())
+        .unwrap_or([0; 8]);
+    let Ok(array) = env.new_long_array(values.len() as i32) else {
+        return std::ptr::null_mut();
+    };
+    if env.set_long_array_region(&array, 0, &values).is_err() {
+        return std::ptr::null_mut();
+    }
+    array.into_raw()
 }

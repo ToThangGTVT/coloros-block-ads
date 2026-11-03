@@ -1,5 +1,5 @@
 # core/tunnel
 
-Phase 1 boundary for VpnService, descriptor ownership, protected sockets and network lifecycle. No service is declared in Phase 0.
+VpnService, foreground lifecycle, state Flow and underlying network monitor. See Phase 1 for ownership and socket protection contracts.
 
-See [Phase 0](../../docs/phase-0.md).
+See [Phase 1](../../docs/phase-1.md).

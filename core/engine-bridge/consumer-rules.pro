@@ -2,3 +2,7 @@
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }
+-keep interface com.utc.color.blockads.core.enginebridge.SocketProtector { *; }
+-keepclassmembers class * implements com.utc.color.blockads.core.enginebridge.SocketProtector {
+    public boolean protect(int);
+}

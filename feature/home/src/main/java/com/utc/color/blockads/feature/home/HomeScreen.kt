@@ -1,31 +1,44 @@
 package com.utc.color.blockads.feature.home
 
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.Composable
+import com.utc.color.blockads.core.common.TunnelState
+import com.utc.color.blockads.core.common.TunnelStatus
 import com.utc.color.blockads.core.designsystem.*
 
 @Composable
-fun HomeScreen(engineVersion: String) {
-    var demoSwitch by rememberSaveable { mutableStateOf(false) }
-    var demoPreference by rememberSaveable { mutableStateOf(true) }
+fun HomeScreen(engineVersion: String, tunnel: TunnelState, onProtection: (Boolean) -> Unit) {
+    val enabled =
+        tunnel.status in
+            listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
     AppColumn {
         AppCard {
             AppText("BlockAds", prominent = true)
-            AppText("Phase 0 · Nền tảng giao diện")
-            AppText("Chưa bật bảo vệ. Tunnel VPN sẽ được triển khai ở Phase 1.")
+            AppText(
+                when (tunnel.status) {
+                    TunnelStatus.Off -> "VPN đang tắt"
+                    TunnelStatus.Connecting -> "Đang kết nối…"
+                    TunnelStatus.Connected -> "VPN đang bật"
+                    TunnelStatus.Reconnecting -> "Đang chờ kết nối mạng…"
+                    TunnelStatus.Revoked -> "Quyền VPN đã bị thu hồi"
+                    TunnelStatus.Error -> "Không thể kết nối VPN"
+                },
+                prominent = true,
+            )
+            AppSwitch(
+                checked = enabled,
+                onCheckedChange = onProtection,
+                enabled = tunnel.status != TunnelStatus.Connecting,
+            )
+            tunnel.detail?.let { AppText(it) }
+            AppText("Phase 1 · Chuyển tiếp lưu lượng TCP/UDP. Chưa chặn quảng cáo hoặc tracker.")
         }
-        AppSectionTitle("Demo COUI")
         AppCard {
-            AppText("Công tắc mẫu", prominent = true)
-            AppText("Thử tương tác COUI; công tắc này không khởi động VPN.")
-            AppSwitch(checked = demoSwitch, onCheckedChange = { demoSwitch = it })
-        }
-        AppPreferenceGroup {
-            AppSwitchPreference(
-                title = "Preference mẫu",
-                summary = "Thành phần từ coui-preference 1.1.0",
-                checked = demoPreference,
-                onCheckedChange = { demoPreference = it },
+            AppText("Quyền riêng tư", prominent = true)
+            AppText(
+                "Android 17+: cần quyền mạng cục bộ để chuyển tiếp kết nối LAN. Nếu từ chối, kết nối Internet vẫn dùng được."
+            )
+            AppText(
+                "Lưu lượng đi trực tiếp qua mạng của thiết bị. Không có máy chủ VPN trung gian và không ghi nội dung gói tin."
             )
         }
         AppCard {

@@ -65,8 +65,8 @@ fun AppSectionTitle(text: String) {
 }
 
 @Composable
-fun AppSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Switch(checked = checked, onCheckedChange = onCheckedChange)
+fun AppSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
 }
 
 @Composable

@@ -1,7 +1,7 @@
 # BlockAds
 
 Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN, triển khai theo từng
-phase. **Hiện chỉ có Phase 0; chưa xử lý hoặc lọc lưu lượng.**
+phase. **Phase 1: full-tunnel TCP/UDP, chưa lọc quảng cáo/tracker.**
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -33,11 +33,24 @@ cargo test --manifest-path nativecore/Cargo.toml --locked
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-## Kiểm tra Phase 0
+## Kiểm tra Phase 1
 
-Home hiển thị phiên bản do Rust trả qua JNI. Demo có card, switch, preference.
-Settings → Chủ đề cho chọn theo hệ thống, sáng, tối, Monet và lưu bằng DataStore.
-Apps/Certificate và Log/Filters hiện ghi rõ phase dự kiến.
+Home có công tắc VPN thật, luồng xin quyền hệ thống, trạng thái và phiên bản Rust.
+Settings giữ bốn theme DataStore. Native dùng netstack-smoltcp để chuyển tiếp trực
+tiếp, không cần máy chủ VPN trung gian. DNS ảo được chuyển tới DNS của mạng nền;
+chưa có cache, rule hoặc block response.
 
-Xem [biên bản Phase 0](docs/phase-0.md), [nguồn API COUI](docs/coui-api.md) và
-[license](THIRD_PARTY_LICENSES.md). Dừng tại Phase 0 để người dùng nghiệm thu.
+Android 17 / target 37 cần quyền ACCESS_LOCAL_NETWORK để chuyển tiếp LAN. App xin
+quyền khi bật VPN; từ chối vẫn cho phép dùng Internet, nhưng LAN bị nền tảng chặn.
+
+Chạy test emulator (chỉ dùng emulator, cần Wi-Fi và dữ liệu di động mô phỏng bật):
+
+```sh
+ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh
+# Thêm kiểm tra HTTPS công khai, cần Internet:
+ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh -Pandroid.testInstrumentationRunnerArguments.externalNetworkChecks=true
+```
+
+Xem [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
+[nguồn API COUI](docs/coui-api.md) và [license](THIRD_PARTY_LICENSES.md).
+Dừng tại Phase 1 để người dùng nghiệm thu trước khi làm lọc DNS.

@@ -18,10 +18,10 @@ class PhaseZeroTest {
 
     @Test
     fun nativeBridgeAndThemePickerWork() {
-        assertEquals("0.0.1-phase0", EngineBridge().version())
+        assertEquals("0.1.0-phase1", EngineBridge().version())
         compose.waitUntil(10_000) {
             compose
-                .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.0.1-phase0"))
+                .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.1.0-phase1"))
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }

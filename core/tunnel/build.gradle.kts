@@ -18,4 +18,5 @@ android {
 dependencies {
     implementation(project(":core:engine-bridge"))
     implementation(project(":core:common"))
+    implementation(libs.kotlinx.coroutines.android)
 }

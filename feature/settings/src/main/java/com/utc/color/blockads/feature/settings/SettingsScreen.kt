@@ -32,9 +32,11 @@ fun SettingsScreen(
         }
         AppSectionTitle("Giới thiệu")
         AppCard {
-            AppText("BlockAds · 0.0.1", prominent = true)
+            AppText("BlockAds · 0.1.0", prominent = true)
             AppText("COUI 1.1.0 · ColorOS 16")
-            AppText("Bản khung Phase 0. Chưa thu thập truy vấn hoặc chuyển tiếp lưu lượng.")
+            AppText(
+                "Phase 1: chuyển tiếp TCP/UDP qua VPN. Chưa bật lọc quảng cáo hoặc ghi nhật ký truy vấn."
+            )
         }
     }
 }

@@ -1,5 +1,5 @@
 # feature/home
 
-Phase 0 COUI component demo and real native version. Protection controls and statistics come in later phases.
+Real VPN control and connection states. Filtering starts in Phase 2; no fake protection statistics.
 
-See [Phase 0](../../docs/phase-0.md).
+See [Phase 1](../../docs/phase-1.md).
