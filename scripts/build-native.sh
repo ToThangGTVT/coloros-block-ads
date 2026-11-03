@@ -12,6 +12,8 @@ NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_HOST/bin"
 command -v cargo >/dev/null || { echo 'Install Rust via rustup and add cargo to PATH.' >&2; exit 1; }
 [[ -d "$NDK_BIN" ]] || { echo "Missing NDK toolchain: $NDK_BIN" >&2; exit 1; }
 cd "$PROJECT_DIR"
+source_fingerprint="$(python3 scripts/native-stamp.py --root "$PROJECT_DIR")"
+rm -f core/engine-bridge/src/main/jniLibs/.build.properties
 for spec in \
     'aarch64-linux-android:arm64-v8a:aarch64-linux-android' \
     'armv7-linux-androideabi:armeabi-v7a:armv7a-linux-androideabi' \
@@ -28,3 +30,5 @@ for spec in \
     mkdir -p "$output"
     cp "nativecore/target/$rust_target/release/libblockads_core.so" "$output/"
 done
+
+python3 scripts/native-stamp.py --root "$PROJECT_DIR" --seal --expected "$source_fingerprint" --ndk-bin "$NDK_BIN"

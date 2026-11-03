@@ -1,3 +1,6 @@
+import java.security.MessageDigest
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
 }
@@ -19,18 +22,69 @@ android {
 abstract class VerifyNativeCore : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sources: ConfigurableFileCollection
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val metadata: ConfigurableFileCollection
+    @get:Internal abstract val repositoryRoot: DirectoryProperty
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val binaries: ConfigurableFileCollection
 
     @TaskAction
     fun verify() {
-        check(binaries.files.all { it.isFile }) {
-            "Missing Rust native libraries. Run scripts/build-native.sh first."
+        val guidance =
+            "Rust/JNI binaries are missing or stale. Run scripts/build-native.sh before building the APK."
+        check(binaries.files.all { it.isFile }) { guidance }
+        val stamp = metadata.singleFile
+        check(stamp.isFile) { guidance }
+        val properties = Properties().apply { stamp.inputStream().use { load(it) } }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val root = repositoryRoot.get().asFile.toPath()
+        sources.files
+            .sortedBy { root.relativize(it.toPath()).toString().replace('\\', '/') }
+            .forEach { source ->
+                digest.update(
+                    root
+                        .relativize(source.toPath())
+                        .toString()
+                        .replace('\\', '/')
+                        .toByteArray(Charsets.UTF_8)
+                )
+                digest.update(0.toByte())
+                digest.update(source.readBytes())
+                digest.update(0.toByte())
+            }
+        fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
+        check(properties.getProperty("sources") == hex(digest.digest())) { guidance }
+        binaries.files.forEach { binary ->
+            check(
+                properties.getProperty(binary.parentFile.name) ==
+                    hex(MessageDigest.getInstance("SHA-256").digest(binary.readBytes()))
+            ) {
+                guidance
+            }
         }
     }
 }
 
 val verifyNativeCore =
     tasks.register<VerifyNativeCore>("verifyNativeCore") {
+        repositoryRoot.set(rootProject.layout.projectDirectory)
+        sources.from(
+            rootProject.fileTree("nativecore/src") { include("**/*.rs") },
+            rootProject.files(
+                "nativecore/Cargo.toml",
+                "nativecore/Cargo.lock",
+                "rust-toolchain.toml",
+                "scripts/build-native.sh",
+                "scripts/native-stamp.py",
+            ),
+            layout.projectDirectory.file(
+                "src/main/java/com/utc/color/blockads/core/enginebridge/EngineBridge.kt"
+            ),
+        )
+        metadata.from(layout.projectDirectory.file("src/main/jniLibs/.build.properties"))
         binaries.from(
             listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86").map {
                 layout.projectDirectory.file("src/main/jniLibs/$it/libblockads_core.so")
