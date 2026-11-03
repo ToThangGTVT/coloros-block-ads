@@ -17,8 +17,16 @@ serialization = "1.11.0"
 junit = "4.13.2"
 androidxJunit = "1.3.0"
 espresso = "3.7.0"
+benchmark = "1.5.0"
+profileinstaller = "1.4.1"
+uiautomator = "2.4.0"
+mpandroidchart = "v4.0.1"
 
 [libraries]
+mpandroidchart = { module = "com.github.PhilJay.MPAndroidChart:MPChartCompose", version.ref = "mpandroidchart" }
+androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
+androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
 coui-ui = { module = "io.github.suqi8.coui.kmp:coui-ui", version.ref = "coui" }
 coui-preference = { module = "io.github.suqi8.coui.kmp:coui-preference", version.ref = "coui" }
 coui-icons = { module = "io.github.suqi8.coui.kmp:coui-icons", version.ref = "coui" }
@@ -52,6 +60,8 @@ androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJu
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 
 [plugins]
+android-test = { id = "com.android.test", version.ref = "agp" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

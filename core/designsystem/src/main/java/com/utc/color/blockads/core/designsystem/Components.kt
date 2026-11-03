@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.asImageBitmap
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
@@ -77,6 +78,51 @@ fun AppSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boo
 }
 
 @Composable
+fun AppProtectionSwitch(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().padding(vertical = AppSpacing.gap * 2),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onChange,
+            modifier = Modifier.scale(1.5f),
+        )
+    }
+}
+
+@Composable
+fun AppStatistics(total: Long, blocked: Long) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        listOf(
+                "Tổng request" to total.toString(),
+                "Đã chặn" to blocked.toString(),
+                "Tỷ lệ chặn" to
+                    (if (total == 0L) "0%"
+                    else
+                        String.format(
+                            java.util.Locale.getDefault(),
+                            "%.1f%%",
+                            blocked * 100.0 / total,
+                        )),
+            )
+            .forEach { (label, value) ->
+                Column(
+                    Modifier.weight(1f),
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                ) {
+                    AppText(value, prominent = true)
+                    AppText(label)
+                }
+            }
+    }
+}
+
+@Composable
 fun AppSwitchPreference(
     title: String,
     summary: String,
@@ -105,6 +151,7 @@ fun AppChoicePreference(
         onSelectedIndexChange = onSelected,
         title = title,
         cancelButtonText = "Hủy",
+        renderInRootScaffold = false,
     )
 }
 
@@ -144,6 +191,7 @@ fun AppBottomSheet(
         show = show,
         title = title,
         onDismissRequest = onDismiss,
+        renderInRootScaffold = false,
     ) {
         // COUI 1.1.0 handles IME insets but its sheet content has no navigation-bar padding.
         Box(

@@ -8,7 +8,11 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import java.net.Inet4Address
 
-internal data class UnderlyingNetwork(val network: Network?, val dns: String)
+internal data class UnderlyingNetwork(
+    val network: Network?,
+    val dns: String,
+    val privateDns: Boolean = false,
+)
 
 internal class UnderlyingNetworkMonitor(context: Context, private val onChange: () -> Unit) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -64,6 +68,10 @@ internal class UnderlyingNetworkMonitor(context: Context, private val onChange: 
                     ?: servers.firstOrNull { !it.isLinkLocalAddress })
                 ?.hostAddress
                 .orEmpty()
-        return UnderlyingNetwork(selected, dns)
+        return UnderlyingNetwork(
+            selected,
+            dns,
+            selected?.let { connectivity.getLinkProperties(it)?.isPrivateDnsActive } == true,
+        )
     }
 }

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -60,11 +61,24 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                         .notify(
                             NotificationId,
                             notification(
-                                if (status.loaded > 0) "Đang lọc DNS · ${status.loaded} rule"
+                                if (status.loaded > 0) "Đang bảo vệ · ${status.loaded} rule"
                                 else "VPN đang bật · Chưa có rule"
                             ),
                         )
                 }
+            }
+        }
+        scope.launch {
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            queries.today.sample(5000).collect { stats ->
+                if (TunnelRuntime.state.value.status == TunnelStatus.Connected)
+                    getSystemService(NotificationManager::class.java)
+                        .notify(
+                            NotificationId,
+                            notification(
+                                "Đang bảo vệ · Chặn ${stats.blocked}/${stats.total} hôm nay"
+                            ),
+                        )
             }
         }
         monitor = UnderlyingNetworkMonitor(this) { commands.trySend { refreshNetwork() } }
@@ -255,14 +269,17 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     private fun publishNetworkState(current: UnderlyingNetwork) {
         val connected = current.network != null
         TunnelRuntime.state.value =
-            TunnelState(if (connected) TunnelStatus.Connected else TunnelStatus.Reconnecting)
+            TunnelState(
+                if (connected) TunnelStatus.Connected else TunnelStatus.Reconnecting,
+                privateDns = current.privateDns,
+            )
         getSystemService(NotificationManager::class.java)
             .notify(
                 NotificationId,
                 notification(
                     if (connected)
                         if (filters.status.value.loaded > 0)
-                            "Đang lọc DNS · ${filters.status.value.loaded} rule"
+                            "Đang bảo vệ · ${filters.status.value.loaded} rule"
                         else "VPN đang bật · Chưa có rule"
                     else "Đang chờ kết nối mạng…"
                 ),

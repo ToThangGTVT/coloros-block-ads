@@ -62,12 +62,17 @@ class FilterRepository(
 
     private fun applyDns(value: DnsSettings) {
         val preset = value.upstream
+        val custom =
+            if (preset == DnsUpstream.Custom)
+                parseDnsEndpoint(value.customUrl, value.customBootstrap)
+            else null
         val config =
             JSONObject()
-                .put("protocol", preset.protocol)
-                .put("ip", preset.ip)
-                .put("serverName", preset.serverName)
-                .put("path", "/dns-query")
+                .put("protocol", custom?.protocol ?: preset.protocol)
+                .put("ip", custom?.bootstrap ?: preset.ip)
+                .put("serverName", custom?.host ?: preset.serverName)
+                .put("path", custom?.path ?: "/dns-query")
+                .put("port", custom?.port ?: 0)
                 .put("logging", value.logging)
                 .put(
                     "blockMode",
@@ -90,6 +95,9 @@ class FilterRepository(
     private suspend fun reload() = compileLock.withLock {
         _status.value = _status.value.copy(loading = true, error = null)
         val active = lists.first().filter { it.enabled }
+        require(active.sumOf { file(it.id).length() } <= 32L * 1024 * 1024) {
+            "Tổng filter bật vượt quá 32 MB"
+        }
         val system = buildString {
             active.forEach { list ->
                 val path = file(list.id)
@@ -134,6 +142,11 @@ class FilterRepository(
             "Cần URL HTTPS hợp lệ"
         }
         val normalized = uri.toASCIIString()
+        require(normalized.length <= 4096) { "URL quá dài" }
+        val existing = lists.first()
+        require(existing.any { it.url == normalized } || existing.size < 30) {
+            "Tối đa 30 danh sách"
+        }
         val id =
             MessageDigest.getInstance("SHA-256").digest(normalized.toByteArray()).joinToString("") {
                 "%02x".format(it)
@@ -150,16 +163,39 @@ class FilterRepository(
             downloadLock.withLock {
                 val list = lists.first().first { it.id == id }
                 _status.value = _status.value.copy(loading = true, error = null)
-                runCatching {
+                val result = runCatching {
                     val connection = URI(list.url).toURL().openConnection() as HttpURLConnection
                     connection.connectTimeout = 15000
                     connection.readTimeout = 15000
                     connection.instanceFollowRedirects = false
+                    if (file(id).exists()) {
+                        list.etag?.let { connection.setRequestProperty("If-None-Match", it) }
+                        list.lastModified?.let {
+                            connection.setRequestProperty("If-Modified-Since", it)
+                        }
+                    }
+                    var etag: String? = null
+                    var modified: String? = null
                     val content =
                         try {
+                            if (connection.responseCode == 304 && file(id).exists()) {
+                                settings.editLists { all ->
+                                    all.map {
+                                        if (it.id == id)
+                                            it.copy(
+                                                updatedAt = System.currentTimeMillis(),
+                                                error = null,
+                                            )
+                                        else it
+                                    }
+                                }
+                                return@runCatching
+                            }
                             check(connection.responseCode == 200) {
                                 "HTTP ${connection.responseCode}"
                             }
+                            etag = connection.getHeaderField("ETag")
+                            modified = connection.getHeaderField("Last-Modified")
                             connection.inputStream.use { input ->
                                 val output = java.io.ByteArrayOutputStream()
                                 val buffer = ByteArray(16384)
@@ -188,6 +224,8 @@ class FilterRepository(
                                     updatedAt = System.currentTimeMillis(),
                                     ruleCount = compiled.getInt("loaded"),
                                     error = null,
+                                    etag = etag,
+                                    lastModified = modified,
                                 )
                             else it
                         }
@@ -206,8 +244,22 @@ class FilterRepository(
                                 error = error.message ?: "Tải bộ lọc thất bại",
                             )
                     }
+                reload()
+                result.isSuccess
             }
         }
+
+    suspend fun importConfiguration(text: String) {
+        val custom = JSONObject(text).optString("custom_rules", "")
+        val validation =
+            JSONObject(engine.replaceRules("", custom, apply = false)).getJSONArray("errors")
+        require(validation.length() == 0) { "Custom rules không hợp lệ: $validation" }
+        settings.importConfiguration(text)
+        reload()
+        scope.launch {
+            lists.first().filter { it.enabled && !file(it.id).exists() }.forEach { download(it.id) }
+        }
+    }
 
     suspend fun saveCustom(text: String) {
         require(text.length <= 1024 * 1024) { "Custom rules vượt quá 1 MB" }

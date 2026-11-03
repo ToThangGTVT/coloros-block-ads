@@ -12,6 +12,7 @@ use std::{
 #[serde(default, rename_all = "camelCase")]
 pub struct Options {
     pub block_quic: bool,
+    pub ipv6: bool,
     pub bypass_uids: Vec<u32>,
     pub packages: HashMap<u32, Vec<String>>,
 }
@@ -19,6 +20,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             block_quic: true,
+            ipv6: true,
             bypass_uids: vec![],
             packages: HashMap::new(),
         }

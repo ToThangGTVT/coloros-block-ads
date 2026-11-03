@@ -262,3 +262,15 @@ packet payload can be printed by netstack diagnostic calls.
   https://github.com/BurntSushi/aho-corasick. No backtracking regex engine is used.
 - User patterns are capped by length, count, compiled program and DFA cache size.
   URL/header bytes are used only in memory for policy; query log stores host metadata.
+
+## Phase 4 chart dependency (review before integration)
+
+MPAndroidChart **v4.0.1**, `com.github.PhilJay.MPAndroidChart:MPChartCompose:v4.0.1`
+(with MPChartLib transitively), Apache-2.0.
+Source and API examples: https://github.com/PhilJay/MPAndroidChart/tree/v4.0.1.
+License text: licenses/MPAndroidChart-Apache-2.0.txt. Integrated at the user's
+explicit request. Compose wrapper lives only in core/designsystem, with
+COUI colors, typography, spacing and accessible text summaries. JitPack is
+restricted to the com.github.PhilJay.MPAndroidChart group; no chart implementation leaks into
+feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
+2.4.0 are Apache-2.0 and used for profile generation/install.

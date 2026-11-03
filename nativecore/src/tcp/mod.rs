@@ -51,7 +51,8 @@ pub async fn serve(
                 let resets = resets.clone(); let raw = raw.clone();
                 flows.spawn(async move {
                     let _permit = permit;
-                    let mut client = CountedStream { inner: client, stats: stats.clone() };
+                    let activity = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+                    let mut client = CountedStream { inner: client, stats: stats.clone(), activity: activity.clone() };
                     let (initial, parsed) = if owner.bypass { (vec![], sniff::Parsed::Unknown) } else { sniff::read_initial(&mut client).await };
                     let (domain, url, protocol) = match &parsed {
                         sniff::Parsed::Tls(host) => (host.clone(), None, "tls"),
@@ -68,9 +69,13 @@ pub async fn serve(
                     }
                     if let Ok(mut upstream) = sockets::connect_tcp(destination, protector.as_ref(), &stats).await {
                         if upstream.write_all(&initial).await.is_err() { return; }
-                        // The stack also has a two-hour dead-peer timeout. Bound abandoned relays.
-                        let _ = tokio::time::timeout(Duration::from_secs(7200),
-                            tokio::io::copy_bidirectional(&mut client, &mut upstream)).await;
+                        let idle = async {
+                            loop {
+                                tokio::time::sleep(Duration::from_secs(60)).await;
+                                if activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed() >= Duration::from_secs(7200) { break; }
+                            }
+                        };
+                        tokio::select! { _ = tokio::io::copy_bidirectional(&mut client, &mut upstream) => {}, _ = idle => {} }
                     }
                 });
             }
@@ -83,6 +88,7 @@ pub async fn serve(
 struct CountedStream<S> {
     inner: S,
     stats: Arc<Stats>,
+    activity: Arc<std::sync::Mutex<std::time::Instant>>,
 }
 impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for CountedStream<S> {
     fn poll_read(
@@ -93,6 +99,9 @@ impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for CountedStream<S> 
         let this = self.get_mut();
         let before = buffer.filled().len();
         let result = std::pin::Pin::new(&mut this.inner).poll_read(cx, buffer);
+        if buffer.filled().len() > before {
+            *this.activity.lock().unwrap_or_else(|e| e.into_inner()) = std::time::Instant::now();
+        }
         this.stats.tcp_up.fetch_add(
             (buffer.filled().len() - before) as u64,
             std::sync::atomic::Ordering::Relaxed,
@@ -109,6 +118,10 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for CountedStream<S
         let this = self.get_mut();
         let result = std::pin::Pin::new(&mut this.inner).poll_write(cx, buffer);
         if let std::task::Poll::Ready(Ok(len)) = &result {
+            if *len > 0 {
+                *this.activity.lock().unwrap_or_else(|e| e.into_inner()) =
+                    std::time::Instant::now();
+            }
             this.stats
                 .tcp_down
                 .fetch_add(*len as u64, std::sync::atomic::Ordering::Relaxed);

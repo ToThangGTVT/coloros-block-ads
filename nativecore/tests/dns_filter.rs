@@ -164,3 +164,34 @@ fn invalid_custom_reload_does_not_replace_previous_rules() {
     assert!(filter::current().lookup("kept.test").unwrap().blocked);
     filter::replace("", "");
 }
+
+#[tokio::test]
+async fn disabling_logs_keeps_only_aggregate_counts_in_batches() {
+    struct Capture(std::sync::Mutex<Vec<String>>);
+    impl dns::EventSink for Capture {
+        fn batch(&self, json: &str) {
+            self.0.lock().unwrap().push(json.to_owned());
+        }
+    }
+    let sink = Arc::new(Capture(std::sync::Mutex::new(vec![])));
+    dns::set_sink(Some(sink.clone()));
+    dns::configure(r#"{"logging":false}"#);
+    filter::replace("||stats.test^", "");
+    let session = Session::new(Arc::new(Deny), Arc::new(Stats::default()));
+    session
+        .resolve(&query("stats.test", 1, RecordType::A), None, false)
+        .await
+        .unwrap();
+    dns::flush();
+    let json: serde_json::Value = serde_json::from_str(&sink.0.lock().unwrap()[0]).unwrap();
+    assert!(json["events"].as_array().unwrap().is_empty());
+    assert!(json["totals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v["blocked"].as_u64().unwrap() > 0));
+    assert!(!json.to_string().contains("stats.test"));
+    dns::set_sink(None);
+    dns::configure("{}");
+    filter::replace("", "");
+}

@@ -26,4 +26,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(project(":core:data"))
+    implementation(project(":core:filter"))
+    implementation(libs.androidx.activity.compose)
 }

@@ -12,7 +12,7 @@ cd "$PROJECT_DIR"
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
 python3 scripts/phase1-test-server.py &
 fixture_pid=$!
-trap 'kill "$fixture_pid" 2>/dev/null || true; "$ADB" -s "$ANDROID_SERIAL" shell svc wifi enable >/dev/null 2>&1 || true' EXIT
+trap 'mkdir -p app/build/reports/androidTests/connected; "$ADB" -s "$ANDROID_SERIAL" logcat -d -s AndroidRuntime:E TestRunner:I BlockAdsPhase3:I > app/build/reports/androidTests/connected/test-logcat.txt 2>/dev/null || true; kill "$fixture_pid" 2>/dev/null || true; "$ADB" -s "$ANDROID_SERIAL" shell svc wifi enable >/dev/null 2>&1 || true' EXIT
 python3 - <<'PY'
 import urllib.request,time
 for attempt in range(50):

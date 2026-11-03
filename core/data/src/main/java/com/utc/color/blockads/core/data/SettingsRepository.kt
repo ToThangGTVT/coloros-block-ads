@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.utc.color.blockads.core.common.*
@@ -13,6 +14,7 @@ import com.utc.color.blockads.core.common.ThemeMode
 import java.io.IOException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -38,6 +40,24 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             if (error is IOException) emit(emptyPreferences()) else throw error
         }
     val customRules = preferences.map { it[CustomRules] ?: "" }.distinctUntilChanged()
+    val autoStart = preferences.map { it[AutoStart] ?: false }.distinctUntilChanged()
+    val ipv6 = preferences.map { it[Ipv6] ?: true }.distinctUntilChanged()
+    val logRetentionDays =
+        preferences.map { (it[Retention] ?: 7).coerceIn(1, 30) }.distinctUntilChanged()
+
+    suspend fun setAutoStart(enabled: Boolean) {
+        store.edit { it[AutoStart] = enabled }
+    }
+
+    suspend fun setIpv6(enabled: Boolean) {
+        store.edit { it[Ipv6] = enabled }
+    }
+
+    suspend fun setLogRetentionDays(days: Int) {
+        require(days in listOf(1, 7, 30))
+        store.edit { it[Retention] = days }
+    }
+
     val blockQuic = preferences.map { it[BlockQuic] ?: true }.distinctUntilChanged()
     val appPolicies = preferences.map { parsePolicies(it[AppPolicies]) }.distinctUntilChanged()
 
@@ -78,6 +98,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                     BlockResponse.entries.firstOrNull { it.name == value[BlockMode] }
                         ?: BlockResponse.Zero,
                     value[Logging] ?: true,
+                    value[CustomDnsUrl] ?: "https://cloudflare-dns.com/dns-query",
+                    value[CustomDnsIp] ?: "1.1.1.1",
                 )
             }
             .distinctUntilChanged()
@@ -88,10 +110,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     suspend fun setDns(value: DnsSettings) {
+        if (value.upstream == DnsUpstream.Custom)
+            parseDnsEndpoint(value.customUrl, value.customBootstrap)
         store.edit {
             it[Upstream] = value.upstream.name
             it[BlockMode] = value.blockResponse.name
             it[Logging] = value.logging
+            it[CustomDnsUrl] = value.customUrl
+            it[CustomDnsIp] = value.customBootstrap
         }
     }
 
@@ -108,6 +134,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                         .put("updatedAt", list.updatedAt)
                         .put("ruleCount", list.ruleCount)
                         .put("error", list.error)
+                        .put("etag", list.etag)
+                        .put("lastModified", list.lastModified)
                 )
             }
             preferences[Lists] = array.toString()
@@ -115,15 +143,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     private fun parseLists(json: String?): List<FilterList> {
-        if (json == null)
-            return listOf(
-                FilterList(
-                    "stevenblack",
-                    "StevenBlack hosts",
-                    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-                    enabled = true,
-                )
-            )
+        if (json == null) return presets
         return runCatching {
                 val array = JSONArray(json)
                 (0 until array.length()).map { index ->
@@ -136,18 +156,137 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                             item.optLong("updatedAt"),
                             item.optInt("ruleCount"),
                             item.optString("error").takeIf { it.isNotBlank() && it != "null" },
+                            item.optString("etag").takeIf { it.isNotBlank() && it != "null" },
+                            item.optString("lastModified").takeIf {
+                                it.isNotBlank() && it != "null"
+                            },
                         )
                     }
                 }
             }
             .getOrDefault(emptyList())
+            .let { stored ->
+                stored + presets.filter { preset -> stored.none { it.id == preset.id } }
+            }
     }
 
     suspend fun setTheme(mode: ThemeMode) {
         store.edit { it[ThemeKey] = mode.name }
     }
 
+    suspend fun exportConfiguration(): String {
+        val prefs = preferences.first()
+        val json = JSONObject().put("schema", 1)
+        stringKeys.forEach { key -> prefs[key]?.let { json.put(key.name, it) } }
+        boolKeys.forEach { key -> prefs[key]?.let { json.put(key.name, it) } }
+        json.put(Retention.name, prefs[Retention] ?: 7)
+        return json.toString(2)
+    }
+
+    /**
+     * All fields are validated before one atomic edit. FilterRepository validates custom syntax.
+     */
+    suspend fun importConfiguration(text: String) {
+        require(text.length <= 2 * 1024 * 1024) { "Cấu hình vượt quá 2 MB" }
+        val json = JSONObject(text)
+        require(json.getInt("schema") == 1) { "Phiên bản cấu hình không hỗ trợ" }
+        require((json.optString(CustomRules.name)).length <= 1024 * 1024) {
+            "Custom rules vượt quá 1 MB"
+        }
+        val dns =
+            DnsSettings(
+                DnsUpstream.valueOf(json.optString(Upstream.name, "System")),
+                BlockResponse.valueOf(json.optString(BlockMode.name, "Zero")),
+                json.optBoolean(Logging.name, true),
+                json.optString(CustomDnsUrl.name, "https://cloudflare-dns.com/dns-query"),
+                json.optString(CustomDnsIp.name, "1.1.1.1"),
+            )
+        if (dns.upstream == DnsUpstream.Custom) parseDnsEndpoint(dns.customUrl, dns.customBootstrap)
+        ThemeMode.valueOf(json.optString(ThemeKey.name, "System"))
+        val retention = json.optInt(Retention.name, 7)
+        require(retention in listOf(1, 7, 30)) { "Thời gian giữ log không hợp lệ" }
+        if (json.has(Lists.name)) org.json.JSONArray(json.getString(Lists.name))
+        if (json.has(AppPolicies.name)) org.json.JSONObject(json.getString(AppPolicies.name))
+        val lists = parseLists(json.optString(Lists.name).takeIf { it.isNotBlank() })
+        require(lists.size <= 30) { "Tối đa 30 danh sách" }
+        lists.forEach { list ->
+            require(list.id.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { "ID danh sách không hợp lệ" }
+            val url = java.net.URI(list.url)
+            require(url.scheme == "https" && !url.host.isNullOrBlank() && url.userInfo == null) {
+                "Filter cần URL HTTPS"
+            }
+        }
+        val policies = parsePolicies(json.optString(AppPolicies.name))
+        require(
+            policies.size <= 2000 && policies.keys.all { it.matches(Regex("[A-Za-z0-9_.]+")) }
+        ) {
+            "Chính sách ứng dụng không hợp lệ"
+        }
+        // Imported download metadata must not reference cached files for a different URL.
+        val cleanLists = JSONArray()
+        lists.forEach { list ->
+            val id =
+                if (presets.any { it.id == list.id && it.url == list.url }) list.id
+                else
+                    java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(list.url.toByteArray())
+                        .joinToString("") { "%02x".format(it) }
+            cleanLists.put(
+                JSONObject()
+                    .put("id", id)
+                    .put("name", list.name.take(200))
+                    .put("url", list.url)
+                    .put("enabled", list.enabled)
+            )
+        }
+        store.edit { prefs ->
+            stringKeys.forEach { key ->
+                if (json.has(key.name)) prefs[key] = json.getString(key.name) else prefs.remove(key)
+            }
+            boolKeys.forEach { key ->
+                if (json.has(key.name)) prefs[key] = json.getBoolean(key.name)
+                else prefs.remove(key)
+            }
+            prefs[Lists] = cleanLists.toString()
+            prefs[Retention] = retention
+        }
+    }
+
     private companion object {
+        val presets =
+            listOf(
+                FilterList(
+                    "stevenblack",
+                    "StevenBlack hosts",
+                    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+                    enabled = true,
+                ),
+                FilterList(
+                    "adguard-base",
+                    "AdGuard Base · Network subset",
+                    "https://filters.adtidy.org/extension/ublock/filters/2.txt",
+                ),
+                FilterList(
+                    "easylist",
+                    "EasyList · Network subset",
+                    "https://easylist.to/easylist/easylist.txt",
+                ),
+                FilterList(
+                    "easyprivacy",
+                    "EasyPrivacy · Network subset",
+                    "https://easylist.to/easylist/easyprivacy.txt",
+                ),
+                FilterList(
+                    "abpvn",
+                    "ABPVN · Tiếng Việt",
+                    "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn.txt",
+                ),
+            )
+        val AutoStart = booleanPreferencesKey("auto_start")
+        val Ipv6 = booleanPreferencesKey("ipv6")
+        val Retention = intPreferencesKey("retention_days")
+        val CustomDnsUrl = stringPreferencesKey("custom_dns_url")
+        val CustomDnsIp = stringPreferencesKey("custom_dns_ip")
         val AppPolicies = stringPreferencesKey("app_policies")
         val BlockQuic = booleanPreferencesKey("block_quic")
         val CustomRules = stringPreferencesKey("custom_rules")
@@ -156,5 +295,17 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val Logging = booleanPreferencesKey("dns_logging")
         val Lists = stringPreferencesKey("filter_lists")
         val ThemeKey = stringPreferencesKey("theme_mode")
+        val stringKeys =
+            listOf(
+                CustomRules,
+                Upstream,
+                BlockMode,
+                Lists,
+                ThemeKey,
+                AppPolicies,
+                CustomDnsUrl,
+                CustomDnsIp,
+            )
+        val boolKeys = listOf(AutoStart, Ipv6, Logging, BlockQuic)
     }
 }

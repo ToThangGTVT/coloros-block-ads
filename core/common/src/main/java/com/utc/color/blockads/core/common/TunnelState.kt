@@ -9,4 +9,8 @@ enum class TunnelStatus {
     Error,
 }
 
-data class TunnelState(val status: TunnelStatus = TunnelStatus.Off, val detail: String? = null)
+data class TunnelState(
+    val status: TunnelStatus = TunnelStatus.Off,
+    val detail: String? = null,
+    val privateDns: Boolean = false,
+)

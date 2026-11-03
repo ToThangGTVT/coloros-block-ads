@@ -2,13 +2,67 @@ package com.utc.color.blockads.core.data
 
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.room.withTransaction
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import org.json.JSONArray
+import kotlinx.coroutines.flow.*
+import org.json.JSONObject
 
 /** Application-lifetime bounded writer; JNI callbacks only enqueue metadata batches. */
-class QueryLogRepository(private val database: QueryDatabase) {
+class QueryLogRepository(
+    private val database: QueryDatabase,
+    private val settings: SettingsRepository,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private fun day(time: Long) =
+        java.time.Instant.ofEpochMilli(time)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .atStartOfDay(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+
+    private val days = flow {
+        while (true) {
+            emit(day(System.currentTimeMillis()))
+            delay(60000)
+        }
+    }
+        .distinctUntilChanged()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val today = days.flatMapLatest {
+        database.queries().observeStats(it).map { value -> value ?: DailyStats(it) }
+    }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val week = days.flatMapLatest {
+        val today =
+            java.time.Instant.ofEpochMilli(it)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+        val dates =
+            (6 downTo 0).map { offset ->
+                today
+                    .minusDays(offset.toLong())
+                    .atStartOfDay(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+            }
+        database.queries().observeHistory(dates.first()).map { rows ->
+            dates.map { day ->
+                rows
+                    .firstOrNull { row -> row.day == day }
+                    ?.let { row ->
+                        com.utc.color.blockads.core.common.TrafficDay(day, row.total, row.blocked)
+                    } ?: com.utc.color.blockads.core.common.TrafficDay(day, 0, 0)
+            }
+        }
+    }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val topDomains = days.flatMapLatest { database.queries().topDomains(it) }
+
+    suspend fun clearLogs() = database.queries().clearLogs()
+
     private val batches = Channel<String>(32)
 
     fun searchPages(search: String, status: Int, uid: Int = -1) =
@@ -27,7 +81,8 @@ class QueryLogRepository(private val database: QueryDatabase) {
         scope.launch { runCatching { prune() } }
         scope.launch {
             for (json in batches) runCatching {
-                val events = JSONArray(json)
+                val batch = JSONObject(json)
+                val events = batch.getJSONArray("events")
                 val rows =
                     (0 until events.length()).map { index ->
                         events.getJSONObject(index).let { event ->
@@ -46,8 +101,20 @@ class QueryLogRepository(private val database: QueryDatabase) {
                             )
                         }
                     }
-                database.queries().insertBatch(rows)
-                prune()
+                database.withTransaction {
+                    database.queries().insertBatch(rows)
+                    val totals = batch.getJSONArray("totals")
+                    for (index in 0 until totals.length()) {
+                        val value = totals.getJSONObject(index)
+                        database
+                            .queries()
+                            .addStats(
+                                day(value.getLong("timestamp")),
+                                value.getLong("total"),
+                                value.getLong("blocked"),
+                            )
+                    }
+                }
             }
         }
     }
@@ -59,5 +126,10 @@ class QueryLogRepository(private val database: QueryDatabase) {
     suspend fun latest(domain: String) = database.queries().latest(domain)
 
     suspend fun prune() =
-        database.queries().deleteBefore(System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000)
+        database
+            .queries()
+            .deleteBefore(
+                System.currentTimeMillis() -
+                    settings.logRetentionDays.first().toLong() * 24 * 60 * 60 * 1000
+            )
 }

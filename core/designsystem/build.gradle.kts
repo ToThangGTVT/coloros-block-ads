@@ -22,6 +22,7 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.ui)
+    implementation(libs.mpandroidchart)
     implementation(libs.coui.ui)
     implementation(libs.coui.preference)
     implementation(libs.coui.icons)

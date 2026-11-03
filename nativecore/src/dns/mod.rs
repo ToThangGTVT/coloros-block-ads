@@ -117,6 +117,8 @@ pub trait EventSink: Send + Sync {
 }
 static SINK: OnceLock<RwLock<Option<Arc<dyn EventSink>>>> = OnceLock::new();
 static EVENTS: OnceLock<Mutex<Vec<Event>>> = OnceLock::new();
+type Totals = std::collections::HashMap<u64, (u64, u64)>;
+static TOTALS: OnceLock<Mutex<Totals>> = OnceLock::new();
 pub fn set_sink(sink: Option<Arc<dyn EventSink>>) {
     *SINK
         .get_or_init(|| RwLock::new(None))
@@ -129,17 +131,27 @@ pub fn flush() {
             .get_or_init(Mutex::default)
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if queue.is_empty() {
-            return;
-        }
         std::mem::take(&mut *queue)
     };
+    let totals = std::mem::take(
+        &mut *TOTALS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()),
+    );
+    if events.is_empty() && totals.is_empty() {
+        return;
+    }
+    let totals: Vec<_> = totals.into_iter().map(|(timestamp, (total, blocked))| serde_json::json!({"timestamp":timestamp,"total":total,"blocked":blocked})).collect();
     let sink = SINK
         .get_or_init(|| RwLock::new(None))
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    if let (Some(sink), Ok(json)) = (sink, serde_json::to_string(&events)) {
+    if let (Some(sink), Ok(json)) = (
+        sink,
+        serde_json::to_string(&serde_json::json!({"events":events,"totals":totals})),
+    ) {
         sink.batch(&json);
     }
 }
@@ -151,6 +163,19 @@ pub fn event(
     uid: Option<u32>,
     protocol: &str,
 ) {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    {
+        let mut totals = TOTALS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let entry = totals.entry(timestamp / 60000 * 60000).or_default();
+        entry.0 += 1;
+        entry.1 += u64::from(blocked);
+    }
     if !options().logging {
         return;
     }
@@ -163,10 +188,7 @@ pub fn event(
             events.remove(0);
         }
         events.push(Event {
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64,
+            timestamp,
             domain,
             blocked,
             matched_rule: rule,

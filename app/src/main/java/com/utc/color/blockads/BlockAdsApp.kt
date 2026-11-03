@@ -1,6 +1,7 @@
 package com.utc.color.blockads
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -41,6 +42,7 @@ fun BlockAdsApp(
     apps: com.utc.color.blockads.core.data.AppsRepository,
     onProtection: (Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
     val backStack = rememberNavBackStack(Destination.Home)
     val pop: () -> Unit = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     val selectTab: (AppTab) -> Unit = { tab ->
@@ -87,7 +89,20 @@ fun BlockAdsApp(
                     ) {
                         when (destination) {
                             Destination.Home ->
-                                HomeScreen(version, tunnel, filterStatus, onProtection)
+                                HomeScreen(
+                                    version,
+                                    tunnel,
+                                    filterStatus,
+                                    queries,
+                                    onPrivateDns = {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.provider.Settings.ACTION_WIRELESS_SETTINGS
+                                            )
+                                        )
+                                    },
+                                    onProtection,
+                                )
                             Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
                             Destination.Filters -> FiltersScreen(filters, settings)
                             Destination.Settings ->
@@ -98,6 +113,8 @@ fun BlockAdsApp(
                                     onCertificate = { backStack.add(Destination.Certificate) },
                                     error = error,
                                     settings = settings,
+                                    filters = filters,
+                                    queries = queries,
                                 )
                             Destination.Apps -> AppsScreen(apps)
                             Destination.Certificate -> CertificateScreen()

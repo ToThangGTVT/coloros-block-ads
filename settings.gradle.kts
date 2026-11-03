@@ -21,6 +21,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.PhilJay.MPAndroidChart") }
+        }
     }
 }
 
@@ -45,3 +48,5 @@ include(
     ":feature:settings",
     ":feature:certificate",
 )
+
+include(":baselineprofile")

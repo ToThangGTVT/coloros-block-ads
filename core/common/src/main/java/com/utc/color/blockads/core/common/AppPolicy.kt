@@ -12,3 +12,5 @@ data class InstalledApp(
     val label: String,
     val system: Boolean,
 )
+
+data class TrafficDay(val day: Long, val total: Long, val blocked: Long)

@@ -96,6 +96,7 @@ class PhaseThreeTrafficTest {
             )
             model.tunnel.start()
             withTimeout(15000) { model.tunnel.state.first { it.status == TunnelStatus.Connected } }
+            delay(600) // Let initial physical-network capability callbacks settle on slow AVDs.
             assertTrue(http("http.blockads.test").startsWith("HTTP/1.1 204"))
             assertTrue(http("allowed.blockads.test").contains("blockads-phase1"))
             android.util.Log.i("BlockAdsPhase3", "http passed")

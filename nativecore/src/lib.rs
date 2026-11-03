@@ -21,7 +21,7 @@ use std::{
 };
 use tun::{Engine, NetworkConfig};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase3");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase4");
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 struct AndroidProtector {

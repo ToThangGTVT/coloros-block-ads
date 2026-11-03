@@ -1,7 +1,7 @@
 # BlockAds
 
 Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN, triển khai theo từng
-phase. **Phase 3: lọc DNS/SNI/HTTP, QUIC policy và per-app.**
+phase. **Phase 4: lọc DNS/SNI/HTTP, per-app, thống kê và cập nhật nền.**
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -46,8 +46,11 @@ Không có plaintext fallback tự động khi upstream mã hóa không dùng đ
 TLS ClientHello SNI và HTTP Host/path đầu kết nối được lọc cả khi app dùng DNS riêng.
 Apps có tìm kiếm, icon cache và ba chế độ: Lọc / Bỏ qua lọc / Bỏ qua tunnel.
 Log có UID/app, protocol và bộ lọc theo app; QUIC bị chặn mặc định, có thể tắt.
-Thống kê đầy đủ, WorkManager, export/import và Baseline Profile ở Phase 4.
-HTTPS MITM mặc định tắt và chưa được triển khai ở Phase 3.
+Home có tổng/blocked/tỷ lệ, top domain và chart 7 ngày bằng MPAndroidChart **4.0.1**.
+WorkManager cập nhật list mỗi 24 giờ với ETag/Last-Modified. Settings có custom
+DoH/DoT + IP bootstrap, retention 1/7/30 ngày, auto-start, IPv6, export/import JSON.
+Baseline Profile đã tạo từ Home và Query log với 5.000 dòng mẫu trên emulator.
+HTTPS MITM mặc định tắt và chưa được triển khai ở Phase 4.
 
 Android 17 / target 37 cần quyền ACCESS_LOCAL_NETWORK để chuyển tiếp LAN. App xin
 quyền khi bật VPN; từ chối vẫn cho phép dùng Internet, nhưng LAN bị nền tảng chặn.
@@ -60,6 +63,6 @@ ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh
 ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh -Pandroid.testInstrumentationRunnerArguments.externalNetworkChecks=true
 ```
 
-Xem [biên bản Phase 3](docs/phase-3.md), [biên bản Phase 2](docs/phase-2.md), [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
+Xem [biên bản Phase 4](docs/phase-4.md), [biên bản Phase 3](docs/phase-3.md), [biên bản Phase 2](docs/phase-2.md), [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
 [nguồn API COUI](docs/coui-api.md) và [license](THIRD_PARTY_LICENSES.md).
 Tiếp tục các phase sau theo chỉ đạo mới của người dùng; mỗi phase có commit và biên bản riêng.

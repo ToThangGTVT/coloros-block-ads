@@ -154,6 +154,7 @@ impl Engine {
                                 if len == 0 {
                                     return Err(io::ErrorKind::UnexpectedEof.into());
                                 }
+                                if buffer[0] >> 4 == 6 && !crate::policy::current().ipv6 { continue; }
                                 read_stats.packets_in.fetch_add(1, Ordering::Relaxed);
                                 read_resets.observe(&buffer[..len]);
                                 // Reject malformed/fragmented input instead of terminating an upstream UDP stream.

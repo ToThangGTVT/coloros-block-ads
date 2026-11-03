@@ -43,13 +43,13 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): QueryDatabase =
         Room.databaseBuilder(context, QueryDatabase::class.java, "queries.db")
-            .addMigrations(QueryDatabase.Migration1To2)
+            .addMigrations(QueryDatabase.Migration1To2, QueryDatabase.Migration2To3)
             .build()
 
     @Provides
     @Singleton
-    fun queries(database: QueryDatabase) =
-        com.utc.color.blockads.core.data.QueryLogRepository(database)
+    fun queries(database: QueryDatabase, settings: SettingsRepository) =
+        com.utc.color.blockads.core.data.QueryLogRepository(database, settings)
 
     @Provides
     @Singleton
