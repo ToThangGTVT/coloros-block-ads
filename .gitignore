@@ -19,3 +19,6 @@ local.properties
 
 nativecore/target/
 core/engine-bridge/src/main/jniLibs/
+/dist/
+*.jks
+*.keystore

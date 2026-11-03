@@ -24,7 +24,7 @@ for attempt in range(50):
         time.sleep(.1)
 PY
 kill -0 "$fixture_pid" || { echo 'Fixture ports 18080/18081 are already occupied.' >&2; exit 1; }
-"$ADB" -s "$ANDROID_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
+"$ADB" -s "$ANDROID_SERIAL" install -r -t app/build/outputs/apk/debug/app-debug.apk
 "$ADB" -s "$ANDROID_SERIAL" shell appops set com.utc.color.blockads ACTIVATE_VPN allow
 "$ADB" -s "$ANDROID_SERIAL" shell pm grant com.utc.color.blockads android.permission.POST_NOTIFICATIONS
 api_level="$("$ADB" -s "$ANDROID_SERIAL" shell getprop ro.build.version.sdk | tr -d '\r')"

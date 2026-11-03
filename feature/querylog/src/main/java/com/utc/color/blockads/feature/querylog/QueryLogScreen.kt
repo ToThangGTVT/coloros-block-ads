@@ -11,9 +11,11 @@ import androidx.paging.compose.itemKey
 import com.utc.color.blockads.core.data.*
 import com.utc.color.blockads.core.designsystem.*
 import com.utc.color.blockads.core.filter.FilterRepository
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun QueryLogScreen(
     repository: QueryLogRepository,
@@ -26,9 +28,16 @@ fun QueryLogScreen(
     var appUid by rememberSaveable { mutableIntStateOf(-1) }
     val choices = remember(installed) { installed.distinctBy { it.uid } }
     var status by rememberSaveable { mutableIntStateOf(0) }
+    val appByUid = remember(installed) { installed.associateBy { it.uid } }
+    val choiceLabels = remember(choices) { listOf("Tất cả") + choices.map { it.label } }
+    val timeFormat = remember { java.text.DateFormat.getTimeInstance() }
+    val effectiveSearch by
+        produceState(search) {
+            snapshotFlow { search }.debounce(200).collect { value = it }
+        }
     val rows =
-        remember(repository, search, status, appUid) {
-                repository.searchPages(search, listOf(-1, 1, 0)[status], appUid)
+        remember(repository, effectiveSearch, status, appUid) {
+                repository.searchPages(effectiveSearch, listOf(-1, 1, 0)[status], appUid)
             }
             .collectAsLazyPagingItems()
     var selected by remember { mutableStateOf<QueryEntity?>(null) }
@@ -41,7 +50,7 @@ fun QueryLogScreen(
         }
         AppChoicePreference(
             "Ứng dụng",
-            listOf("Tất cả") + choices.map { it.label },
+            choiceLabels,
             (choices.indexOfFirst { it.uid == appUid } + 1).coerceAtLeast(0),
         ) { index ->
             appUid = if (index == 0) -1 else choices[index - 1].uid
@@ -52,18 +61,24 @@ fun QueryLogScreen(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
         ) {
-            items(count = rows.itemCount, key = rows.itemKey { it.id }) { index ->
+            items(
+                count = rows.itemCount,
+                key = rows.itemKey { it.id },
+                contentType = { "query" },
+            ) { index ->
                 rows[index]?.let { row ->
-                    val app = installed.firstOrNull { it.uid == row.uid }
+                    val app = appByUid[row.uid]
                     val icon by
-                        produceState<android.graphics.Bitmap?>(null, app?.packageName) {
+                        produceState(
+                            app?.let { apps.cachedIcon(it.packageName) },
+                            app?.packageName,
+                        ) {
                             value = app?.let { apps.icon(it.packageName) }
                         }
                     AppQueryRow(
                         row.domain,
                         row.blocked,
-                        java.text.DateFormat.getTimeInstance()
-                            .format(java.util.Date(row.timestamp)) +
+                        timeFormat.format(java.util.Date(row.timestamp)) +
                             " · " +
                             row.protocol.uppercase(),
                         appName = app?.label ?: row.uid?.let { "UID $it" } ?: "Chưa xác định",
@@ -111,7 +126,9 @@ fun QueryLogScreen(
                     AppButton("Chặn", primary = true) {
                         scope.launch {
                             runCatching {
-                                filters.saveCustom(settings.customRules.first() + "\n||${row.domain}^")
+                                filters.saveCustom(
+                                    settings.customRules.first() + "\n||${row.domain}^"
+                                )
                             }
                                 .onSuccess { selected = null }
                                 .onFailure { error = it.message }

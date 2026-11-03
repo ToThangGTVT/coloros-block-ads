@@ -1,10 +1,17 @@
 package com.utc.color.blockads.feature.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.common.*
 import com.utc.color.blockads.core.common.ThemeMode
@@ -37,9 +44,27 @@ fun SettingsScreen(
     val retention by settings.logRetentionDays.collectAsStateWithLifecycle(initialValue = 7)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
+    var backgroundAllowed by remember {
+        mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName))
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                backgroundAllowed = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var feedback by remember { mutableStateOf<String?>(null) }
     var customUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var bootstrap by rememberSaveable { mutableStateOf<String?>(null) }
+    val batteryPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            backgroundAllowed = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        }
     fun action(success: String? = null, block: suspend () -> Unit) {
         scope.launch {
             runCatching { block() }
@@ -75,126 +100,189 @@ fun SettingsScreen(
                     }
                 }
         }
-    AppColumn {
-        feedback?.let { AppCard { AppText(it) } }
-        AppSectionTitle("Bảo vệ")
-        AppPreferenceGroup {
-            AppSwitchPreference(
-                "Tự bật sau khởi động",
-                "Cần đã cấp quyền VPN",
-                autoStart,
-            ) {
-                action { settings.setAutoStart(it) }
-            }
-            AppSwitchPreference(
-                "IPv6",
-                "Tắt để chặn IPv6 trong VPN",
-                ipv6,
-            ) {
-                action { settings.setIpv6(it) }
-            }
-            AppSwitchPreference(
-                "Chặn QUIC",
-                "App chuyển sang TCP, dễ lọc hơn",
-                blockQuic,
-            ) {
-                action { settings.setBlockQuic(it) }
-            }
-            AppArrowPreference("Ứng dụng", "Chặn, cho phép, bỏ qua theo app", onApps)
-            AppArrowPreference("Lọc HTTPS", "Chặn quảng cáo theo URL", onCertificate)
-            AppArrowPreference("VPN luôn bật", "Cài đặt hệ thống") {
-                runCatching {
-                    context.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
-                    )
-                }
-                    .onFailure { feedback = "Không mở được cài đặt VPN" }
-            }
+    val updateContent = rememberGitHubUpdateContent()
+    AppLazyList {
+        item(key = "settings-0", contentType = "settings-section") {
+            feedback?.let { AppCard { AppText(it) } }
         }
-        AppSectionTitle("DNS")
-        AppPreferenceGroup {
-            AppChoicePreference(
-                "DNS upstream",
-                DnsUpstream.entries.map { it.title },
-                dns.upstream.ordinal,
-            ) { selected ->
-                action { settings.setDns(dns.copy(upstream = DnsUpstream.entries[selected])) }
-            }
-            if (dns.upstream == DnsUpstream.Custom) AppGroupContent {
-                AppTextInput(
-                    customUrl ?: dns.customUrl,
-                    "URL https:// hoặc tls://",
-                    onChange = { customUrl = it },
-                )
-                AppTextInput(
-                    bootstrap ?: dns.customBootstrap,
-                    "IP bootstrap",
-                    onChange = { bootstrap = it },
-                )
-                AppAction("Lưu", primary = true) {
-                    action("Đã lưu DNS tùy chỉnh") {
-                        settings.setDns(
-                            dns.copy(
-                                customUrl = customUrl ?: dns.customUrl,
-                                customBootstrap = bootstrap ?: dns.customBootstrap,
+        item(key = "settings-1", contentType = "settings-section") {
+            AppSectionTitle("Bảo vệ")
+        }
+        item(key = "settings-2", contentType = "settings-section") {
+            AppPreferenceGroup {
+                AppSwitchPreference(
+                    "Ưu tiên chạy ngầm",
+                    if (backgroundAllowed) "Đã miễn tối ưu hóa pin cho BlockAds"
+                    else "Miễn tối ưu hóa pin để VPN tiếp tục bảo vệ khi tắt màn hình",
+                    backgroundAllowed,
+                ) { enabled ->
+                    val intent =
+                        if (enabled) {
+                            Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:${context.packageName}"),
                             )
+                        } else Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    runCatching { batteryPermission.launch(intent) }
+                        .onFailure {
+                            runCatching {
+                                batteryPermission.launch(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}"),
+                                    )
+                                )
+                            }
+                                .onFailure { feedback = "Không mở được cài đặt pin" }
+                        }
+                }
+                AppSwitchPreference(
+                    "Tự bật sau khởi động",
+                    "Cần đã cấp quyền VPN",
+                    autoStart,
+                ) {
+                    action { settings.setAutoStart(it) }
+                }
+                AppSwitchPreference(
+                    "IPv6",
+                    "Tắt để chặn IPv6 trong VPN",
+                    ipv6,
+                ) {
+                    action { settings.setIpv6(it) }
+                }
+                AppSwitchPreference(
+                    "Chặn QUIC",
+                    "App chuyển sang TCP, dễ lọc hơn",
+                    blockQuic,
+                ) {
+                    action { settings.setBlockQuic(it) }
+                }
+                AppArrowPreference(
+                    "Ứng dụng",
+                    "Lọc quảng cáo và HTTPS theo app",
+                    onApps,
+                )
+                AppArrowPreference("Lọc HTTPS", "Chặn quảng cáo theo URL", onCertificate)
+                AppArrowPreference("VPN luôn bật", "Cài đặt hệ thống") {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
                         )
                     }
+                        .onFailure { feedback = "Không mở được cài đặt VPN" }
                 }
             }
-            AppChoicePreference(
-                "Kiểu phản hồi chặn",
-                listOf("0.0.0.0 / ::", "NXDOMAIN"),
-                dns.blockResponse.ordinal,
-            ) { selected ->
-                action {
-                    settings.setDns(dns.copy(blockResponse = BlockResponse.entries[selected]))
+        }
+        item(key = "settings-3", contentType = "settings-section") {
+            AppSectionTitle("DNS")
+        }
+        item(key = "settings-4", contentType = "settings-section") {
+            AppPreferenceGroup {
+                AppChoicePreference(
+                    "DNS upstream",
+                    DnsUpstream.entries.map { it.title },
+                    dns.upstream.ordinal,
+                ) { selected ->
+                    action { settings.setDns(dns.copy(upstream = DnsUpstream.entries[selected])) }
+                }
+                if (dns.upstream == DnsUpstream.Custom)
+                    AppGroupContent {
+                        AppTextInput(
+                            customUrl ?: dns.customUrl,
+                            "URL https:// hoặc tls://",
+                            onChange = { customUrl = it },
+                        )
+                        AppTextInput(
+                            bootstrap ?: dns.customBootstrap,
+                            "IP bootstrap",
+                            onChange = { bootstrap = it },
+                        )
+                        AppAction("Lưu", primary = true) {
+                            action("Đã lưu DNS tùy chỉnh") {
+                                settings.setDns(
+                                    dns.copy(
+                                        customUrl = customUrl ?: dns.customUrl,
+                                        customBootstrap = bootstrap ?: dns.customBootstrap,
+                                    )
+                                )
+                            }
+                        }
+                    }
+                AppChoicePreference(
+                    "Kiểu phản hồi chặn",
+                    listOf("0.0.0.0 / ::", "NXDOMAIN"),
+                    dns.blockResponse.ordinal,
+                ) { selected ->
+                    action {
+                        settings.setDns(dns.copy(blockResponse = BlockResponse.entries[selected]))
+                    }
+                }
+                AppSwitchPreference(
+                    "Nhật ký kết nối",
+                    "Chỉ lưu trên thiết bị",
+                    dns.logging,
+                ) { enabled ->
+                    action { settings.setDns(dns.copy(logging = enabled)) }
                 }
             }
-            AppSwitchPreference(
-                "Nhật ký kết nối",
-                "Chỉ lưu trên thiết bị",
-                dns.logging,
-            ) { enabled ->
-                action { settings.setDns(dns.copy(logging = enabled)) }
+        }
+        item(key = "settings-5", contentType = "settings-section") {
+            AppSectionTitle("Giao diện")
+        }
+        item(key = "settings-6", contentType = "settings-section") {
+            AppPreferenceGroup {
+                AppChoicePreference(
+                    title = "Chủ đề",
+                    entries = themeLabels,
+                    selected = theme.ordinal,
+                    onSelected = { onTheme(ThemeMode.entries[it]) },
+                )
             }
         }
-
-        AppSectionTitle("Giao diện")
-        AppPreferenceGroup {
-            AppChoicePreference(
-                title = "Chủ đề",
-                entries = themeLabels,
-                selected = theme.ordinal,
-                onSelected = { onTheme(ThemeMode.entries[it]) },
-            )
+        item(key = "settings-7", contentType = "settings-section") {
+            if (error != null) AppCard { AppText(error) }
         }
-        if (error != null) AppCard { AppText(error) }
-        AppSectionTitle("Dữ liệu")
-        AppPreferenceGroup {
-            AppChoicePreference(
-                "Giữ nhật ký",
-                listOf("1 ngày", "7 ngày", "30 ngày"),
-                listOf(1, 7, 30).indexOf(retention).coerceAtLeast(0),
-            ) { index ->
-                action {
-                    settings.setLogRetentionDays(listOf(1, 7, 30)[index])
-                    queries.prune()
+        item(key = "settings-8", contentType = "settings-section") {
+            AppSectionTitle("Dữ liệu")
+        }
+        item(key = "settings-9", contentType = "settings-section") {
+            AppPreferenceGroup {
+                AppChoicePreference(
+                    "Giữ nhật ký",
+                    listOf("1 ngày", "7 ngày", "30 ngày"),
+                    listOf(1, 7, 30).indexOf(retention).coerceAtLeast(0),
+                ) { index ->
+                    action {
+                        settings.setLogRetentionDays(listOf(1, 7, 30)[index])
+                        queries.prune()
+                    }
+                }
+                AppArrowPreference("Xuất cấu hình", "File JSON") {
+                    export.launch("blockads-config.json")
+                }
+                AppArrowPreference("Nhập cấu hình", "Từ file JSON") {
+                    import.launch(arrayOf("application/json", "text/plain"))
+                }
+                AppArrowPreference("Xóa nhật ký kết nối") {
+                    action("Đã xóa nhật ký") { queries.clearLogs() }
                 }
             }
-            AppArrowPreference("Xuất cấu hình", "File JSON") { export.launch("blockads-config.json") }
-            AppArrowPreference("Nhập cấu hình", "Từ file JSON") {
-                import.launch(arrayOf("application/json", "text/plain"))
-            }
-            AppArrowPreference("Xóa nhật ký kết nối") {
-                action("Đã xóa nhật ký") { queries.clearLogs() }
-            }
         }
-        AppSectionTitle("Giới thiệu")
-        AppCard {
-            AppText("BlockAds 0.5.0", prominent = true)
-            AppHint("Rust JNI · $engineVersion")
-            AppHint("COUI 1.1.0 · ColorOS 16")
+        item(key = "settings-10", contentType = "settings-section") {
+            updateContent()
+        }
+        item(key = "settings-11", contentType = "settings-section") {
+            AppSectionTitle("Giới thiệu")
+        }
+        item(key = "settings-12", contentType = "settings-section") {
+            AppCard {
+                AppText(
+                    "BlockAds ${remember(context) { com.utc.color.blockads.core.data.GitHubUpdateRepository(context).currentVersion }}",
+                    prominent = true,
+                )
+                AppHint("Rust JNI · $engineVersion")
+                AppHint("COUI 1.1.0 · ColorOS 16")
+            }
         }
     }
 }

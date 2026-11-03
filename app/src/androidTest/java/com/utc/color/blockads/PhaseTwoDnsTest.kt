@@ -177,7 +177,9 @@ class PhaseTwoDnsTest {
             compose.onNodeWithText("Tìm domain").performTextInput("blocked.blockads.test")
             compose.waitUntil(5000) {
                 compose
-                    .onAllNodesWithText("blocked.blockads.test")
+                    .onAllNodes(
+                        hasText("blocked.blockads.test") and hasText("Đã chặn", substring = true)
+                    )
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }

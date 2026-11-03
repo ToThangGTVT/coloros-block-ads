@@ -16,9 +16,9 @@ fun HomeScreen(
     onPrivateDns: () -> Unit,
     onProtection: (Boolean) -> Unit,
 ) {
-    val stats by queries.today.collectAsStateWithLifecycle(initialValue = DailyStats(0))
-    val week by queries.week.collectAsStateWithLifecycle(initialValue = emptyList())
-    val top by queries.topDomains.collectAsStateWithLifecycle(initialValue = emptyList())
+    val stats by queries.today.collectAsStateWithLifecycle()
+    val week by queries.week.collectAsStateWithLifecycle()
+    val top by queries.topDomains.collectAsStateWithLifecycle()
     val enabled =
         tunnel.status in
             listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)

@@ -36,6 +36,7 @@ fn owner() -> Owner {
         uid: Some(123),
         packages: vec!["test.browser".into()],
         bypass: false,
+        blocked: false,
     }
 }
 fn enable(domain: &str) {

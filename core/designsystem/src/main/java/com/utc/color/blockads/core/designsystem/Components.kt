@@ -4,30 +4,44 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.DropdownArrowEndAction
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Switch
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.basic.Check
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.ListPreference
-import io.github.suqi8.coui.kmp.preference.ListPreferenceEntry
+import io.github.suqi8.coui.kmp.preference.ListPreferenceDefaults
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -47,6 +61,17 @@ object AppSpacing {
 fun AppColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        content = content,
+    )
+}
+
+/** Pages with independent lazy sections; AppPage supplies top/bottom chrome insets. */
+@Composable
+fun AppLazyList(content: LazyListScope.() -> Unit) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("page-list"),
+        contentPadding = PaddingValues(horizontal = AppSpacing.page, vertical = AppSpacing.gap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
         content = content,
     )
@@ -169,15 +194,54 @@ fun AppChoicePreference(
     selected: Int,
     onSelected: (Int) -> Unit,
 ) {
-    val choices = remember(entries) { entries.map { ListPreferenceEntry(text = it) } }
-    ListPreference(
-        entries = choices,
-        selectedIndex = selected,
-        onSelectedIndexChange = onSelected,
+    var shown by remember { mutableStateOf(false) }
+    BasicComponent(
         title = title,
-        cancelButtonText = "Hủy",
-        renderInRootScaffold = false,
+        endActions = {
+            entries.getOrNull(selected)?.let { AppHint(it) }
+            DropdownArrowEndAction(actionColor = COUITheme.colorScheme.onSurfaceVariantActions)
+        },
+        enabled = entries.isNotEmpty(),
+        role = Role.DropdownList,
+        onClick = { shown = true },
     )
+    AppBottomSheet(show = shown, title = title, onDismiss = { shown = false }) {
+        Column {
+            LazyColumn(Modifier.weight(1f, fill = false).testTag("choice-list")) {
+                itemsIndexed(
+                    entries,
+                    key = { index, _ -> index },
+                    contentType = { _, _ -> "choice" },
+                ) { index, label ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .heightIn(min = ListPreferenceDefaults.PanelItemMinHeight)
+                            .selectable(selected = index == selected, role = Role.RadioButton) {
+                                onSelected(index)
+                                shown = false
+                            }
+                            .padding(vertical = ListPreferenceDefaults.PanelItemVerticalPadding),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            label,
+                            modifier = Modifier.weight(1f),
+                            style = COUITheme.textStyles.headline2,
+                            color = COUITheme.colorScheme.onSurface,
+                        )
+                        if (index == selected)
+                            io.github.suqi8.coui.kmp.basic.Icon(
+                                COUIIcons.Basic.Check,
+                                contentDescription = null,
+                                tint = COUITheme.colorScheme.primary,
+                                modifier = Modifier.size(ListPreferenceDefaults.CheckIconSize),
+                            )
+                    }
+                }
+            }
+            AppAction("Hủy") { shown = false }
+        }
+    }
 }
 
 /** Navigation or one-shot action row inside an [AppPreferenceGroup], aligned with other rows. */
@@ -255,7 +319,7 @@ fun AppBottomSheet(
         show = show,
         title = title,
         onDismissRequest = onDismiss,
-        renderInRootScaffold = false,
+        renderInRootScaffold = true,
     ) {
         // COUI 1.1.0 handles IME insets but its sheet content has no navigation-bar padding.
         Box(
@@ -323,7 +387,9 @@ fun AppItemHeader(title: String, summary: String? = null, bitmap: android.graphi
                         tint = androidx.compose.ui.graphics.Color.Unspecified,
                         modifier =
                             Modifier.padding(end = AppSpacing.gap)
-                                .size(io.github.suqi8.coui.kmp.basic.NavigationBarDefaults.IconSize),
+                                .size(
+                                    io.github.suqi8.coui.kmp.basic.NavigationBarDefaults.IconSize
+                                ),
                     )
                 }
             },

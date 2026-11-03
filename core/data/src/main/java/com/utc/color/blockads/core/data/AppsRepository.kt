@@ -18,7 +18,8 @@ class AppsRepository(context: Context, private val settings: SettingsRepository)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _apps = MutableStateFlow<List<InstalledApp>>(emptyList())
     val apps = _apps.asStateFlow()
-    val policies = settings.appPolicies
+    val policies = settings.appPolicies.stateIn(scope, SharingStarted.Eagerly, emptyMap())
+    val blockedApps = settings.blockedApps.stateIn(scope, SharingStarted.Eagerly, emptySet())
     private val cache =
         object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
             override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
@@ -75,6 +76,13 @@ class AppsRepository(context: Context, private val settings: SettingsRepository)
     }
 
     fun forUid(uid: Int?) = apps.value.filter { it.uid == uid }
+
+    fun cachedIcon(packageName: String): Bitmap? = cache.get(packageName)
+
+    suspend fun setNetworkAllowed(app: InstalledApp, allowed: Boolean) {
+        val packages = apps.value.filter { it.uid == app.uid }.map { it.packageName }
+        settings.setNetworkAllowed((packages + app.packageName).distinct(), allowed)
+    }
 
     suspend fun icon(packageName: String): Bitmap? =
         withContext(Dispatchers.IO) {

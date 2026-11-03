@@ -102,6 +102,30 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     val blockQuic = preferences.map { it[BlockQuic] ?: true }.distinctUntilChanged()
     val appPolicies = preferences.map { parsePolicies(it[AppPolicies]) }.distinctUntilChanged()
+    val blockedApps = preferences.map { parseBlockedApps(it[BlockedApps]) }.distinctUntilChanged()
+
+    private fun parseBlockedApps(json: String?): Set<String> {
+        val array = JSONArray(json ?: "[]")
+        require(array.length() <= 2000) { "Tối đa 2000 ứng dụng trong tường lửa" }
+        return (0 until array.length())
+            .map { array.getString(it) }
+            .toSet()
+            .also { packages ->
+                require(packages.all { it.matches(Regex("[A-Za-z0-9_.]+")) }) {
+                    "Package ứng dụng trong tường lửa không hợp lệ"
+                }
+            }
+    }
+
+    suspend fun setNetworkAllowed(packages: List<String>, allowed: Boolean) {
+        require(packages.all { it.matches(Regex("[A-Za-z0-9_.]+")) })
+        store.edit { prefs ->
+            val blocked = parseBlockedApps(prefs[BlockedApps]).toMutableSet()
+            if (allowed) blocked.removeAll(packages.toSet()) else blocked.addAll(packages)
+            require(blocked.size <= 2000) { "Tối đa 2000 ứng dụng trong tường lửa" }
+            prefs[BlockedApps] = JSONArray(blocked.sorted()).toString()
+        }
+    }
 
     private fun parsePolicies(json: String?): Map<String, AppFilterMode> = runCatching {
         val value = JSONObject(json ?: "{}")
@@ -262,6 +286,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         require(retention in listOf(1, 7, 30)) { "Thời gian giữ log không hợp lệ" }
         if (json.has(Lists.name)) org.json.JSONArray(json.getString(Lists.name))
         if (json.has(AppPolicies.name)) org.json.JSONObject(json.getString(AppPolicies.name))
+        parseBlockedApps(if (json.has(BlockedApps.name)) json.getString(BlockedApps.name) else null)
         val lists = parseLists(json.optString(Lists.name).takeIf { it.isNotBlank() })
         require(lists.size <= 30) { "Tối đa 30 danh sách" }
         lists.forEach { list ->
@@ -350,6 +375,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val CustomDnsUrl = stringPreferencesKey("custom_dns_url")
         val CustomDnsIp = stringPreferencesKey("custom_dns_ip")
         val AppPolicies = stringPreferencesKey("app_policies")
+        val BlockedApps = stringPreferencesKey("blocked_apps")
         val BlockQuic = booleanPreferencesKey("block_quic")
         val CustomRules = stringPreferencesKey("custom_rules")
         val Upstream = stringPreferencesKey("dns_upstream")
@@ -365,6 +391,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 Lists,
                 ThemeKey,
                 AppPolicies,
+                BlockedApps,
                 CustomDnsUrl,
                 CustomDnsIp,
             )

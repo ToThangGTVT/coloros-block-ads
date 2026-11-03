@@ -2,6 +2,7 @@ package com.utc.color.blockads.core.data
 
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.cachedIn
 import androidx.room.withTransaction
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -30,46 +31,123 @@ class QueryLogRepository(
         }
     }
         .distinctUntilChanged()
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val today = days.flatMapLatest {
-        database.queries().observeStats(it).map { value -> value ?: DailyStats(it) }
-    }
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val week = days.flatMapLatest {
-        val today =
-            java.time.Instant.ofEpochMilli(it)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDate()
-        val dates =
-            (6 downTo 0).map { offset ->
-                today
-                    .minusDays(offset.toLong())
-                    .atStartOfDay(java.time.ZoneId.systemDefault())
-                    .toInstant()
-                    .toEpochMilli()
+    @OptIn(
+        kotlinx.coroutines.ExperimentalCoroutinesApi::class,
+        kotlinx.coroutines.FlowPreview::class,
+    )
+    val today =
+        days
+            .flatMapLatest {
+                database.queries().observeStats(it).map { value -> value ?: DailyStats(it) }
             }
-        database.queries().observeHistory(dates.first()).map { rows ->
-            dates.map { day ->
-                rows
-                    .firstOrNull { row -> row.day == day }
-                    ?.let { row ->
-                        com.utc.color.blockads.core.common.TrafficDay(day, row.total, row.blocked)
-                    } ?: com.utc.color.blockads.core.common.TrafficDay(day, 0, 0)
+            .distinctUntilChanged()
+            .sample(1000)
+            .stateIn(
+                scope,
+                SharingStarted.WhileSubscribed(10_000),
+                DailyStats(day(System.currentTimeMillis())),
+            )
+    @OptIn(
+        kotlinx.coroutines.ExperimentalCoroutinesApi::class,
+        kotlinx.coroutines.FlowPreview::class,
+    )
+    val week =
+        days
+            .flatMapLatest {
+                val today =
+                    java.time.Instant.ofEpochMilli(it)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                val dates =
+                    (6 downTo 0).map { offset ->
+                        today
+                            .minusDays(offset.toLong())
+                            .atStartOfDay(java.time.ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                    }
+                database.queries().observeHistory(dates.first()).map { rows ->
+                    dates.map { day ->
+                        rows
+                            .firstOrNull { row -> row.day == day }
+                            ?.let { row ->
+                                com.utc.color.blockads.core.common.TrafficDay(
+                                    day,
+                                    row.total,
+                                    row.blocked,
+                                )
+                            } ?: com.utc.color.blockads.core.common.TrafficDay(day, 0, 0)
+                    }
+                }
             }
-        }
-    }
+            .distinctUntilChanged()
+            .sample(1000)
+            .stateIn(
+                scope,
+                SharingStarted.WhileSubscribed(10_000),
+                (6 downTo 0).map { offset ->
+                    val date =
+                        java.time.LocalDate.now()
+                            .minusDays(offset.toLong())
+                            .atStartOfDay(java.time.ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                    com.utc.color.blockads.core.common.TrafficDay(date, 0, 0)
+                },
+            )
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val topDomains = days.flatMapLatest { database.queries().topDomains(it) }
+    val topDomains =
+        days
+            .flatMapLatest { database.queries().topDomains(it) }
+            .distinctUntilChanged()
+            .stateIn(scope, SharingStarted.WhileSubscribed(10_000), emptyList())
 
     suspend fun clearLogs() = database.queries().clearLogs()
 
     private val batches = Channel<String>(32)
 
-    fun searchPages(search: String, status: Int, uid: Int = -1) =
-        Pager(PagingConfig(pageSize = 50, enablePlaceholders = false)) {
-                database.queries().pagingSource(search, status, uid)
-            }
-            .flow
+    private data class SearchKey(val search: String, val status: Int, val uid: Int)
+
+    private data class CachedPages(
+        val flow: Flow<androidx.paging.PagingData<QueryEntity>>,
+        val job: Job,
+    )
+
+    private val searches = LinkedHashMap<SearchKey, CachedPages>(4, 0.75f, true)
+
+    @Synchronized
+    fun searchPages(
+        search: String,
+        status: Int,
+        uid: Int = -1,
+    ): Flow<androidx.paging.PagingData<QueryEntity>> {
+        val key = SearchKey(search, status, uid)
+        searches[key]?.let {
+            return it.flow
+        }
+        if (searches.size >= 4) {
+            val oldest = searches.entries.first()
+            oldest.value.job.cancel()
+            searches.remove(oldest.key)
+        }
+        val job = SupervisorJob(scope.coroutineContext[Job])
+        val flow =
+            Pager(
+                    PagingConfig(
+                        pageSize = 50,
+                        initialLoadSize = 50,
+                        prefetchDistance = 10,
+                        maxSize = 300,
+                        enablePlaceholders = false,
+                    )
+                ) {
+                    database.queries().pagingSource(search, status, uid)
+                }
+                .flow
+                .cachedIn(CoroutineScope(scope.coroutineContext + job))
+        searches[key] = CachedPages(flow, job)
+        return flow
+    }
 
     val pages =
         Pager(PagingConfig(pageSize = 50, enablePlaceholders = false)) {

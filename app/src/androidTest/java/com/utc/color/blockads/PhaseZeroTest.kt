@@ -1,10 +1,10 @@
 package com.utc.color.blockads
 
 import android.os.ParcelFileDescriptor
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -30,15 +30,12 @@ class PhaseZeroTest {
         try {
             assertEquals("0.5.0-phase5", EngineBridge().version())
             compose.onNodeWithText("Cài đặt").performClick()
-            compose.waitUntil(10_000) {
-                compose
-                    .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.5.0-phase5"))
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            }
+            compose
+                .onNodeWithTag("page-list")
+                .performScrollToNode(hasText("Rust JNI · 0.5.0-phase5"))
             Thread.sleep(600)
             for (mode in listOf("Sáng", "Tối", "Monet", "Theo hệ thống")) {
-                compose.onNodeWithText("Chủ đề").performScrollTo()
+                compose.onNodeWithTag("page-list").performScrollToNode(hasText("Chủ đề"))
                 Thread.sleep(600)
                 compose.onNodeWithText("Chủ đề").performClick()
                 compose.waitUntil(5000) {
@@ -64,7 +61,7 @@ class PhaseZeroTest {
                 compose.onNodeWithText("Cài đặt").performClick()
                 Thread.sleep(600)
             }
-            compose.onNodeWithText("Ứng dụng").performScrollTo()
+            compose.onNodeWithTag("page-list").performScrollToNode(hasText("Ứng dụng"))
             Thread.sleep(600)
             compose.onNodeWithText("Ứng dụng").performClick()
             compose.waitUntil(10000) {
@@ -81,6 +78,7 @@ class PhaseZeroTest {
                 "input swipe 1 ${metrics.heightPixels / 2} ${metrics.widthPixels * 2 / 3} ${metrics.heightPixels / 2} 500"
             )
             compose.waitForIdle()
+            compose.onNodeWithTag("page-list").performScrollToNode(hasText("Chủ đề"))
             compose.onNodeWithText("Chủ đề").assertExists()
         } catch (failure: Throwable) {
             shell("screencap -p /sdcard/Download/blockads-ui-failure.png")

@@ -146,10 +146,8 @@ class PhaseThreeTrafficTest {
             }
             assertTrue(http("http.blockads.test").startsWith("HTTP/1.1 204"))
             compose.onNodeWithText("Cài đặt").performClick()
-            compose
-                .onNodeWithText("Ứng dụng", useUnmergedTree = true)
-                .performScrollTo()
-                .performClick()
+            compose.onNodeWithTag("page-list").performScrollToNode(hasText("Ứng dụng"))
+            compose.onNodeWithText("Ứng dụng").performClick()
             compose.onNodeWithText("Tìm ứng dụng").performTextInput("BlockAds")
             compose.onNodeWithText("Chính sách · BlockAds").assertExists()
         } finally {

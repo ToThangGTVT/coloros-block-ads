@@ -25,9 +25,15 @@ pub async fn serve(
 ) {
     let permits = Arc::new(Semaphore::new(256));
     let mut flows = JoinSet::new();
+    let mut firewall = crate::policy::firewall_changes();
     loop {
         tokio::select! {
             biased;
+            changed = firewall.changed() => {
+                if changed.is_err() { break; }
+                flows.abort_all();
+                while flows.join_next().await.is_some() {}
+            }
             changed = network.changed() => {
                 if changed.is_err() { break; }
                 flows.abort_all();
@@ -40,6 +46,11 @@ pub async fn serve(
                 let Some((client, source, destination)) = incoming else { break; };
                 let Ok(permit) = permits.clone().try_acquire_owned() else { continue; };
                 let owner = crate::policy::Owner::from_uid(protector.owner(6, source, destination));
+                if owner.blocked {
+                    crate::dns::event(destination.ip().to_string(), true, Some("Tường lửa · Chặn truy cập mạng".into()), false, owner.uid, "firewall");
+                    if let Some(packet) = resets.packet(source, destination) { let _ = raw.send(packet).await; }
+                    continue;
+                }
                 if destination.port() == 53 {
                     let dns = dns.clone(); let physical = network.borrow().dns;
                     flows.spawn(async move { let _permit = permit; crate::dns::serve_tcp(client, dns, physical, owner).await; });

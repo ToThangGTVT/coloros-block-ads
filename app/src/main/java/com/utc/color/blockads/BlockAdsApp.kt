@@ -26,6 +26,7 @@ private enum class Destination : NavKey {
     Home,
     Log,
     Filters,
+    Firewall,
     Settings,
     Apps,
     Certificate,
@@ -37,6 +38,7 @@ private val Destination.tab
         when (this) {
             Destination.Home -> AppTab.Home
             Destination.Log -> AppTab.Log
+            Destination.Firewall -> AppTab.Firewall
             Destination.Filters,
             Destination.Catalog -> AppTab.Filters
             else -> AppTab.Settings
@@ -44,7 +46,14 @@ private val Destination.tab
 
 private val Destination.isTab
     get() =
-        this in setOf(Destination.Home, Destination.Log, Destination.Filters, Destination.Settings)
+        this in
+            setOf(
+                Destination.Home,
+                Destination.Log,
+                Destination.Filters,
+                Destination.Firewall,
+                Destination.Settings,
+            )
 
 @Composable
 fun BlockAdsApp(
@@ -95,7 +104,12 @@ fun BlockAdsApp(
                         AppPage(
                             title = title,
                             scrollable =
-                                destination != Destination.Log && destination != Destination.Apps,
+                                destination != Destination.Log &&
+                                    destination != Destination.Apps &&
+                                    destination != Destination.Firewall &&
+                                    destination != Destination.Catalog &&
+                                    destination != Destination.Filters &&
+                                    destination != Destination.Settings,
                             onBack =
                                 if (
                                     destination == Destination.Apps ||
@@ -142,6 +156,8 @@ fun BlockAdsApp(
                                         queries = queries,
                                     )
                                 Destination.Apps -> AppsScreen(apps, settings)
+                                Destination.Firewall ->
+                                    AppsScreen(apps, settings, firewallOnly = true)
                                 Destination.Certificate ->
                                     CertificateScreen(
                                         certificates,

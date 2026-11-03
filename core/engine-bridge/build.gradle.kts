@@ -20,6 +20,7 @@ android {
 }
 
 abstract class VerifyNativeCore : DefaultTask() {
+    @get:Inject abstract val execOperations: ExecOperations
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sources: ConfigurableFileCollection
@@ -35,10 +36,7 @@ abstract class VerifyNativeCore : DefaultTask() {
     fun verify() {
         val guidance =
             "Rust/JNI binaries are missing or stale. Run scripts/build-native.sh before building the APK."
-        check(binaries.files.all { it.isFile }) { guidance }
         val stamp = metadata.singleFile
-        check(stamp.isFile) { guidance }
-        val properties = Properties().apply { stamp.inputStream().use { load(it) } }
         val digest = MessageDigest.getInstance("SHA-256")
         val root = repositoryRoot.get().asFile.toPath()
         sources.files
@@ -56,15 +54,25 @@ abstract class VerifyNativeCore : DefaultTask() {
                 digest.update(0.toByte())
             }
         fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
-        check(properties.getProperty("sources") == hex(digest.digest())) { guidance }
-        binaries.files.forEach { binary ->
-            check(
+        val fingerprint = hex(digest.digest())
+        fun current(): Boolean {
+            if (!stamp.isFile || binaries.files.any { !it.isFile }) return false
+            val properties = Properties().apply { stamp.inputStream().use { load(it) } }
+            return properties.getProperty("sources") == fingerprint && binaries.files.all { binary ->
                 properties.getProperty(binary.parentFile.name) ==
                     hex(MessageDigest.getInstance("SHA-256").digest(binary.readBytes()))
-            ) {
-                guidance
             }
         }
+        if (!current()) {
+            logger.lifecycle("Updating Rust/JNI libraries for all Android ABIs…")
+            execOperations.exec {
+                workingDir(repositoryRoot.get().asFile)
+                commandLine("bash", "scripts/build-native.sh")
+                // Android Studio launched from Finder may not inherit the shell's cargo PATH.
+                environment("PATH", "${System.getProperty("user.home")}/.cargo/bin:${System.getenv("PATH")}")
+            }
+        }
+        check(current()) { guidance }
     }
 }
 

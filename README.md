@@ -1,8 +1,8 @@
 # BlockAds
 
-Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN, triển khai theo từng
-phase. **Phase 5: lọc HTTPS tùy chọn bằng CA cục bộ, trên nền DNS/SNI/HTTP, per-app,
-thống kê và cập nhật nền của Phase 4.**
+Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN. **1.0.0** thêm tab
+tường lửa bật/tắt Internet theo app, tùy chọn ưu tiên chạy ngầm và cập nhật APK
+qua GitHub Releases, trên nền lọc DNS/SNI/HTTP và HTTPS tùy chọn.
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -22,9 +22,10 @@ scripts/build-native.sh
 ./gradlew :app:assembleDebug
 ```
 
-Script tạo `libblockads_core.so` cho arm64-v8a, armeabi-v7a, x86_64 và x86, link cho
+Gradle tự chạy script native khi nguồn hoặc binary chưa khớp. Script tạo
+`libblockads_core.so` cho arm64-v8a, armeabi-v7a, x86_64 và x86, link cho
 API 33 và page alignment 16 KB. Các binary được đóng gói qua `core/engine-bridge`,
-không commit binary. Build Gradle sẽ báo rõ nếu chưa chạy script native.
+không commit binary. Xem [phát hành, khóa ký và cập nhật](docs/releases.md).
 
 ```sh
 cargo fmt --manifest-path nativecore/Cargo.toml --check

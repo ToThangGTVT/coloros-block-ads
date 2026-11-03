@@ -14,8 +14,8 @@ android {
         applicationId = "com.utc.color.blockads"
         minSdk = 33
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.5.0"
+        versionCode = 10
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -23,8 +23,25 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+    splits.abi {
+        isEnable = providers.gradleProperty("blockads.splitApks").map(String::toBoolean).getOrElse(false)
+        reset()
+        include("armeabi-v7a", "arm64-v8a")
+        isUniversalApk = false
+    }
+    val releaseStore = providers.environmentVariable("BLOCKADS_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseStore.isPresent) create("githubRelease") {
+            storeFile = file(releaseStore.get())
+            storePassword = providers.environmentVariable("BLOCKADS_KEYSTORE_PASSWORD").get()
+            keyAlias = providers.environmentVariable("BLOCKADS_KEY_ALIAS").get()
+            keyPassword = providers.environmentVariable("BLOCKADS_KEY_PASSWORD").get()
+        }
+    }
     buildTypes {
         release {
+            ndk.abiFilters += setOf("armeabi-v7a", "arm64-v8a")
+            if (releaseStore.isPresent) signingConfig = signingConfigs.getByName("githubRelease")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

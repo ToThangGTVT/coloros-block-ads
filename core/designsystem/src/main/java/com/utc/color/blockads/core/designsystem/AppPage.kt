@@ -7,9 +7,9 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
@@ -37,6 +37,7 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.Filter
 import io.github.suqi8.coui.kmp.icon.extended.HorizontalSplit
+import io.github.suqi8.coui.kmp.icon.extended.Lock
 import io.github.suqi8.coui.kmp.icon.extended.Search
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -46,25 +47,26 @@ enum class AppTab(val label: String) {
     Home("Trang chủ"),
     Log("Nhật ký"),
     Filters("Bộ lọc"),
+    Firewall("Tường lửa"),
     Settings("Cài đặt"),
 }
 
 private const val TabKey = "blockads.tab"
 
-/** NavEntry metadata for a bottom-bar tab: tabs slide side by side like a pager, not push/pop. */
+/** NavEntry metadata distinguishes top-level tabs from pushed sub-pages. */
 fun appTabMetadata(tab: AppTab): Map<String, Any> = mapOf(TabKey to tab.ordinal)
 
 private fun Scene<*>.tabIndex() = metadata[TabKey] as? Int
 
-private fun <T : Any> AnimatedContentTransitionScope<Scene<T>>.pagerSlide(
+private fun <T : Any> AnimatedContentTransitionScope<Scene<T>>.tabTransition(
     easing: Easing
 ): ContentTransform? {
-    val from = initialState.tabIndex() ?: return null
-    val to = targetState.tabIndex() ?: return null
-    val direction = if (to >= from) 1 else -1
-    val spec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 350, easing = easing)
-    return slideInHorizontally(spec) { it * direction } togetherWith
-        slideOutHorizontally(spec) { -it * direction }
+    initialState.tabIndex() ?: return null
+    targetState.tabIndex() ?: return null
+    // Keep the chart and long lists stationary instead of translating two full-screen
+    // backdrop layers on every frame of a tab change.
+    return fadeIn(tween(durationMillis = 140, easing = easing)) togetherWith
+        fadeOut(tween(durationMillis = 90))
 }
 
 @Composable
@@ -87,16 +89,18 @@ fun <T : Any> AppNavDisplay(
     SideEffect { previous = current }
     LaunchedEffect(current) {
         // Once settled, prepare for a predictive back gesture to the entry below.
-        delay(600)
+        delay(180)
         pagerEffects =
             isTab(current) && backStack.getOrNull(backStack.lastIndex - 1)?.let(::isTab) != false
     }
     NavDisplay(
         backStack = backStack,
         onBack = onBack,
-        transitionSpec = { pagerSlide(FastOutSlowInEasing) ?: push() },
-        popTransitionSpec = { pagerSlide(FastOutSlowInEasing) ?: pop() },
-        predictivePopTransitionSpec = { edge -> pagerSlide(LinearEasing) ?: predictivePop(edge) },
+        transitionSpec = { tabTransition(FastOutSlowInEasing) ?: push() },
+        popTransitionSpec = { tabTransition(FastOutSlowInEasing) ?: pop() },
+        predictivePopTransitionSpec = { edge ->
+            tabTransition(LinearEasing) ?: predictivePop(edge)
+        },
         transitionEffects =
             if (pagerEffects) NavDisplayTransitionEffects.None
             else NavDisplayTransitionEffects.Default,
@@ -107,8 +111,8 @@ fun <T : Any> AppNavDisplay(
 private val LocalTabBarHeight = compositionLocalOf { 0.dp }
 
 /**
- * Hosts the bottom tab bar outside the pages so it stays put while pages slide underneath. Sub-pages
- * pass [showBar] false and the bar slides away.
+ * Hosts the bottom tab bar outside the pages so it stays put while pages slide underneath.
+ * Sub-pages pass [showBar] false and the bar slides away.
  */
 @Composable
 fun AppTabHost(
@@ -124,41 +128,46 @@ fun AppTabHost(
     }
     val density = LocalDensity.current
     var barHeight by remember { mutableStateOf(0.dp) }
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
-            CompositionLocalProvider(LocalTabBarHeight provides barHeight) { content() }
-        }
-        AnimatedVisibility(
-            visible = showBar,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-        ) {
-            // Measured inside so the hidden bar keeps its height for the tab pages below.
-            BlurredBar(
-                backdrop,
-                Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+    // Root overlay host must contain both pages and tab bar so modal sheets intercept
+    // touches above the bar as well as above the current page.
+    Scaffold(Modifier.fillMaxSize(), contentWindowInsets = WindowInsets(0, 0, 0, 0)) { _ ->
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                CompositionLocalProvider(LocalTabBarHeight provides barHeight) { content() }
+            }
+            AnimatedVisibility(
+                visible = showBar,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it },
             ) {
-                NavigationBar(
-                    modifier =
-                        Modifier.windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
-                        ),
-                    color = Color.Transparent,
+                // Measured inside so the hidden bar keeps its height for the tab pages below.
+                BlurredBar(
+                    backdrop,
+                    Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
                 ) {
-                    AppTab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = { onTab(tab) },
-                            icon =
-                                when (tab) {
-                                    AppTab.Home -> COUIIcons.HorizontalSplit
-                                    AppTab.Log -> COUIIcons.Search
-                                    AppTab.Filters -> COUIIcons.Filter
-                                    AppTab.Settings -> COUIIcons.Settings
-                                },
-                            label = tab.label,
-                        )
+                    NavigationBar(
+                        modifier =
+                            Modifier.windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                            ),
+                        color = Color.Transparent,
+                    ) {
+                        AppTab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                selected = selectedTab == tab,
+                                onClick = { onTab(tab) },
+                                icon =
+                                    when (tab) {
+                                        AppTab.Home -> COUIIcons.HorizontalSplit
+                                        AppTab.Log -> COUIIcons.Search
+                                        AppTab.Filters -> COUIIcons.Filter
+                                        AppTab.Firewall -> COUIIcons.Lock
+                                        AppTab.Settings -> COUIIcons.Settings
+                                    },
+                                label = tab.label,
+                            )
+                        }
                     }
                 }
             }

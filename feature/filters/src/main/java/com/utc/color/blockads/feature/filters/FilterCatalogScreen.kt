@@ -1,5 +1,6 @@
 package com.utc.color.blockads.feature.filters
 
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.designsystem.*
@@ -30,50 +31,59 @@ fun FilterCatalogScreen(filters: FilterRepository) {
             .onSuccess { catalog = it }
             .onFailure { error = it.message ?: "Không tải được danh sách" }
     }
-    val added = lists.associateBy { it.url }
+    val added = remember(lists) { lists.associateBy { it.url } }
+    val grouped = remember(catalog) { catalog.orEmpty().groupBy { it.group } }
     fun isOn(entry: CatalogEntry) = added[entry.url]?.enabled == true
-    AppColumn {
-        error?.let {
-            AppCard {
-                AppText(it)
-                if (catalog == null) AppAction("Thử lại") { attempt++ }
+    AppLazyList {
+        item(key = "catalog-status", contentType = "status") {
+            error?.let {
+                AppCard {
+                    AppText(it)
+                    if (catalog == null) AppAction("Thử lại") { attempt++ }
+                }
+            }
+            val entries = catalog
+            if (entries == null) {
+                if (error == null) AppCard { AppHint("Đang tải…") }
             }
         }
-        val entries = catalog
-        if (entries == null) {
-            if (error == null) AppCard { AppHint("Đang tải…") }
-            return@AppColumn
-        }
         groups.forEach { (id, title, summary) ->
-            val group = entries.filter { it.group == id }
+            val group = grouped[id].orEmpty()
             if (group.isEmpty()) return@forEach
             val on = group.count(::isOn)
-            AppPreferenceGroup {
-                AppArrowPreference(title, if (on == 0) summary else "$summary · $on đang dùng") {
-                    expanded = if (id in expanded) expanded - id else expanded + id
+            item(key = "group-$id", contentType = "group") {
+                AppPreferenceGroup {
+                    AppArrowPreference(
+                        title,
+                        if (on == 0) summary else "$summary · $on đang dùng",
+                    ) {
+                        expanded = if (id in expanded) expanded - id else expanded + id
+                    }
                 }
-                if (id in expanded)
-                    group.forEach { entry ->
+            }
+            if (id in expanded)
+                items(group, key = { it.url }, contentType = { "catalog-entry" }) { entry ->
+                    AppPreferenceGroup {
                         AppSwitchPreference(
                             title = entry.name,
                             checked = isOn(entry),
                             onCheckedChange = { checked ->
                                 scope.launch {
                                     runCatching {
-                                            val list = added[entry.url]
-                                            when {
-                                                !checked -> list?.let { filters.remove(it.id) }
-                                                list != null -> filters.setEnabled(list.id, true)
-                                                else -> filters.addUrl(entry.url, entry.name)
-                                            }
+                                        val list = added[entry.url]
+                                        when {
+                                            !checked -> list?.let { filters.remove(it.id) }
+                                            list != null -> filters.setEnabled(list.id, true)
+                                            else -> filters.addUrl(entry.url, entry.name)
                                         }
+                                    }
                                         .onSuccess { error = null }
                                         .onFailure { error = it.message }
                                 }
                             },
                         )
                     }
-            }
+                }
         }
     }
 }

@@ -29,9 +29,17 @@ pub async fn serve(
     let dns_limit = Arc::new(tokio::sync::Semaphore::new(128));
     let mut owners = crate::policy::OwnerCache::default();
     let mut quic_events: HashMap<Key, std::time::Instant> = HashMap::new();
+    let mut firewall = crate::policy::firewall_changes();
     loop {
         tokio::select! {
             biased;
+            changed = firewall.changed() => {
+                if changed.is_err() { break; }
+                dns_jobs.abort_all(); while dns_jobs.join_next().await.is_some() {}
+                entries.clear();
+                flows.abort_all(); while flows.join_next().await.is_some() {}
+                while reply_rx.try_recv().is_ok() {}
+            }
             changed = network.changed() => {
                 if changed.is_err() { break; }
                 dns_jobs.abort_all(); while dns_jobs.join_next().await.is_some() {}
@@ -59,6 +67,15 @@ pub async fn serve(
             packet = incoming.next() => {
                 let Some((mut data, client, original)) = packet else { break; };
                 let owner = owners.owner(protector.as_ref(), 17, client, original);
+                if owner.blocked {
+                    let key = (client, original);
+                    if !quic_events.get(&key).is_some_and(|at| at.elapsed() < Duration::from_secs(30)) {
+                        if quic_events.len() >= 1024 { quic_events.clear(); }
+                        quic_events.insert(key, std::time::Instant::now());
+                        crate::dns::event(original.ip().to_string(), true, Some("Tường lửa · Chặn truy cập mạng".into()), false, owner.uid, "firewall");
+                    }
+                    continue;
+                }
                 if original.port() == 443 && crate::policy::current().block_quic && !owner.bypass {
                     let key = (client, original);
                     if !quic_events.get(&key).is_some_and(|at| at.elapsed() < Duration::from_secs(30)) {

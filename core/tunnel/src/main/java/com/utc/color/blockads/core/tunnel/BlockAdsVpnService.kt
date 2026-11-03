@@ -20,6 +20,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
@@ -85,15 +86,9 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         }
         monitor = UnderlyingNetworkMonitor(this) { commands.trySend { refreshNetwork() } }
         scope.launch {
-            settings.appPolicies
-                .map { policies ->
-                    policies
-                        .filterValues {
-                            it == com.utc.color.blockads.core.common.AppFilterMode.BypassTunnel
-                        }
-                        .keys
-                        .toSet()
-                }
+            trafficPolicy.applied
+                .filterNotNull()
+                .map { it.excludedPackages }
                 .distinctUntilChanged()
                 .collect { excluded ->
                     commands.trySend {
@@ -183,14 +178,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                     .addDnsServer("172.19.0.2")
                     .addDnsServer("fdfe:dcba:9876::2")
                     .setMetered(false)
-            val excluded =
-                settings.appPolicies
-                    .first()
-                    .filterValues {
-                        it == com.utc.color.blockads.core.common.AppFilterMode.BypassTunnel
-                    }
-                    .keys
-                    .toSet()
+            val excluded = trafficPolicy.applied.filterNotNull().first().excludedPackages
             excluded.forEach { name -> runCatching { builder.addDisallowedApplication(name) } }
             excludedPackages = excluded
             val connectivity = getSystemService(ConnectivityManager::class.java)

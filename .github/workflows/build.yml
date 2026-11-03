@@ -26,10 +26,6 @@ jobs:
       - run: cargo test --manifest-path nativecore/Cargo.toml --locked -- --test-threads=1
       - run: scripts/build-native.sh
       - run: ./gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :core:common:testDebugUnitTest :core:data:testDebugUnitTest :app:lintDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: blockads-debug
-          path: app/build/outputs/apk/debug/*.apk
 
   emulator:
     runs-on: ubuntu-latest
