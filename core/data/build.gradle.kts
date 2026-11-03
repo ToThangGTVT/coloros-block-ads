@@ -18,6 +18,7 @@ android {
 
 dependencies {
     implementation(project(":core:common"))
+    api(libs.androidx.room.paging)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.paging)

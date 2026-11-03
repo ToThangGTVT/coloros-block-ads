@@ -34,6 +34,10 @@ fun BlockAdsApp(
     version: String,
     error: String?,
     tunnel: TunnelState,
+    filterStatus: com.utc.color.blockads.core.common.FilterStatus,
+    settings: com.utc.color.blockads.core.data.SettingsRepository,
+    filters: com.utc.color.blockads.core.filter.FilterRepository,
+    queries: com.utc.color.blockads.core.data.QueryLogRepository,
     onProtection: (Boolean) -> Unit,
 ) {
     val backStack = rememberNavBackStack(Destination.Home)
@@ -70,6 +74,7 @@ fun BlockAdsApp(
                         title = title,
                         selectedTab = selected,
                         onTab = selectTab,
+                        scrollable = destination != Destination.Log,
                         onBack =
                             if (
                                 destination == Destination.Apps ||
@@ -79,9 +84,10 @@ fun BlockAdsApp(
                             else null,
                     ) {
                         when (destination) {
-                            Destination.Home -> HomeScreen(version, tunnel, onProtection)
-                            Destination.Log -> QueryLogScreen()
-                            Destination.Filters -> FiltersScreen()
+                            Destination.Home ->
+                                HomeScreen(version, tunnel, filterStatus, onProtection)
+                            Destination.Log -> QueryLogScreen(queries, filters, settings)
+                            Destination.Filters -> FiltersScreen(filters, settings)
                             Destination.Settings ->
                                 SettingsScreen(
                                     theme,
@@ -89,6 +95,7 @@ fun BlockAdsApp(
                                     onApps = { backStack.add(Destination.Apps) },
                                     onCertificate = { backStack.add(Destination.Certificate) },
                                     error = error,
+                                    settings = settings,
                                 )
                             Destination.Apps -> AppsScreen()
                             Destination.Certificate -> CertificateScreen()

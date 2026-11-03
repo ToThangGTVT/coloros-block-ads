@@ -139,6 +139,8 @@ impl Engine {
                             .tcp_send_buffer_size(65536)
                             .build()?;
                         let (mut sink, mut stream) = stack.split();
+                        let dns = crate::dns::Session::new(protector.clone(), thread_stats.clone());
+                        let tcp_dns = dns.clone();
                         let (raw_tx, mut raw_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
                         let mut tasks: JoinSet<io::Result<()>> = JoinSet::new();
                         let reader = tun.clone();
@@ -181,6 +183,7 @@ impl Engine {
                                 tcp_protector,
                                 tcp_stats,
                                 tcp_network,
+                                tcp_dns,
                             )
                             .await;
                             Ok(())
@@ -192,9 +195,14 @@ impl Engine {
                                 protector,
                                 thread_stats,
                                 network_rx,
+                                dns,
                             )
                             .await;
                             Ok(())
+                        });
+                        tasks.spawn(async {
+                            loop { tokio::time::sleep(std::time::Duration::from_millis(500)).await; crate::dns::flush(); }
+                            #[allow(unreachable_code)] Ok(())
                         });
                         let _ = ready_tx.send(Ok(()));
                         tokio::select! { _ = stop_rx => {}, _ = tasks.join_next() => {} }
@@ -207,7 +215,8 @@ impl Engine {
                         let _ = ready_tx.send(Err(error));
                     }
                 });
-                thread_running.store(false, Ordering::Release);
+                crate::dns::flush();
+            thread_running.store(false, Ordering::Release);
             })?;
         let mut engine = Self {
             stop: Some(stop_tx),

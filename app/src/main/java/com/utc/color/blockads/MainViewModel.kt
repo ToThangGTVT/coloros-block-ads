@@ -21,9 +21,11 @@ import kotlinx.coroutines.withContext
 class MainViewModel
 @Inject
 constructor(
-    private val settings: SettingsRepository,
+    val settings: SettingsRepository,
     engine: EngineBridge,
     val tunnel: TunnelController,
+    val filters: com.utc.color.blockads.core.filter.FilterRepository,
+    val queries: com.utc.color.blockads.core.data.QueryLogRepository,
 ) : ViewModel() {
     val theme =
         settings.theme.stateIn(

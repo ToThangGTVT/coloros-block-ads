@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
             val theme by viewModel.theme.collectAsStateWithLifecycle()
             val version by viewModel.version.collectAsStateWithLifecycle()
             val error by viewModel.error.collectAsStateWithLifecycle()
+            val filterStatus by viewModel.filters.status.collectAsStateWithLifecycle()
             val tunnel by viewModel.tunnel.state.collectAsStateWithLifecycle()
             val notificationPermission =
                 rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -59,7 +60,17 @@ class MainActivity : ComponentActivity() {
                         isAppearanceLightNavigationBars = !dark
                     }
                 }
-                BlockAdsApp(theme, viewModel::setTheme, version, error, tunnel) { enabled ->
+                BlockAdsApp(
+                    theme,
+                    viewModel::setTheme,
+                    version,
+                    error,
+                    tunnel,
+                    filterStatus,
+                    viewModel.settings,
+                    viewModel.filters,
+                    viewModel.queries,
+                ) { enabled ->
                     if (!enabled) viewModel.tunnel.stop()
                     else {
                         if (

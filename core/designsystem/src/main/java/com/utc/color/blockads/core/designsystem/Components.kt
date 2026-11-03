@@ -1,9 +1,14 @@
 package com.utc.color.blockads.core.designsystem
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -104,4 +109,61 @@ fun AppChoicePreference(
 @Composable
 fun AppAction(label: String, onClick: () -> Unit) {
     TextButton(text = label, onClick = onClick)
+}
+
+@Composable
+fun AppTextInput(
+    value: String,
+    label: String,
+    multiline: Boolean = false,
+    error: Boolean = false,
+    onChange: (String) -> Unit,
+) {
+    io.github.suqi8.coui.kmp.basic.TextField(
+        value = value,
+        onValueChange = onChange,
+        label = label,
+        isError = error,
+        minLines = if (multiline) 3 else 1,
+        maxLines = if (multiline) 8 else 1,
+        singleLine = !multiline,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+fun AppBottomSheet(
+    show: Boolean,
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet(
+        show = show,
+        title = title,
+        onDismissRequest = onDismiss,
+    ) {
+        // COUI 1.1.0 handles IME insets but its sheet content has no navigation-bar padding.
+        Box(
+            Modifier.padding(
+                bottom =
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                        AppSpacing.gap
+            )
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+fun AppQueryRow(domain: String, blocked: Boolean, time: String, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick) {
+        Text(domain, style = COUITheme.textStyles.body1, color = COUITheme.colorScheme.onSurface)
+        Text(
+            (if (blocked) "Đã chặn" else "Cho phép") + " · " + time,
+            style = COUITheme.textStyles.footnote1,
+            color = if (blocked) COUITheme.colorScheme.error else COUITheme.colorScheme.primary,
+        )
+    }
 }

@@ -19,7 +19,9 @@ for spec in \
     'i686-linux-android:x86:i686-linux-android'; do
     IFS=: read -r rust_target android_abi clang_target <<< "$spec"
     linker_key="CARGO_TARGET_$(echo "$rust_target" | tr '[:lower:]-' '[:upper:]_')_LINKER"
-    env "$linker_key=$NDK_BIN/${clang_target}33-clang" \
+    compiler_key="CC_$(echo "$rust_target" | tr '-' '_')"
+    archive_key="AR_$(echo "$rust_target" | tr '-' '_')"
+    env "$compiler_key=$NDK_BIN/${clang_target}33-clang" "$archive_key=$NDK_BIN/llvm-ar" "$linker_key=$NDK_BIN/${clang_target}33-clang" \
         RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
         cargo build --manifest-path nativecore/Cargo.toml --locked --release --target "$rust_target"
     output="$PROJECT_DIR/core/engine-bridge/src/main/jniLibs/$android_abi"

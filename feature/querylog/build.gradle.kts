@@ -23,5 +23,9 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(project(":core:designsystem"))
     implementation(project(":core:common"))
+    implementation(project(":core:data"))
+    implementation(project(":core:filter"))
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.paging.compose)
 }

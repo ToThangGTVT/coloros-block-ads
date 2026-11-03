@@ -1,1 +1,377 @@
-//! DNS interception, upstreams and cache. Reserved for a later phase.
+//! DNS policy, cache, protected upstream transports and batched metadata events.
+pub mod cache;
+pub mod upstream;
+use crate::{
+    filter,
+    sockets::{Protector, Stats},
+};
+use futures_util::StreamExt;
+use hickory_resolver::{
+    net::{xfer::DnsHandle, DnsError, NetError},
+    proto::{
+        op::{DnsRequest, DnsRequestOptions, Message, MessageType, OpCode, ResponseCode},
+        rr::{
+            rdata::{A, AAAA},
+            RData, Record, RecordType,
+        },
+    },
+    NameServerPool,
+};
+use serde::{Deserialize, Serialize};
+use std::{
+    io,
+    net::IpAddr,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock, RwLock,
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+#[derive(Clone, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Options {
+    pub protocol: String,
+    pub ip: String,
+    pub server_name: String,
+    pub path: String,
+    pub port: u16,
+    pub block_mode: String,
+    pub logging: bool,
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            protocol: "system".into(),
+            ip: String::new(),
+            server_name: String::new(),
+            path: "/dns-query".into(),
+            port: 0,
+            block_mode: "zero".into(),
+            logging: true,
+        }
+    }
+}
+static CONFIG: OnceLock<RwLock<Options>> = OnceLock::new();
+static CACHE: OnceLock<Mutex<cache::Cache>> = OnceLock::new();
+static REVISION: AtomicU64 = AtomicU64::new(0);
+fn cache() -> &'static Mutex<cache::Cache> {
+    CACHE.get_or_init(|| Mutex::new(cache::Cache::default()))
+}
+pub fn configure(json: &str) -> bool {
+    let Ok(config) = serde_json::from_str::<Options>(json) else {
+        return false;
+    };
+    if !matches!(
+        config.protocol.as_str(),
+        "system" | "udp" | "tcp" | "tls" | "https" | "quic"
+    ) || !matches!(config.block_mode.as_str(), "zero" | "nxdomain")
+    {
+        return false;
+    }
+    if config.protocol != "system" && config.ip.parse::<IpAddr>().is_err() {
+        return false;
+    }
+    if matches!(config.protocol.as_str(), "tls" | "https" | "quic")
+        && (config.server_name.is_empty() || !config.path.starts_with('/'))
+    {
+        return false;
+    }
+    if !config.logging {
+        EVENTS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+    *CONFIG
+        .get_or_init(|| RwLock::new(Options::default()))
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = config;
+    REVISION.fetch_add(1, Ordering::Release);
+    cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
+    true
+}
+pub fn options() -> Options {
+    CONFIG
+        .get_or_init(|| RwLock::new(Options::default()))
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Event {
+    pub timestamp: u64,
+    pub domain: String,
+    pub blocked: bool,
+    pub matched_rule: Option<String>,
+    pub cached: bool,
+}
+pub trait EventSink: Send + Sync {
+    fn batch(&self, json: &str);
+}
+static SINK: OnceLock<RwLock<Option<Arc<dyn EventSink>>>> = OnceLock::new();
+static EVENTS: OnceLock<Mutex<Vec<Event>>> = OnceLock::new();
+pub fn set_sink(sink: Option<Arc<dyn EventSink>>) {
+    *SINK
+        .get_or_init(|| RwLock::new(None))
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = sink;
+}
+pub fn flush() {
+    let events = {
+        let mut queue = EVENTS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if queue.is_empty() {
+            return;
+        }
+        std::mem::take(&mut *queue)
+    };
+    let sink = SINK
+        .get_or_init(|| RwLock::new(None))
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let (Some(sink), Ok(json)) = (sink, serde_json::to_string(&events)) {
+        sink.batch(&json);
+    }
+}
+fn event(domain: String, blocked: bool, rule: Option<String>, cached: bool) {
+    if !options().logging {
+        return;
+    }
+    let full = {
+        let mut events = EVENTS
+            .get_or_init(Mutex::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if events.len() >= 4096 {
+            events.remove(0);
+        }
+        events.push(Event {
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+            domain,
+            blocked,
+            matched_rule: rule,
+            cached,
+        });
+        events.len() >= 100
+    };
+    if full {
+        flush();
+    }
+}
+type Pool = NameServerPool<upstream::ProtectedRuntime>;
+type SelectedPool = Arc<tokio::sync::Mutex<Option<(u64, Option<IpAddr>, Pool)>>>;
+#[derive(Clone)]
+pub struct Session {
+    runtime: upstream::ProtectedRuntime,
+    pool: SelectedPool,
+}
+impl Session {
+    pub fn new(protector: Arc<dyn Protector>, stats: Arc<Stats>) -> Self {
+        cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
+        Self {
+            runtime: upstream::ProtectedRuntime::new(protector, stats),
+            pool: Arc::new(tokio::sync::Mutex::new(None)),
+        }
+    }
+    pub async fn reset(&self) {
+        self.pool.lock().await.take();
+        cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+    pub async fn resolve(
+        &self,
+        data: &[u8],
+        physical: Option<IpAddr>,
+        tcp: bool,
+    ) -> io::Result<Vec<u8>> {
+        let request = Message::from_vec(data).map_err(io::Error::other)?;
+        if request.metadata.message_type != MessageType::Query
+            || request.metadata.op_code != OpCode::Query
+            || request.queries.len() != 1
+        {
+            return error_response(&request, ResponseCode::FormErr)
+                .to_vec()
+                .map_err(io::Error::other);
+        }
+        let domain = request.queries[0]
+            .name()
+            .to_ascii()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        let rules = filter::current();
+        let decision = rules.lookup(&domain);
+        let rule = decision.as_ref().map(|d| {
+            let prefix = if d.blocked { "" } else { "@@" };
+            if d.suffix {
+                format!("{prefix}||{}^", d.domain)
+            } else {
+                format!("{prefix}{}", d.domain)
+            }
+        });
+        if decision.as_ref().is_some_and(|d| d.blocked) {
+            event(domain, true, rule, false);
+            return encode(
+                &blocked_response(&request, &options().block_mode),
+                &request,
+                tcp,
+            );
+        }
+        let revision = REVISION.load(Ordering::Acquire);
+        let config = options();
+        let mut key = data.to_vec();
+        key[0] = 0;
+        key[1] = 0;
+        key.extend_from_slice(&revision.to_be_bytes());
+        key.extend_from_slice(&filter::revision().to_be_bytes());
+        if let Some(mut response) = cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+            response.metadata.id = request.metadata.id;
+            event(domain, false, rule, true);
+            return encode(&response, &request, tcp);
+        }
+        let pool = {
+            let mut selected = self.pool.lock().await;
+            if selected
+                .as_ref()
+                .is_none_or(|(v, ip, _)| *v != revision || *ip != physical)
+            {
+                match upstream::pool(&config, physical, self.runtime.clone()) {
+                    Ok(pool) => *selected = Some((revision, physical, pool)),
+                    Err(_) => {
+                        event(domain, false, rule, false);
+                        return encode(
+                            &error_response(&request, ResponseCode::ServFail),
+                            &request,
+                            tcp,
+                        );
+                    }
+                }
+            }
+            selected.as_ref().expect("pool initialized").2.clone()
+        };
+        let mut outgoing = request.clone();
+        outgoing.metadata.id = 0;
+        let mut request_options = DnsRequestOptions::default();
+        request_options.use_edns = request.edns.is_some();
+        request_options.recursion_desired = request.metadata.recursion_desired;
+        let response = tokio::time::timeout(
+            Duration::from_secs(8),
+            pool.send(DnsRequest::new(outgoing, request_options)).next(),
+        )
+        .await;
+        let mut response = match response {
+            Ok(Some(Ok(response))) => response.into_message(),
+            Ok(Some(Err(NetError::Dns(DnsError::NoRecordsFound(no))))) => {
+                let mut response = error_response(&request, no.response_code);
+                response.authorities = no
+                    .authorities
+                    .as_ref()
+                    .map(|r| r.to_vec())
+                    .unwrap_or_default();
+                if response.authorities.is_empty() {
+                    if let Some(soa) = no.soa {
+                        response.authorities.push((*soa).into_record_of_rdata());
+                    }
+                }
+                response
+            }
+            Ok(Some(Err(NetError::Dns(DnsError::ResponseCode(code))))) => {
+                error_response(&request, code)
+            }
+            _ => error_response(&request, ResponseCode::ServFail),
+        };
+        response.metadata.id = request.metadata.id;
+        cache()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .put(key, response.clone());
+        event(domain, false, rule, false);
+        encode(&response, &request, tcp)
+    }
+}
+pub fn error_response(request: &Message, code: ResponseCode) -> Message {
+    let mut response = Message::error_msg(request.metadata.id, request.metadata.op_code, code);
+    response.queries = request.queries.clone();
+    response.edns = request.edns.clone();
+    response.metadata.recursion_desired = request.metadata.recursion_desired;
+    response.metadata.recursion_available = true;
+    response
+}
+pub fn blocked_response(request: &Message, mode: &str) -> Message {
+    let mut response = error_response(
+        request,
+        if mode == "nxdomain" {
+            ResponseCode::NXDomain
+        } else {
+            ResponseCode::NoError
+        },
+    );
+    if mode != "nxdomain" {
+        if let Some(query) = request.queries.first() {
+            let data = match query.query_type() {
+                RecordType::A => Some(RData::A(A::new(0, 0, 0, 0))),
+                RecordType::AAAA => Some(RData::AAAA(AAAA::new(0, 0, 0, 0, 0, 0, 0, 0))),
+                _ => None,
+            };
+            if let Some(data) = data {
+                response
+                    .answers
+                    .push(Record::from_rdata(query.name().clone(), 0, data));
+            }
+        }
+    }
+    response
+}
+fn encode(response: &Message, request: &Message, tcp: bool) -> io::Result<Vec<u8>> {
+    let bytes = response.to_vec().map_err(io::Error::other)?;
+    let limit = request
+        .edns
+        .as_ref()
+        .map_or(512, |e| e.max_payload() as usize)
+        .clamp(512, 1232);
+    if !tcp && bytes.len() > limit {
+        response.truncate().to_vec().map_err(io::Error::other)
+    } else {
+        Ok(bytes)
+    }
+}
+pub async fn serve_tcp<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+    mut client: S,
+    session: Session,
+    physical: Option<IpAddr>,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    loop {
+        let Ok(Ok(length)) =
+            tokio::time::timeout(Duration::from_secs(120), client.read_u16()).await
+        else {
+            break;
+        };
+        if length < 12 {
+            break;
+        }
+        let mut data = vec![0u8; length as usize];
+        if !matches!(
+            tokio::time::timeout(Duration::from_secs(5), client.read_exact(&mut data)).await,
+            Ok(Ok(_))
+        ) {
+            break;
+        }
+        let Ok(response) = session.resolve(&data, physical, true).await else {
+            break;
+        };
+        if client.write_u16(response.len() as u16).await.is_err()
+            || client.write_all(&response).await.is_err()
+        {
+            break;
+        }
+    }
+}

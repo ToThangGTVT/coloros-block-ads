@@ -1,12 +1,18 @@
 package com.utc.color.blockads.feature.home
 
 import androidx.compose.runtime.Composable
+import com.utc.color.blockads.core.common.FilterStatus
 import com.utc.color.blockads.core.common.TunnelState
 import com.utc.color.blockads.core.common.TunnelStatus
 import com.utc.color.blockads.core.designsystem.*
 
 @Composable
-fun HomeScreen(engineVersion: String, tunnel: TunnelState, onProtection: (Boolean) -> Unit) {
+fun HomeScreen(
+    engineVersion: String,
+    tunnel: TunnelState,
+    filter: FilterStatus,
+    onProtection: (Boolean) -> Unit,
+) {
     val enabled =
         tunnel.status in
             listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
@@ -17,7 +23,8 @@ fun HomeScreen(engineVersion: String, tunnel: TunnelState, onProtection: (Boolea
                 when (tunnel.status) {
                     TunnelStatus.Off -> "VPN đang tắt"
                     TunnelStatus.Connecting -> "Đang kết nối…"
-                    TunnelStatus.Connected -> "VPN đang bật"
+                    TunnelStatus.Connected ->
+                        if (filter.loaded > 0) "Đang bảo vệ DNS" else "VPN đang bật · Chưa có rule"
                     TunnelStatus.Reconnecting -> "Đang chờ kết nối mạng…"
                     TunnelStatus.Revoked -> "Quyền VPN đã bị thu hồi"
                     TunnelStatus.Error -> "Không thể kết nối VPN"
@@ -30,7 +37,14 @@ fun HomeScreen(engineVersion: String, tunnel: TunnelState, onProtection: (Boolea
                 enabled = tunnel.status != TunnelStatus.Connecting,
             )
             tunnel.detail?.let { AppText(it) }
-            AppText("Phase 1 · Chuyển tiếp lưu lượng TCP/UDP. Chưa chặn quảng cáo hoặc tracker.")
+            AppText("Phase 2 · Lọc DNS. Chưa lọc SNI/HTTP hoặc giải mã HTTPS.")
+        }
+        AppCard {
+            AppText("${filter.loaded} rule đang hoạt động", prominent = true)
+            AppText(
+                if (filter.loading) "Đang nạp bộ lọc…" else "Cache DNS tôn trọng TTL của upstream."
+            )
+            filter.error?.let { AppText(it) }
         }
         AppCard {
             AppText("Quyền riêng tư", prominent = true)

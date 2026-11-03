@@ -6,3 +6,8 @@
 -keepclassmembers class * implements com.utc.color.blockads.core.enginebridge.SocketProtector {
     public boolean protect(int);
 }
+
+-keep interface com.utc.color.blockads.core.enginebridge.DnsEventSink { *; }
+-keepclassmembers class * implements com.utc.color.blockads.core.enginebridge.DnsEventSink {
+    public void onDnsEvents(java.lang.String);
+}

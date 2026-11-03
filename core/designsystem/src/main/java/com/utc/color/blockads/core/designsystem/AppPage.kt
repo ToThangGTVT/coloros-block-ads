@@ -40,6 +40,7 @@ fun AppPage(
     selectedTab: AppTab,
     onTab: (AppTab) -> Unit,
     onBack: (() -> Unit)? = null,
+    scrollable: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val surface = COUITheme.colorScheme.surface
@@ -83,20 +84,32 @@ fun AppPage(
             }
         },
     ) { padding ->
-        LazyColumn(
-            modifier =
+        if (!scrollable) {
+            Box(
                 Modifier.fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
                     .layerBackdrop(backdrop)
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-            contentPadding =
-                PaddingValues(
-                    start = AppSpacing.page,
-                    end = AppSpacing.page,
-                    top = padding.calculateTopPadding() + AppSpacing.gap,
-                    bottom = padding.calculateBottomPadding() + AppSpacing.page,
-                ),
-        ) {
-            item(key = "phase0-content") { content() }
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+            ) {
+                content()
+            }
+        } else {
+            LazyColumn(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .layerBackdrop(backdrop)
+                        .nestedScroll(scrollBehavior.nestedScrollConnection),
+                contentPadding =
+                    PaddingValues(
+                        start = AppSpacing.page,
+                        end = AppSpacing.page,
+                        top = padding.calculateTopPadding() + AppSpacing.gap,
+                        bottom = padding.calculateBottomPadding() + AppSpacing.page,
+                    ),
+            ) {
+                item(key = "phase0-content") { content() }
+            }
         }
     }
 }

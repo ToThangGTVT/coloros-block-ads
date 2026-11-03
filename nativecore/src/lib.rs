@@ -20,7 +20,7 @@ use std::{
 };
 use tun::{Engine, NetworkConfig};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase1");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase2");
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 struct AndroidProtector {
@@ -178,4 +178,85 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
         return std::ptr::null_mut();
     }
     array.into_raw()
+}
+
+struct AndroidDnsSink {
+    vm: JavaVM,
+    callback: GlobalRef,
+}
+impl dns::EventSink for AndroidDnsSink {
+    fn batch(&self, json: &str) {
+        if let Ok(mut env) = self.vm.attach_current_thread() {
+            if let Ok(text) = env.new_string(json) {
+                let text = JObject::from(text);
+                if env
+                    .call_method(
+                        self.callback.as_obj(),
+                        "onDnsEvents",
+                        "(Ljava/lang/String;)V",
+                        &[JValue::Object(&text)],
+                    )
+                    .is_err()
+                {
+                    let _ = env.exception_clear();
+                }
+            }
+        }
+    }
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeSetDnsEventSink(
+    env: JNIEnv,
+    _: JObject,
+    callback: JObject,
+) {
+    if callback.is_null() {
+        dns::set_sink(None);
+        return;
+    }
+    if let (Ok(vm), Ok(callback)) = (env.get_java_vm(), env.new_global_ref(callback)) {
+        dns::set_sink(Some(Arc::new(AndroidDnsSink { vm, callback })));
+    }
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeConfigureDns(
+    mut env: JNIEnv,
+    _: JObject,
+    json: JString,
+) -> jboolean {
+    let Ok(json) = env.get_string(&json).map(String::from) else {
+        return JNI_FALSE;
+    };
+    if dns::configure(&json) {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeReplaceRules(
+    mut env: JNIEnv,
+    _: JObject,
+    system: JString,
+    custom: JString,
+    apply: jboolean,
+) -> jstring {
+    let (Ok(system), Ok(custom)) = (
+        env.get_string(&system).map(String::from),
+        env.get_string(&custom).map(String::from),
+    ) else {
+        return std::ptr::null_mut();
+    };
+    let report = if apply == JNI_TRUE {
+        filter::replace(&system, &custom)
+    } else {
+        filter::Rules::compile(&system, &custom).report
+    };
+    match serde_json::to_string(&report)
+        .ok()
+        .and_then(|json| env.new_string(json).ok())
+    {
+        Some(json) => json.into_raw(),
+        None => std::ptr::null_mut(),
+    }
 }

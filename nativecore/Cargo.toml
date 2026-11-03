@@ -1,6 +1,6 @@
 [package]
 name = "blockads-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
 
@@ -18,6 +18,15 @@ socket2 = "=0.6.5"
 etherparse = "=0.16.0"
 libc = "=0.2.191"
 tracing = { version = "0.1", features = ["max_level_off"] }
+
+hickory-resolver = { version = "=0.26.3", default-features = false, features = ["tokio", "tls-ring", "https-ring", "quic-ring", "webpki-roots"] }
+quinn = { version = "=0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[[bench]]
+name = "matcher"
+harness = false
 
 [profile.release]
 panic = "abort"

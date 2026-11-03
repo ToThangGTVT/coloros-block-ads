@@ -18,10 +18,14 @@ import com.utc.color.blockads.core.enginebridge.EngineBridge
 import com.utc.color.blockads.core.enginebridge.SocketProtector
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+@dagger.hilt.android.AndroidEntryPoint
 class BlockAdsVpnService : VpnService(), SocketProtector {
+    @javax.inject.Inject lateinit var filters: com.utc.color.blockads.core.filter.FilterRepository
+    @javax.inject.Inject lateinit var queries: com.utc.color.blockads.core.data.QueryLogRepository
     private val engine = EngineBridge()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -36,10 +40,27 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
 
     override fun onCreate() {
         super.onCreate()
+        engine.setDnsEventSink(
+            com.utc.color.blockads.core.enginebridge.DnsEventSink(queries::onDnsEvents)
+        )
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(
                 NotificationChannel(ChannelId, "Tunnel VPN", NotificationManager.IMPORTANCE_LOW)
             )
+        scope.launch {
+            filters.status.collect { status ->
+                if (TunnelRuntime.state.value.status == TunnelStatus.Connected) {
+                    getSystemService(NotificationManager::class.java)
+                        .notify(
+                            NotificationId,
+                            notification(
+                                if (status.loaded > 0) "Đang lọc DNS · ${status.loaded} rule"
+                                else "VPN đang bật · Chưa có rule"
+                            ),
+                        )
+                }
+            }
+        }
         monitor = UnderlyingNetworkMonitor(this) { commands.trySend { refreshNetwork() } }
         scope.launch {
             for (command in commands) gate.withLock {
@@ -92,6 +113,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         if (engine.isRunning()) return
         TunnelRuntime.state.value = TunnelState(TunnelStatus.Connecting)
         try {
+            filters.awaitReady()
             check(prepare(this) == null) { "VPN permission required" }
             if (!monitoring) {
                 monitor.start()
@@ -188,7 +210,11 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             .notify(
                 NotificationId,
                 notification(
-                    if (connected) "VPN đang bật · Chưa lọc quảng cáo" else "Đang chờ kết nối mạng…"
+                    if (connected)
+                        if (filters.status.value.loaded > 0)
+                            "Đang lọc DNS · ${filters.status.value.loaded} rule"
+                        else "VPN đang bật · Chưa có rule"
+                    else "Đang chờ kết nối mạng…"
                 ),
             )
     }

@@ -16,6 +16,7 @@ pub async fn serve(
     protector: Arc<dyn Protector>,
     stats: Arc<Stats>,
     mut network: watch::Receiver<NetworkConfig>,
+    dns: crate::dns::Session,
 ) {
     let permits = Arc::new(Semaphore::new(256));
     let mut flows = JoinSet::new();
@@ -26,12 +27,18 @@ pub async fn serve(
                 if changed.is_err() { break; }
                 flows.abort_all();
                 while flows.join_next().await.is_some() {}
+                dns.reset().await;
                 if let Some(applied) = &network.borrow().applied { applied.fetch_add(1, std::sync::atomic::Ordering::Release); }
             }
             _ = flows.join_next(), if !flows.is_empty() => {}
             incoming = listener.next() => {
                 let Some((client, _, destination)) = incoming else { break; };
                 let Ok(permit) = permits.clone().try_acquire_owned() else { continue; };
+                if destination.port() == 53 {
+                    let dns = dns.clone(); let physical = network.borrow().dns;
+                    flows.spawn(async move { let _permit = permit; crate::dns::serve_tcp(client, dns, physical).await; });
+                    continue;
+                }
                 let Some(destination) = network.borrow().destination(destination) else { continue; };
                 let protector = protector.clone();
                 let stats = stats.clone();

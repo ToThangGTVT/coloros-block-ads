@@ -18,23 +18,29 @@ pub async fn serve(
     protector: Arc<dyn Protector>,
     stats: Arc<Stats>,
     mut network: watch::Receiver<NetworkConfig>,
+    dns: crate::dns::Session,
 ) {
     let (mut incoming, _unused_writer) = udp.split();
     let (reply_tx, mut reply_rx) = mpsc::channel::<(Vec<u8>, SocketAddr, SocketAddr)>(512);
     let mut entries: HashMap<Key, (u64, mpsc::Sender<Vec<u8>>)> = HashMap::new();
     let mut flows = JoinSet::new();
     let mut serial = 0u64;
+    let mut dns_jobs = JoinSet::new();
+    let dns_limit = Arc::new(tokio::sync::Semaphore::new(128));
     loop {
         tokio::select! {
             biased;
             changed = network.changed() => {
                 if changed.is_err() { break; }
+                dns_jobs.abort_all(); while dns_jobs.join_next().await.is_some() {}
+                dns.reset().await;
                 entries.clear();
                 flows.abort_all();
                 while flows.join_next().await.is_some() {}
                 while reply_rx.try_recv().is_ok() {}
                 if let Some(applied) = &network.borrow().applied { applied.fetch_add(1, std::sync::atomic::Ordering::Release); }
             }
+            _ = dns_jobs.join_next(), if !dns_jobs.is_empty() => {}
             ended = flows.join_next(), if !flows.is_empty() => {
                 if let Some(Ok((key, generation))) = ended {
                     if entries.get(&key).is_some_and(|(id, _)| *id == generation) { entries.remove(&key); }
@@ -50,6 +56,15 @@ pub async fn serve(
             }
             packet = incoming.next() => {
                 let Some((mut data, client, original)) = packet else { break; };
+                if original.port() == 53 {
+                    let Ok(permit) = dns_limit.clone().try_acquire_owned() else { continue; };
+                    let session = dns.clone(); let replies = reply_tx.clone(); let physical = network.borrow().dns;
+                    dns_jobs.spawn(async move {
+                        let _permit = permit;
+                        if let Ok(response) = session.resolve(&data, physical, false).await { let _ = replies.send((response, original, client)).await; }
+                    });
+                    continue;
+                }
                 let key = (client, original);
                 if let Some((_, sender)) = entries.get(&key) {
                     match sender.try_send(data) {
@@ -93,6 +108,8 @@ pub async fn serve(
             }
         }
     }
+    dns_jobs.abort_all();
+    while dns_jobs.join_next().await.is_some() {}
     flows.abort_all();
     while flows.join_next().await.is_some() {}
 }

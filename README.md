@@ -1,7 +1,7 @@
 # BlockAds
 
 Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN, triển khai theo từng
-phase. **Phase 1: full-tunnel TCP/UDP, chưa lọc quảng cáo/tracker.**
+phase. **Phase 2: full-tunnel TCP/UDP, lọc DNS, cache TTL và query log.**
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -33,12 +33,18 @@ cargo test --manifest-path nativecore/Cargo.toml --locked
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-## Kiểm tra Phase 1
+## Trạng thái hiện tại
 
-Home có công tắc VPN thật, luồng xin quyền hệ thống, trạng thái và phiên bản Rust.
-Settings giữ bốn theme DataStore. Native dùng netstack-smoltcp để chuyển tiếp trực
-tiếp, không cần máy chủ VPN trung gian. DNS ảo được chuyển tới DNS của mạng nền;
-chưa có cache, rule hoặc block response.
+Bật VPN ở Home để lọc mọi truy vấn DNS UDP/TCP port 53, kể cả DNS hardcode.
+StevenBlack hosts được tải bằng HTTPS; Filters có bật/tắt list, thêm URL và editor
+custom rules có lỗi theo dòng. Hỗ trợ hosts, `||domain^`, `@@||domain^`, `$important`.
+Query log dùng Room/Paging 3, tìm domain, lọc trạng thái và chặn/cho phép nhanh.
+Settings có DNS hệ thống, Cloudflare/Quad9/AdGuard, DoH/DoT/DoQ và tắt ghi log.
+Mọi socket upstream đều protect trước khi kết nối, TLS kiểm tra hostname/chứng chỉ.
+Không có plaintext fallback tự động khi upstream mã hóa không dùng được.
+
+SNI/HTTP, UID/per-app, QUIC policy và thống kê đầy đủ sẽ có ở các phase tiếp theo.
+HTTPS MITM mặc định tắt và chưa được triển khai ở Phase 2.
 
 Android 17 / target 37 cần quyền ACCESS_LOCAL_NETWORK để chuyển tiếp LAN. App xin
 quyền khi bật VPN; từ chối vẫn cho phép dùng Internet, nhưng LAN bị nền tảng chặn.
@@ -51,6 +57,6 @@ ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh
 ANDROID_SERIAL=emulator-5554 scripts/test-phase1.sh -Pandroid.testInstrumentationRunnerArguments.externalNetworkChecks=true
 ```
 
-Xem [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
+Xem [biên bản Phase 2](docs/phase-2.md), [biên bản Phase 1](docs/phase-1.md), [lịch sử Phase 0](docs/phase-0.md),
 [nguồn API COUI](docs/coui-api.md) và [license](THIRD_PARTY_LICENSES.md).
-Dừng tại Phase 1 để người dùng nghiệm thu trước khi làm lọc DNS.
+Tiếp tục các phase sau theo chỉ đạo mới của người dùng; mỗi phase có commit và biên bản riêng.

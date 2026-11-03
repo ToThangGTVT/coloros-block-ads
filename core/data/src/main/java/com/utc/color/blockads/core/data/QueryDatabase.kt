@@ -23,10 +23,15 @@ data class QueryEntity(
 
 @Dao
 interface QueryDao {
-    @Query("SELECT * FROM queries ORDER BY timestamp DESC, id DESC")
-    fun pagingSource(): PagingSource<Int, QueryEntity>
+    @Query(
+        "SELECT * FROM queries WHERE (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC"
+    )
+    fun pagingSource(search: String = "", status: Int = -1): PagingSource<Int, QueryEntity>
 
     @Insert suspend fun insertBatch(events: List<QueryEntity>)
+
+    @Query("SELECT * FROM queries WHERE domain = :domain ORDER BY id DESC LIMIT 1")
+    suspend fun latest(domain: String): QueryEntity?
 
     @Query("DELETE FROM queries WHERE timestamp < :before") suspend fun deleteBefore(before: Long)
 }

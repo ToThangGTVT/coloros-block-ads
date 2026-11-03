@@ -17,5 +17,8 @@ android {
 
 dependencies {
     implementation(project(":core:data"))
+    implementation(project(":core:common"))
+    implementation(project(":core:engine-bridge"))
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.work.runtime)
 }

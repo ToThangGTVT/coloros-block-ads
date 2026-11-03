@@ -1,5 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -18,5 +20,9 @@ android {
 dependencies {
     implementation(project(":core:engine-bridge"))
     implementation(project(":core:common"))
+    implementation(project(":core:data"))
+    implementation(project(":core:filter"))
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
     implementation(libs.kotlinx.coroutines.android)
 }

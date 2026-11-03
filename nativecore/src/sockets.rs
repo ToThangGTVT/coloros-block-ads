@@ -53,12 +53,23 @@ pub async fn connect_tcp(
     protector: &dyn Protector,
     stats: &Arc<Stats>,
 ) -> io::Result<TcpStream> {
+    connect_tcp_bound(addr, None, protector, stats).await
+}
+pub async fn connect_tcp_bound(
+    addr: SocketAddr,
+    bind: Option<SocketAddr>,
+    protector: &dyn Protector,
+    stats: &Arc<Stats>,
+) -> io::Result<TcpStream> {
     let socket = if addr.is_ipv4() {
         TcpSocket::new_v4()?
     } else {
         TcpSocket::new_v6()?
     };
     protect(socket.as_raw_fd(), protector, stats)?;
+    if let Some(local) = bind {
+        socket.bind(local)?;
+    }
     let stream =
         tokio::time::timeout(std::time::Duration::from_secs(15), socket.connect(addr)).await??;
     stream.set_nodelay(true)?;
@@ -66,24 +77,31 @@ pub async fn connect_tcp(
     Ok(stream)
 }
 
+pub fn bind_udp(
+    local: SocketAddr,
+    protector: &dyn Protector,
+    stats: &Arc<Stats>,
+) -> io::Result<std::net::UdpSocket> {
+    let socket = Socket::new(Domain::for_address(local), Type::DGRAM, Some(Protocol::UDP))?;
+    protect(socket.as_raw_fd(), protector, stats)?;
+    socket.set_nonblocking(true)?;
+    socket.bind(&local.into())?;
+    stats.udp_opened.fetch_add(1, Ordering::Relaxed);
+    Ok(socket.into())
+}
 pub async fn connect_udp(
     addr: SocketAddr,
     protector: &dyn Protector,
     stats: &Arc<Stats>,
 ) -> io::Result<UdpSocket> {
-    let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
-    protect(socket.as_raw_fd(), protector, stats)?;
-    socket.set_nonblocking(true)?;
-    let local: SocketAddr = if addr.is_ipv4() {
+    let local = if addr.is_ipv4() {
         "0.0.0.0:0"
     } else {
         "[::]:0"
     }
     .parse()
     .expect("static address");
-    socket.bind(&local.into())?;
-    let socket = UdpSocket::from_std(socket.into())?;
+    let socket = UdpSocket::from_std(bind_udp(local, protector, stats)?)?;
     socket.connect(addr).await?;
-    stats.udp_opened.fetch_add(1, Ordering::Relaxed);
     Ok(socket)
 }

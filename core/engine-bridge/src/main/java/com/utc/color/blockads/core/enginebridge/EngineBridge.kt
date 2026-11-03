@@ -1,6 +1,19 @@
 package com.utc.color.blockads.core.enginebridge
 
 class EngineBridge {
+    fun replaceRules(system: String, custom: String, apply: Boolean = true): String =
+        nativeReplaceRules(system, custom, apply)
+
+    fun configureDns(json: String): Boolean = nativeConfigureDns(json)
+
+    fun setDnsEventSink(sink: DnsEventSink?) = nativeSetDnsEventSink(sink)
+
+    private external fun nativeReplaceRules(system: String, custom: String, apply: Boolean): String
+
+    private external fun nativeConfigureDns(json: String): Boolean
+
+    private external fun nativeSetDnsEventSink(sink: DnsEventSink?)
+
     fun version(): String = nativeVersion()
 
     /** Consumes a detached TUN fd, even when startup returns false. */
@@ -37,4 +50,8 @@ class EngineBridge {
 /** Called once per outbound socket, before connect/send; failure closes the socket. */
 fun interface SocketProtector {
     fun protect(fd: Int): Boolean
+}
+
+fun interface DnsEventSink {
+    fun onDnsEvents(events: String)
 }
