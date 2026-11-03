@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+val splitReleaseApks = providers.gradleProperty("blockads.splitApks").map(String::toBoolean).getOrElse(false)
+
 android {
     namespace = "com.utc.color.blockads"
     compileSdk = 37
@@ -24,7 +26,7 @@ android {
     }
     buildFeatures { compose = true }
     splits.abi {
-        isEnable = providers.gradleProperty("blockads.splitApks").map(String::toBoolean).getOrElse(false)
+        isEnable = splitReleaseApks
         reset()
         include("armeabi-v7a", "arm64-v8a")
         isUniversalApk = false
@@ -40,7 +42,7 @@ android {
     }
     buildTypes {
         release {
-            ndk.abiFilters += setOf("armeabi-v7a", "arm64-v8a")
+            if (!splitReleaseApks) ndk.abiFilters += setOf("armeabi-v7a", "arm64-v8a")
             if (releaseStore.isPresent) signingConfig = signingConfigs.getByName("githubRelease")
             isMinifyEnabled = true
             isShrinkResources = true
