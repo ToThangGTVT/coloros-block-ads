@@ -4,44 +4,36 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.utc.color.blockads.ui.theme.BlockAdsTheme
+import androidx.activity.viewModels
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.utc.color.blockads.core.designsystem.AppTheme
+import com.utc.color.blockads.core.designsystem.appUsesDarkColors
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val viewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            BlockAdsTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+            val theme by viewModel.theme.collectAsStateWithLifecycle()
+            val version by viewModel.version.collectAsStateWithLifecycle()
+            val error by viewModel.error.collectAsStateWithLifecycle()
+            AppTheme(theme) {
+                val dark = appUsesDarkColors()
+                SideEffect {
+                    WindowInsetsControllerCompat(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !dark
+                        isAppearanceLightNavigationBars = !dark
+                    }
                 }
+                BlockAdsApp(theme, viewModel::setTheme, version, error)
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    BlockAdsTheme {
-        Greeting("Android")
     }
 }

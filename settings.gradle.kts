@@ -11,9 +11,11 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -23,4 +25,23 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "BlockAds"
+
 include(":app")
+
+include(
+    ":core:common",
+    ":core:designsystem",
+    ":core:data",
+    ":core:engine-bridge",
+    ":core:tunnel",
+    ":core:filter",
+)
+
+include(
+    ":feature:home",
+    ":feature:querylog",
+    ":feature:filters",
+    ":feature:apps",
+    ":feature:settings",
+    ":feature:certificate",
+)
