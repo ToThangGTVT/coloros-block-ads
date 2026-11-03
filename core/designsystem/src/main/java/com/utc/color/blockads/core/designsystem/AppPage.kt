@@ -1,14 +1,33 @@
 package com.utc.color.blockads.core.designsystem
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.NavDisplayTransitionEffects
+import androidx.navigation3.ui.defaultPopTransitionSpec
+import androidx.navigation3.ui.defaultPredictivePopTransitionSpec
+import androidx.navigation3.ui.defaultTransitionSpec
 import io.github.suqi8.coui.kmp.basic.*
 import io.github.suqi8.coui.kmp.blur.*
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -17,6 +36,7 @@ import io.github.suqi8.coui.kmp.icon.extended.HorizontalSplit
 import io.github.suqi8.coui.kmp.icon.extended.Search
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 
 enum class AppTab(val label: String) {
     Home("Trang chủ"),
@@ -25,22 +45,68 @@ enum class AppTab(val label: String) {
     Settings("Cài đặt"),
 }
 
+private const val TabKey = "blockads.tab"
+
+/** NavEntry metadata for a bottom-bar tab: tabs slide side by side like a pager, not push/pop. */
+fun appTabMetadata(tab: AppTab): Map<String, Any> = mapOf(TabKey to tab.ordinal)
+
+private fun Scene<*>.tabIndex() = metadata[TabKey] as? Int
+
+private fun <T : Any> AnimatedContentTransitionScope<Scene<T>>.pagerSlide(
+    easing: Easing
+): ContentTransform? {
+    val from = initialState.tabIndex() ?: return null
+    val to = targetState.tabIndex() ?: return null
+    val direction = if (to >= from) 1 else -1
+    val spec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 350, easing = easing)
+    return slideInHorizontally(spec) { it * direction } togetherWith
+        slideOutHorizontally(spec) { -it * direction }
+}
+
 @Composable
 fun <T : Any> AppNavDisplay(
     backStack: List<T>,
     onBack: () -> Unit,
     entryProvider: (T) -> NavEntry<T>,
 ) {
-    NavDisplay(backStack = backStack, onBack = onBack, entryProvider = entryProvider)
+    val push = defaultTransitionSpec<T>()
+    val pop = defaultPopTransitionSpec<T>()
+    val predictivePop = defaultPredictivePopTransitionSpec<T>()
+    fun isTab(key: T) = entryProvider(key).metadata[TabKey] is Int
+    // Push dimming/corner clip only belongs to sub-pages; a tab-to-tab slide has neither.
+    val current = backStack.last()
+    var previous by remember { mutableStateOf<T?>(null) }
+    var pagerEffects by
+        remember(current) {
+            mutableStateOf(previous.let { it == null || isTab(it) } && isTab(current))
+        }
+    SideEffect { previous = current }
+    LaunchedEffect(current) {
+        // Once settled, prepare for a predictive back gesture to the entry below.
+        delay(600)
+        pagerEffects =
+            isTab(current) && backStack.getOrNull(backStack.lastIndex - 1)?.let(::isTab) != false
+    }
+    NavDisplay(
+        backStack = backStack,
+        onBack = onBack,
+        transitionSpec = { pagerSlide(FastOutSlowInEasing) ?: push() },
+        popTransitionSpec = { pagerSlide(FastOutSlowInEasing) ?: pop() },
+        predictivePopTransitionSpec = { edge -> pagerSlide(LinearEasing) ?: predictivePop(edge) },
+        transitionEffects =
+            if (pagerEffects) NavDisplayTransitionEffects.None
+            else NavDisplayTransitionEffects.Default,
+        entryProvider = entryProvider,
+    )
 }
 
+private val LocalTabBarHeight = compositionLocalOf { 0.dp }
+
+/** Hosts the bottom tab bar outside the pages so it stays put while pages slide underneath. */
 @Composable
-fun AppPage(
-    title: String,
+fun AppTabHost(
     selectedTab: AppTab,
     onTab: (AppTab) -> Unit,
-    onBack: (() -> Unit)? = null,
-    scrollable: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val surface = COUITheme.colorScheme.surface
@@ -48,24 +114,25 @@ fun AppPage(
         drawRect(surface)
         drawContent()
     }
-    val scrollBehavior = COUIScrollBehavior()
-    Scaffold(
-        modifier =
-            Modifier.fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
-        topBar = {
-            BlurredBar(backdrop) {
-                TopAppBar(
-                    title = title,
-                    color = Color.Transparent,
-                    scrollBehavior = scrollBehavior,
-                    navigationIcon = { if (onBack != null) AppAction("Quay lại", onBack) },
-                )
+    val density = LocalDensity.current
+    var barHeight by remember { mutableStateOf(0.dp) }
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+            CompositionLocalProvider(LocalTabBarHeight provides barHeight) { content() }
+        }
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {
+                barHeight = with(density) { it.height.toDp() }
             }
-        },
-        bottomBar = {
+        ) {
             BlurredBar(backdrop) {
-                NavigationBar(color = Color.Transparent) {
+                NavigationBar(
+                    modifier =
+                        Modifier.windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                        ),
+                    color = Color.Transparent,
+                ) {
                     AppTab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,
@@ -82,12 +149,44 @@ fun AppPage(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AppPage(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    scrollable: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val surface = COUITheme.colorScheme.surface
+    val backdrop = rememberLayerBackdrop {
+        drawRect(surface)
+        drawContent()
+    }
+    val scrollBehavior = COUIScrollBehavior()
+    val tabBar = LocalTabBarHeight.current
+    Scaffold(
+        modifier =
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+        topBar = {
+            BlurredBar(backdrop) {
+                TopAppBar(
+                    title = title,
+                    color = Color.Transparent,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = { if (onBack != null) AppAction("Quay lại", onBack) },
+                )
+            }
         },
     ) { padding ->
+        val bottom: Dp = maxOf(padding.calculateBottomPadding(), tabBar)
         if (!scrollable) {
             Box(
                 Modifier.fillMaxSize()
-                    .padding(padding)
+                    .padding(top = padding.calculateTopPadding(), bottom = bottom)
                     .consumeWindowInsets(padding)
                     .layerBackdrop(backdrop)
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
@@ -105,7 +204,7 @@ fun AppPage(
                         start = AppSpacing.page,
                         end = AppSpacing.page,
                         top = padding.calculateTopPadding() + AppSpacing.gap,
-                        bottom = padding.calculateBottomPadding() + AppSpacing.page,
+                        bottom = bottom + AppSpacing.page,
                     ),
             ) {
                 item(key = "phase0-content") { content() }

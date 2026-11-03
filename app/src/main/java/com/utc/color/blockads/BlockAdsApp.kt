@@ -10,6 +10,8 @@ import com.utc.color.blockads.core.common.TunnelState
 import com.utc.color.blockads.core.designsystem.AppNavDisplay
 import com.utc.color.blockads.core.designsystem.AppPage
 import com.utc.color.blockads.core.designsystem.AppTab
+import com.utc.color.blockads.core.designsystem.AppTabHost
+import com.utc.color.blockads.core.designsystem.appTabMetadata
 import com.utc.color.blockads.feature.apps.AppsScreen
 import com.utc.color.blockads.feature.certificate.CertificateScreen
 import com.utc.color.blockads.feature.filters.FiltersScreen
@@ -27,6 +29,19 @@ private enum class Destination : NavKey {
     Apps,
     Certificate,
 }
+
+private val Destination.tab
+    get() =
+        when (this) {
+            Destination.Home -> AppTab.Home
+            Destination.Log -> AppTab.Log
+            Destination.Filters -> AppTab.Filters
+            else -> AppTab.Settings
+        }
+
+private val Destination.isTab
+    get() =
+        this in setOf(Destination.Home, Destination.Log, Destination.Filters, Destination.Settings)
 
 @Composable
 fun BlockAdsApp(
@@ -55,79 +70,77 @@ fun BlockAdsApp(
             if (target != Destination.Home) backStack.add(target)
         }
     }
-    AppNavDisplay(
-        backStack = backStack,
-        onBack = pop,
-        entryProvider =
-            entryProvider {
-                entry<Destination> { destination ->
-                    val selected =
-                        when (destination) {
-                            Destination.Home -> AppTab.Home
-                            Destination.Log -> AppTab.Log
-                            Destination.Filters -> AppTab.Filters
-                            else -> AppTab.Settings
+    AppTabHost(selectedTab = (backStack.last() as Destination).tab, onTab = selectTab) {
+        AppNavDisplay(
+            backStack = backStack,
+            onBack = pop,
+            entryProvider =
+                entryProvider {
+                    entry<Destination>(
+                        metadata = { destination ->
+                            if (destination.isTab) appTabMetadata(destination.tab) else emptyMap()
                         }
-                    val title =
-                        when (destination) {
-                            Destination.Apps -> "Ứng dụng"
-                            Destination.Certificate -> "Chứng chỉ HTTPS"
-                            else -> selected.label
-                        }
-                    AppPage(
-                        title = title,
-                        selectedTab = selected,
-                        onTab = selectTab,
-                        scrollable =
-                            destination != Destination.Log && destination != Destination.Apps,
-                        onBack =
-                            if (
-                                destination == Destination.Apps ||
-                                    destination == Destination.Certificate
-                            )
-                                pop
-                            else null,
-                    ) {
-                        when (destination) {
-                            Destination.Home ->
-                                HomeScreen(
-                                    version,
-                                    tunnel,
-                                    filterStatus,
-                                    queries,
-                                    onPrivateDns = {
-                                        context.startActivity(
-                                            android.content.Intent(
-                                                android.provider.Settings.ACTION_WIRELESS_SETTINGS
+                    ) { destination ->
+                        val title =
+                            when (destination) {
+                                Destination.Apps -> "Ứng dụng"
+                                Destination.Certificate -> "Chứng chỉ HTTPS"
+                                else -> destination.tab.label
+                            }
+                        AppPage(
+                            title = title,
+                            scrollable =
+                                destination != Destination.Log && destination != Destination.Apps,
+                            onBack =
+                                if (
+                                    destination == Destination.Apps ||
+                                        destination == Destination.Certificate
+                                )
+                                    pop
+                                else null,
+                        ) {
+                            when (destination) {
+                                Destination.Home ->
+                                    HomeScreen(
+                                        version,
+                                        tunnel,
+                                        filterStatus,
+                                        queries,
+                                        onPrivateDns = {
+                                            context.startActivity(
+                                                android.content.Intent(
+                                                    android.provider.Settings
+                                                        .ACTION_WIRELESS_SETTINGS
+                                                )
                                             )
-                                        )
-                                    },
-                                    onProtection,
-                                )
-                            Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
-                            Destination.Filters -> FiltersScreen(filters, settings)
-                            Destination.Settings ->
-                                SettingsScreen(
-                                    theme,
-                                    onTheme,
-                                    onApps = { backStack.add(Destination.Apps) },
-                                    onCertificate = { backStack.add(Destination.Certificate) },
-                                    error = error,
-                                    settings = settings,
-                                    filters = filters,
-                                    queries = queries,
-                                )
-                            Destination.Apps -> AppsScreen(apps, settings)
-                            Destination.Certificate ->
-                                CertificateScreen(
-                                    certificates,
-                                    settings,
-                                    apps,
-                                    onApps = { backStack.add(Destination.Apps) },
-                                )
+                                        },
+                                        onProtection,
+                                    )
+                                Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
+                                Destination.Filters -> FiltersScreen(filters, settings)
+                                Destination.Settings ->
+                                    SettingsScreen(
+                                        theme,
+                                        onTheme,
+                                        onApps = { backStack.add(Destination.Apps) },
+                                        onCertificate = { backStack.add(Destination.Certificate) },
+                                        error = error,
+                                        settings = settings,
+                                        filters = filters,
+                                        queries = queries,
+                                    )
+                                Destination.Apps -> AppsScreen(apps, settings)
+                                Destination.Certificate ->
+                                    CertificateScreen(
+                                        certificates,
+                                        settings,
+                                        apps,
+                                        onApps = { backStack.add(Destination.Apps) },
+                                    )
+                            }
                         }
                     }
-                }
-            },
-    )
+                },
+        )
+    }
 }
