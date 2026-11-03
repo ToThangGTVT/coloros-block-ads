@@ -18,6 +18,19 @@ import javax.inject.Singleton
 object AppModule {
     @Provides
     @Singleton
+    fun apps(@ApplicationContext context: Context, settings: SettingsRepository) =
+        com.utc.color.blockads.core.data.AppsRepository(context, settings)
+
+    @Provides
+    @Singleton
+    fun trafficPolicy(
+        settings: SettingsRepository,
+        apps: com.utc.color.blockads.core.data.AppsRepository,
+        engine: EngineBridge,
+    ) = com.utc.color.blockads.core.tunnel.TrafficPolicyRepository(settings, apps, engine)
+
+    @Provides
+    @Singleton
     fun settings(@ApplicationContext context: Context) = SettingsRepository(context)
 
     @Provides @Singleton fun engine() = EngineBridge()
@@ -29,7 +42,9 @@ object AppModule {
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): QueryDatabase =
-        Room.databaseBuilder(context, QueryDatabase::class.java, "queries.db").build()
+        Room.databaseBuilder(context, QueryDatabase::class.java, "queries.db")
+            .addMigrations(QueryDatabase.Migration1To2)
+            .build()
 
     @Provides
     @Singleton

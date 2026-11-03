@@ -6,6 +6,9 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 ADB="$ANDROID_HOME/platform-tools/adb"
 cd "$PROJECT_DIR"
+"$ADB" -s "$ANDROID_SERIAL" shell svc wifi enable
+"$ADB" -s "$ANDROID_SERIAL" shell svc data enable
+"$ADB" -s "$ANDROID_SERIAL" shell cmd overlay enable --user current com.android.internal.systemui.navbar.gestural
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
 python3 scripts/phase1-test-server.py &
 fixture_pid=$!

@@ -11,9 +11,9 @@ class QueryLogRepository(private val database: QueryDatabase) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val batches = Channel<String>(32)
 
-    fun searchPages(search: String, status: Int) =
+    fun searchPages(search: String, status: Int, uid: Int = -1) =
         Pager(PagingConfig(pageSize = 50, enablePlaceholders = false)) {
-                database.queries().pagingSource(search, status)
+                database.queries().pagingSource(search, status, uid)
             }
             .flow
 
@@ -34,12 +34,15 @@ class QueryLogRepository(private val database: QueryDatabase) {
                             QueryEntity(
                                 timestamp = event.getLong("timestamp"),
                                 domain = event.getString("domain"),
-                                uid = null,
+                                uid =
+                                    if (event.isNull("uid")) null
+                                    else event.optInt("uid", -1).takeIf { it >= 0 },
                                 blocked = event.getBoolean("blocked"),
                                 matchedRule =
                                     event.optString("matchedRule").takeIf {
                                         it != "null" && it.isNotBlank()
                                     },
+                                protocol = event.optString("protocol", "dns"),
                             )
                         }
                     }

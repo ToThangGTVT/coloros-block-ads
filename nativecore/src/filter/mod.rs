@@ -27,12 +27,15 @@ pub struct LineError {
 pub struct Rules {
     entries: HashMap<Box<str>, Entry>,
     pub report: Report,
+    scoped: HashMap<Box<str>, Vec<Scoped>>,
+    patterns: Vec<Pattern>,
 }
 #[derive(Debug, PartialEq)]
 pub struct Decision<'a> {
     pub blocked: bool,
     pub domain: &'a str,
     pub suffix: bool,
+    pub rank: u8,
 }
 
 impl Rules {
@@ -59,39 +62,133 @@ impl Rules {
     }
     fn parse(&mut self, line: &str, custom: bool) -> Result<(), &'static str> {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('!') || line.starts_with('#') {
+        if line.is_empty()
+            || line.starts_with('!')
+            || line.starts_with('#')
+            || line.starts_with('[')
+        {
             return Ok(());
         }
-        if line.contains("##") || line.contains("#@#") {
+        if line.contains("##") || line.contains("#@#") || line.contains("#$#") {
             self.report.ignored += 1;
             return Ok(());
         }
+        let original = line;
         let allow = line.starts_with("@@");
         let line = line.strip_prefix("@@").unwrap_or(line);
-        let (domain, suffix, important) = if let Some(network) = line.strip_prefix("||") {
-            let (domain, modifiers) = network.split_once('^').ok_or("Cần ký hiệu ^ sau domain")?;
-            if !modifiers.is_empty() && modifiers != "$important" {
-                return Err("Modifier chưa được hỗ trợ ở Phase 2");
-            }
-            (domain, true, modifiers == "$important")
-        } else {
-            let clean = line.split('#').next().unwrap_or("");
-            let fields: Vec<_> = clean.split_whitespace().collect();
-            if fields.len() >= 2 && matches!(fields[0], "0.0.0.0" | "127.0.0.1" | "::" | "::0") {
-                for domain in &fields[1..] {
-                    if domain.eq_ignore_ascii_case("localhost") || domain.ends_with(".localhost") {
-                        continue;
-                    }
-                    self.insert(domain, false, false, custom, false)?;
+        let fields: Vec<_> = line
+            .split('#')
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .collect();
+        if fields.len() >= 2 && matches!(fields[0], "0.0.0.0" | "127.0.0.1" | "::" | "::0") {
+            for domain in &fields[1..] {
+                if domain.eq_ignore_ascii_case("localhost") || domain.ends_with(".localhost") {
+                    continue;
                 }
-                return Ok(());
+                self.insert(domain, false, allow, custom, false)?;
             }
-            if fields.len() != 1 {
-                return Err("Cần hosts entry hoặc ||domain^");
-            }
-            (fields[0], false, false)
+            return Ok(());
+        }
+        let (pattern, modifiers, explicit_regex) = if line.starts_with('/') {
+            let end = line
+                .rfind('/')
+                .filter(|end| *end > 0)
+                .ok_or("Regex thiếu dấu / kết thúc")?;
+            (
+                &line[1..end],
+                line[end + 1..]
+                    .strip_prefix('$')
+                    .unwrap_or(&line[end + 1..]),
+                true,
+            )
+        } else {
+            let (p, m) = line.split_once('$').unwrap_or((line, ""));
+            (p, m, false)
         };
-        self.insert(domain, suffix, allow, custom, important)
+        let mut important = false;
+        let mut apps = Vec::new();
+        for modifier in modifiers.split(',').filter(|m| !m.is_empty()) {
+            if modifier == "important" {
+                important = true;
+            } else if let Some(packages) = modifier.strip_prefix("app=") {
+                for package in packages.split('|') {
+                    if package.trim_start_matches('~').is_empty()
+                        || !package
+                            .trim_start_matches('~')
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
+                    {
+                        return Err("Package $app không hợp lệ");
+                    }
+                    apps.push(package.to_owned());
+                }
+            } else {
+                return Err("Modifier chưa được hỗ trợ");
+            }
+        }
+        let rank = rank(allow, custom, important);
+        let domain = if explicit_regex {
+            None
+        } else if let Some(value) = pattern.strip_prefix("||").and_then(|p| p.strip_suffix('^')) {
+            if valid_domain(value) {
+                Some((value, true))
+            } else {
+                None
+            }
+        } else if valid_domain(pattern) {
+            Some((pattern, false))
+        } else {
+            None
+        };
+        if let Some((domain, suffix)) = domain {
+            if apps.is_empty() {
+                return self.insert(domain, suffix, allow, custom, important);
+            }
+            self.scoped
+                .entry(
+                    domain
+                        .trim_end_matches('.')
+                        .to_ascii_lowercase()
+                        .into_boxed_str(),
+                )
+                .or_default()
+                .push(Scoped {
+                    suffix,
+                    rank,
+                    apps,
+                    rule: original.into(),
+                });
+        } else {
+            if pattern.len() > 2048 || self.patterns.len() >= 256 {
+                return Err("Giới hạn 256 URL/regex rule, mỗi rule tối đa 2048 ký tự");
+            }
+            if pattern.is_empty() || pattern.chars().any(char::is_whitespace) {
+                return Err("Network rule không hợp lệ");
+            }
+            let regex = if explicit_regex {
+                pattern.to_owned()
+            } else {
+                network_regex(pattern)?
+            };
+            let regex = regex::RegexBuilder::new(&regex)
+                .case_insensitive(true)
+                .size_limit(128 * 1024)
+                .dfa_size_limit(32 * 1024)
+                .nest_limit(32)
+                .build()
+                .map_err(|_| "Regex không hợp lệ hoặc vượt giới hạn bộ nhớ")?;
+            self.patterns.push(Pattern {
+                regex,
+                domain_only: explicit_regex,
+                rank,
+                apps,
+                rule: original.into(),
+            });
+        }
+        self.report.loaded += 1;
+        Ok(())
     }
     fn insert(
         &mut self,
@@ -102,39 +199,10 @@ impl Rules {
         important: bool,
     ) -> Result<(), &'static str> {
         let domain = domain.trim_end_matches('.').to_ascii_lowercase();
-        if domain.is_empty()
-            || domain.len() > 253
-            || domain.parse::<std::net::IpAddr>().is_ok()
-            || !domain.split('.').all(|label| {
-                !label.is_empty()
-                    && label.len() <= 63
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label
-                        .bytes()
-                        .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
-            })
-        {
+        if !valid_domain(&domain) {
             return Err("Domain không hợp lệ");
         }
-        // Higher rank wins across all suffixes; even ranks are exceptions.
-        let rank = if custom {
-            if allow {
-                6
-            } else {
-                5
-            }
-        } else if important {
-            if allow {
-                4
-            } else {
-                3
-            }
-        } else if allow {
-            2
-        } else {
-            1
-        };
+        let rank = rank(allow, custom, important);
         let entry = self.entries.entry(domain.into_boxed_str()).or_default();
         let slot = if suffix {
             &mut entry.suffix
@@ -172,8 +240,158 @@ impl Rules {
             blocked: best % 2 == 1,
             domain: matched,
             suffix,
+            rank: best,
         })
     }
+    pub fn matches(&self, domain: &str, url: Option<&str>, packages: &[String]) -> Option<Matched> {
+        let mut best = self.lookup(domain).map(|d| Matched {
+            blocked: d.blocked,
+            rank: d.rank,
+            rule: format!(
+                "{}{}{}{}",
+                if d.blocked { "" } else { "@@" },
+                if d.suffix { "||" } else { "" },
+                d.domain,
+                if d.suffix { "^" } else { "" }
+            ),
+        });
+        let mut current = Some(domain);
+        while let Some(part) = current {
+            if let Some(entries) = self.scoped.get(part) {
+                for entry in entries {
+                    if (entry.suffix || part == domain) && app_matches(&entry.apps, packages) {
+                        choose(&mut best, entry.rank, &entry.rule);
+                    }
+                }
+            }
+            current = part.split_once('.').map(|(_, rest)| rest);
+        }
+        for pattern in &self.patterns {
+            if pattern.rank <= best.as_ref().map_or(0, |b| b.rank)
+                || !app_matches(&pattern.apps, packages)
+            {
+                continue;
+            }
+            let candidate = url.or_else(|| pattern.domain_only.then_some(domain));
+            if candidate.is_some_and(|input| pattern.regex.is_match(input)) {
+                choose(&mut best, pattern.rank, &pattern.rule);
+            }
+        }
+        best
+    }
+}
+fn valid_domain(domain: &str) -> bool {
+    let domain = domain.trim_end_matches('.');
+    !domain.is_empty()
+        && domain.len() <= 253
+        && domain.parse::<std::net::IpAddr>().is_err()
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        })
+}
+fn rank(allow: bool, custom: bool, important: bool) -> u8 {
+    if custom {
+        if allow {
+            6
+        } else {
+            5
+        }
+    } else if important {
+        if allow {
+            4
+        } else {
+            3
+        }
+    } else if allow {
+        2
+    } else {
+        1
+    }
+}
+struct Scoped {
+    suffix: bool,
+    rank: u8,
+    apps: Vec<String>,
+    rule: String,
+}
+struct Pattern {
+    regex: regex::Regex,
+    domain_only: bool,
+    rank: u8,
+    apps: Vec<String>,
+    rule: String,
+}
+#[derive(Debug)]
+pub struct Matched {
+    pub blocked: bool,
+    rank: u8,
+    pub rule: String,
+}
+fn choose(best: &mut Option<Matched>, rank: u8, rule: &str) {
+    if rank > best.as_ref().map_or(0, |b| b.rank) {
+        *best = Some(Matched {
+            blocked: rank % 2 == 1,
+            rank,
+            rule: rule.to_owned(),
+        });
+    }
+}
+fn app_matches(selectors: &[String], packages: &[String]) -> bool {
+    if selectors.is_empty() {
+        return true;
+    }
+    if packages.is_empty() {
+        return false;
+    }
+    let mut positive = false;
+    let mut matched = false;
+    for selector in selectors {
+        if let Some(negative) = selector.strip_prefix('~') {
+            if packages.iter().any(|p| p == negative) {
+                return false;
+            }
+        } else {
+            positive = true;
+            matched |= packages.contains(selector);
+        }
+    }
+    !positive || matched
+}
+fn network_regex(pattern: &str) -> Result<String, &'static str> {
+    let (pattern, mut output) = if let Some(value) = pattern.strip_prefix("||") {
+        let end = value.find(['/', '^', '*', '|']).unwrap_or(value.len());
+        if !valid_domain(&value[..end]) {
+            return Err("Domain trong network rule không hợp lệ");
+        }
+        (value, String::from("^[a-z][a-z0-9+.-]*://(?:[^/]*\\.)?"))
+    } else if let Some(value) = pattern.strip_prefix('|') {
+        (value, String::from("^"))
+    } else {
+        (pattern, String::new())
+    };
+    let anchored = pattern.ends_with('|');
+    let pattern = if anchored {
+        &pattern[..pattern.len() - 1]
+    } else {
+        pattern
+    };
+    for c in pattern.chars() {
+        match c {
+            '*' => output.push_str(".*"),
+            '^' => output.push_str("(?:[^A-Za-z0-9_%.-]|$)"),
+            _ => output.push_str(&regex::escape(&c.to_string())),
+        }
+    }
+    if anchored {
+        output.push('$');
+    }
+    Ok(output)
 }
 static ACTIVE: OnceLock<RwLock<Arc<Rules>>> = OnceLock::new();
 static REVISION: AtomicU64 = AtomicU64::new(0);

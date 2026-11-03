@@ -13,6 +13,9 @@ use tokio::net::{TcpSocket, TcpStream, UdpSocket};
 
 pub trait Protector: Send + Sync {
     fn protect(&self, fd: RawFd) -> io::Result<()>;
+    fn owner(&self, _protocol: u8, _source: SocketAddr, _destination: SocketAddr) -> Option<u32> {
+        None
+    }
 }
 
 #[derive(Default)]

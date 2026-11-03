@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
                     viewModel.settings,
                     viewModel.filters,
                     viewModel.queries,
+                    viewModel.apps,
                 ) { enabled ->
                     if (!enabled) viewModel.tunnel.stop()
                     else {

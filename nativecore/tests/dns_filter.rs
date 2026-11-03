@@ -47,7 +47,7 @@ fn hosts_suffix_and_priority_are_deterministic() {
         "custom allow must outrank important"
     );
     assert_eq!(rules.report.ignored, 1);
-    assert!(Rules::compile("", "! ok\n||bad/domain^\n||good.test^")
+    assert!(Rules::compile("", "! ok\n||bad..domain^\n||good.test^")
         .report
         .errors
         .iter()
@@ -160,7 +160,7 @@ async fn positive_and_negative_cache_preserve_ids_and_soa() {
 #[test]
 fn invalid_custom_reload_does_not_replace_previous_rules() {
     assert!(filter::replace("||kept.test^", "").applied);
-    assert!(!filter::replace("", "||bad/domain^").applied);
+    assert!(!filter::replace("", "||bad..domain^").applied);
     assert!(filter::current().lookup("kept.test").unwrap().blocked);
     filter::replace("", "");
 }

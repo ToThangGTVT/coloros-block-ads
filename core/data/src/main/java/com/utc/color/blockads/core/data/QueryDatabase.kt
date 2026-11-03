@@ -19,14 +19,19 @@ data class QueryEntity(
     val uid: Int?,
     val blocked: Boolean,
     val matchedRule: String?,
+    @androidx.room.ColumnInfo(defaultValue = "'dns'") val protocol: String = "dns",
 )
 
 @Dao
 interface QueryDao {
     @Query(
-        "SELECT * FROM queries WHERE (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC"
+        "SELECT * FROM queries WHERE (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) AND (:uid = -1 OR uid = :uid) ORDER BY timestamp DESC, id DESC"
     )
-    fun pagingSource(search: String = "", status: Int = -1): PagingSource<Int, QueryEntity>
+    fun pagingSource(
+        search: String = "",
+        status: Int = -1,
+        uid: Int = -1,
+    ): PagingSource<Int, QueryEntity>
 
     @Insert suspend fun insertBatch(events: List<QueryEntity>)
 
@@ -36,7 +41,18 @@ interface QueryDao {
     @Query("DELETE FROM queries WHERE timestamp < :before") suspend fun deleteBefore(before: Long)
 }
 
-@Database(entities = [QueryEntity::class], version = 1, exportSchema = true)
+@Database(entities = [QueryEntity::class], version = 2, exportSchema = true)
 abstract class QueryDatabase : RoomDatabase() {
     abstract fun queries(): QueryDao
+
+    companion object {
+        val Migration1To2 =
+            object : androidx.room.migration.Migration(1, 2) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE queries ADD COLUMN protocol TEXT NOT NULL DEFAULT 'dns'"
+                    )
+                }
+            }
+    }
 }

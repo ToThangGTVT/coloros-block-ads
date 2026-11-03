@@ -1,6 +1,10 @@
 package com.utc.color.blockads.core.enginebridge
 
 class EngineBridge {
+    fun configurePolicy(json: String): Boolean = nativeConfigurePolicy(json)
+
+    private external fun nativeConfigurePolicy(json: String): Boolean
+
     fun replaceRules(system: String, custom: String, apply: Boolean = true): String =
         nativeReplaceRules(system, custom, apply)
 
@@ -50,6 +54,14 @@ class EngineBridge {
 /** Called once per outbound socket, before connect/send; failure closes the socket. */
 fun interface SocketProtector {
     fun protect(fd: Int): Boolean
+
+    fun connectionOwner(
+        protocol: Int,
+        source: String,
+        sourcePort: Int,
+        destination: String,
+        destinationPort: Int,
+    ): Int = -1
 }
 
 fun interface DnsEventSink {

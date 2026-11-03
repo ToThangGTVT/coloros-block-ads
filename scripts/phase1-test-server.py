@@ -3,9 +3,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket
 import threading
 import struct
+import os
+BIND = os.getenv("BLOCKADS_FIXTURE_BIND", "127.0.0.1")
 from collections import Counter
 DNS_COUNTS = Counter()
 DNS_LOCK = threading.Lock()
+TLS_COUNT = 0
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -14,6 +17,8 @@ class Handler(BaseHTTPRequestHandler):
             data = b"blockads-phase1"
         elif self.path.startswith("/dns-count/"):
             with DNS_LOCK: data = str(DNS_COUNTS[self.path.split("/dns-count/", 1)[1]]).encode()
+        elif self.path == "/tls-count":
+            with DNS_LOCK: data = str(TLS_COUNT).encode()
         elif self.path == "/bytes":
             data = bytes(range(256)) * 4096
         else:
@@ -31,9 +36,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.bind(("127.0.0.1", 18081))
+    udp_socket.bind((BIND, 18081))
     dns_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    dns_socket.bind(("127.0.0.1", 18082))
+    dns_socket.bind((BIND, 18082))
     def answer_dns():
         while True:
             request, peer = dns_socket.recvfrom(65535)
@@ -54,7 +59,17 @@ if __name__ == "__main__":
             except (IndexError, ValueError, UnicodeError):
                 continue
     threading.Thread(target=answer_dns, daemon=True).start()
-    http_server = ThreadingHTTPServer(("127.0.0.1", 18080), Handler)
+    tls_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tls_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    tls_socket.bind((BIND, 18083)); tls_socket.listen(16)
+    def count_tls():
+        global TLS_COUNT
+        while True:
+            client, _ = tls_socket.accept()
+            with DNS_LOCK: TLS_COUNT += 1
+            client.close()
+    threading.Thread(target=count_tls, daemon=True).start()
+    http_server = ThreadingHTTPServer((BIND, 18080), Handler)
 
     def echo_datagrams():
         while True:

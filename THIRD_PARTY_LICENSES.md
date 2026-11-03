@@ -28,6 +28,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 
 | Crate | Version | License | Source |
 | --- | --- | --- | --- |
+| aho-corasick | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
@@ -131,6 +132,9 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_pcg | 0.10.2 | MIT OR Apache-2.0 | https://github.com/rust-random/rngs |
 | redox_syscall | 0.5.18 | MIT | https://gitlab.redox-os.org/redox-os/syscall |
+| regex | 1.13.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
+| regex-automata | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
+| regex-syntax | 0.8.11 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 | https://github.com/djc/rustc-version-rs |
@@ -249,3 +253,12 @@ packet payload can be printed by netstack diagnostic calls.
   and hostname verification enabled. No insecure certificate verifier is used.
 - All Hickory TCP/UDP/QUIC socket creation goes through a protected RuntimeProvider;
   no default provider or system-config fallback may create unprotected sockets.
+
+## Phase 3 matching dependencies (review before integration)
+
+- regex **1.13.1**, regex-automata / regex-syntax: MIT OR Apache-2.0,
+  https://github.com/rust-lang/regex (LICENSE-MIT and LICENSE-APACHE).
+- aho-corasick (regex transitive): Unlicense OR MIT,
+  https://github.com/BurntSushi/aho-corasick. No backtracking regex engine is used.
+- User patterns are capped by length, count, compiled program and DFA cache size.
+  URL/header bytes are used only in memory for policy; query log stores host metadata.

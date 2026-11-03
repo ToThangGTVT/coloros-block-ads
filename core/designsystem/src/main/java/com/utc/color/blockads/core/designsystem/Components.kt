@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.SmallTitle
@@ -157,13 +159,39 @@ fun AppBottomSheet(
 }
 
 @Composable
-fun AppQueryRow(domain: String, blocked: Boolean, time: String, onClick: () -> Unit) {
+fun AppQueryRow(
+    domain: String,
+    blocked: Boolean,
+    time: String,
+    appName: String = "Chưa xác định",
+    icon: android.graphics.Bitmap? = null,
+    onClick: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick) {
+        AppIdentity(appName, icon)
         Text(domain, style = COUITheme.textStyles.body1, color = COUITheme.colorScheme.onSurface)
         Text(
             (if (blocked) "Đã chặn" else "Cho phép") + " · " + time,
             style = COUITheme.textStyles.footnote1,
             color = if (blocked) COUITheme.colorScheme.error else COUITheme.colorScheme.primary,
         )
+    }
+}
+
+@Composable
+fun AppIdentity(label: String, bitmap: android.graphics.Bitmap?) {
+    androidx.compose.foundation.layout.Row(
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        if (bitmap != null)
+            io.github.suqi8.coui.kmp.basic.Icon(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                tint = androidx.compose.ui.graphics.Color.Unspecified,
+                modifier =
+                    Modifier.size(io.github.suqi8.coui.kmp.basic.NavigationBarDefaults.IconSize),
+            )
+        AppText(label)
     }
 }

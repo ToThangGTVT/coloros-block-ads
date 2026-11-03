@@ -38,6 +38,37 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             if (error is IOException) emit(emptyPreferences()) else throw error
         }
     val customRules = preferences.map { it[CustomRules] ?: "" }.distinctUntilChanged()
+    val blockQuic = preferences.map { it[BlockQuic] ?: true }.distinctUntilChanged()
+    val appPolicies = preferences.map { parsePolicies(it[AppPolicies]) }.distinctUntilChanged()
+
+    private fun parsePolicies(json: String?): Map<String, AppFilterMode> = runCatching {
+        val value = JSONObject(json ?: "{}")
+        value
+            .keys()
+            .asSequence()
+            .mapNotNull { key ->
+                AppFilterMode.entries
+                    .firstOrNull { it.name == value.optString(key) }
+                    ?.let { key to it }
+            }
+            .toMap()
+    }
+        .getOrDefault(emptyMap())
+
+    suspend fun setBlockQuic(enabled: Boolean) {
+        store.edit { it[BlockQuic] = enabled }
+    }
+
+    suspend fun setAppMode(packages: List<String>, mode: AppFilterMode) {
+        store.edit { prefs ->
+            val policies = parsePolicies(prefs[AppPolicies]).toMutableMap()
+            packages.forEach {
+                if (mode == AppFilterMode.Filter) policies.remove(it) else policies[it] = mode
+            }
+            prefs[AppPolicies] = JSONObject(policies.mapValues { it.value.name }).toString()
+        }
+    }
+
     val dns =
         preferences
             .map { value ->
@@ -117,6 +148,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     private companion object {
+        val AppPolicies = stringPreferencesKey("app_policies")
+        val BlockQuic = booleanPreferencesKey("block_quic")
         val CustomRules = stringPreferencesKey("custom_rules")
         val Upstream = stringPreferencesKey("dns_upstream")
         val BlockMode = stringPreferencesKey("dns_block_mode")

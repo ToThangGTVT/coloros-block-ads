@@ -1,5 +1,6 @@
 //! DNS policy, cache, protected upstream transports and batched metadata events.
 pub mod cache;
+pub mod reverse;
 pub mod upstream;
 use crate::{
     filter,
@@ -108,6 +109,8 @@ pub struct Event {
     pub blocked: bool,
     pub matched_rule: Option<String>,
     pub cached: bool,
+    pub uid: Option<u32>,
+    pub protocol: String,
 }
 pub trait EventSink: Send + Sync {
     fn batch(&self, json: &str);
@@ -140,7 +143,14 @@ pub fn flush() {
         sink.batch(&json);
     }
 }
-fn event(domain: String, blocked: bool, rule: Option<String>, cached: bool) {
+pub fn event(
+    domain: String,
+    blocked: bool,
+    rule: Option<String>,
+    cached: bool,
+    uid: Option<u32>,
+    protocol: &str,
+) {
     if !options().logging {
         return;
     }
@@ -161,6 +171,8 @@ fn event(domain: String, blocked: bool, rule: Option<String>, cached: bool) {
             blocked,
             matched_rule: rule,
             cached,
+            uid,
+            protocol: protocol.into(),
         });
         events.len() >= 100
     };
@@ -177,6 +189,7 @@ pub struct Session {
 }
 impl Session {
     pub fn new(protector: Arc<dyn Protector>, stats: Arc<Stats>) -> Self {
+        reverse::clear();
         cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
         Self {
             runtime: upstream::ProtectedRuntime::new(protector, stats),
@@ -184,6 +197,7 @@ impl Session {
         }
     }
     pub async fn reset(&self) {
+        reverse::clear();
         self.pool.lock().await.take();
         cache().lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
@@ -192,6 +206,16 @@ impl Session {
         data: &[u8],
         physical: Option<IpAddr>,
         tcp: bool,
+    ) -> io::Result<Vec<u8>> {
+        self.resolve_for(data, physical, tcp, &crate::policy::Owner::default())
+            .await
+    }
+    pub async fn resolve_for(
+        &self,
+        data: &[u8],
+        physical: Option<IpAddr>,
+        tcp: bool,
+        owner: &crate::policy::Owner,
     ) -> io::Result<Vec<u8>> {
         let request = Message::from_vec(data).map_err(io::Error::other)?;
         if request.metadata.message_type != MessageType::Query
@@ -208,17 +232,14 @@ impl Session {
             .trim_end_matches('.')
             .to_ascii_lowercase();
         let rules = filter::current();
-        let decision = rules.lookup(&domain);
-        let rule = decision.as_ref().map(|d| {
-            let prefix = if d.blocked { "" } else { "@@" };
-            if d.suffix {
-                format!("{prefix}||{}^", d.domain)
-            } else {
-                format!("{prefix}{}", d.domain)
-            }
-        });
+        let decision = if owner.bypass {
+            None
+        } else {
+            rules.matches(&domain, None, &owner.packages)
+        };
+        let rule = decision.as_ref().map(|d| d.rule.clone());
         if decision.as_ref().is_some_and(|d| d.blocked) {
-            event(domain, true, rule, false);
+            event(domain, true, rule, false, owner.uid, "dns");
             return encode(
                 &blocked_response(&request, &options().block_mode),
                 &request,
@@ -234,7 +255,8 @@ impl Session {
         key.extend_from_slice(&filter::revision().to_be_bytes());
         if let Some(mut response) = cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
             response.metadata.id = request.metadata.id;
-            event(domain, false, rule, true);
+            reverse::remember(owner.uid, &domain, &response);
+            event(domain, false, rule, true, owner.uid, "dns");
             return encode(&response, &request, tcp);
         }
         let pool = {
@@ -246,7 +268,7 @@ impl Session {
                 match upstream::pool(&config, physical, self.runtime.clone()) {
                     Ok(pool) => *selected = Some((revision, physical, pool)),
                     Err(_) => {
-                        event(domain, false, rule, false);
+                        event(domain, false, rule, false, owner.uid, "dns");
                         return encode(
                             &error_response(&request, ResponseCode::ServFail),
                             &request,
@@ -293,7 +315,8 @@ impl Session {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .put(key, response.clone());
-        event(domain, false, rule, false);
+        reverse::remember(owner.uid, &domain, &response);
+        event(domain, false, rule, false, owner.uid, "dns");
         encode(&response, &request, tcp)
     }
 }
@@ -347,6 +370,7 @@ pub async fn serve_tcp<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
     mut client: S,
     session: Session,
     physical: Option<IpAddr>,
+    owner: crate::policy::Owner,
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     loop {
@@ -365,7 +389,8 @@ pub async fn serve_tcp<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
         ) {
             break;
         }
-        let Ok(response) = session.resolve(&data, physical, true).await else {
+        let owner = crate::policy::Owner::from_uid(owner.uid);
+        let Ok(response) = session.resolve_for(&data, physical, true, &owner).await else {
             break;
         };
         if client.write_u16(response.len() as u16).await.is_err()

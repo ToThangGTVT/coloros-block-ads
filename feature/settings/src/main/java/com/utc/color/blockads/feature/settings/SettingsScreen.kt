@@ -20,6 +20,7 @@ fun SettingsScreen(
     settings: SettingsRepository,
 ) {
     val dns by settings.dns.collectAsStateWithLifecycle(initialValue = DnsSettings())
+    val blockQuic by settings.blockQuic.collectAsStateWithLifecycle(initialValue = true)
     val scope = rememberCoroutineScope()
     AppColumn {
         AppSectionTitle("DNS")
@@ -41,8 +42,8 @@ fun SettingsScreen(
                 }
             }
             AppSwitchPreference(
-                "Nhật ký DNS",
-                "Chỉ lưu domain, thời gian và rule trong 7 ngày",
+                "Nhật ký kết nối",
+                "Chỉ lưu host, app, trạng thái và rule trong 7 ngày",
                 dns.logging,
             ) { enabled ->
                 scope.launch { settings.setDns(dns.copy(logging = enabled)) }
@@ -61,16 +62,21 @@ fun SettingsScreen(
         if (error != null) AppCard { AppText(error) }
         AppSectionTitle("Bảo vệ")
         AppPreferenceGroup {
+            AppSwitchPreference(
+                "Chặn QUIC",
+                "Chặn UDP/443 để app có thể chuyển sang TCP/TLS",
+                blockQuic,
+            ) { enabled ->
+                scope.launch { settings.setBlockQuic(enabled) }
+            }
             AppAction("Ứng dụng", onApps)
             AppAction("Chứng chỉ HTTPS · Phase 5", onCertificate)
         }
         AppSectionTitle("Giới thiệu")
         AppCard {
-            AppText("BlockAds · 0.2.0", prominent = true)
+            AppText("BlockAds · 0.3.0", prominent = true)
             AppText("COUI 1.1.0 · ColorOS 16")
-            AppText(
-                "Phase 2: lọc DNS, cache TTL và nhật ký trên thiết bị. Chưa lọc SNI/HTTP hoặc giải mã HTTPS."
-            )
+            AppText("Phase 3: lọc DNS, SNI/HTTP và theo ứng dụng. HTTPS mã hóa chưa được giải mã.")
         }
     }
 }

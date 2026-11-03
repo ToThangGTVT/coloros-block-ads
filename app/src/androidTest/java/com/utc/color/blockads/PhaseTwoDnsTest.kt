@@ -16,6 +16,11 @@ import org.junit.Test
 
 class PhaseTwoDnsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private val fixtureHost
+        get() =
+            androidx.test.platform.app.InstrumentationRegistry.getArguments()
+                .getString("fixtureHost") ?: "10.0.2.2"
+
     private var nextId = 12000
 
     private fun packet(domain: String, type: Int): ByteArray {
@@ -115,7 +120,7 @@ class PhaseTwoDnsTest {
 
     private fun count(domain: String): Int {
         val connection =
-            URL("http://10.0.2.2:18080/dns-count/$domain").openConnection() as HttpURLConnection
+            URL("http://$fixtureHost:18080/dns-count/$domain").openConnection() as HttpURLConnection
         connection.setRequestProperty("Connection", "close")
         connection.connectTimeout = 5000
         connection.readTimeout = 5000
@@ -138,7 +143,7 @@ class PhaseTwoDnsTest {
         val fixture =
             JSONObject()
                 .put("protocol", "udp")
-                .put("ip", "10.0.2.2")
+                .put("ip", fixtureHost)
                 .put("port", 18082)
                 .put("logging", true)
         try {
@@ -169,13 +174,19 @@ class PhaseTwoDnsTest {
             }
             assertNotNull(model.queries.latest("blocked.blockads.test")?.matchedRule)
             compose.onNodeWithText("Nhật ký").performClick()
+            compose.onNodeWithText("Tìm domain").performTextInput("blocked.blockads.test")
             compose.waitUntil(5000) {
                 compose
                     .onAllNodesWithText("blocked.blockads.test")
                     .fetchSemanticsNodes()
                     .isNotEmpty()
             }
-            compose.onAllNodesWithText("blocked.blockads.test")[0].performClick()
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            compose
+                .onAllNodes(
+                    hasText("blocked.blockads.test") and hasText("Đã chặn", substring = true)
+                )[0]
+                .performClick()
             compose.onNodeWithText("Chặn domain này").assertExists()
             delay(600)
             android.os.ParcelFileDescriptor.AutoCloseInputStream(
@@ -190,7 +201,7 @@ class PhaseTwoDnsTest {
             compose.onNodeWithText("Trang chủ").performClick()
             model.filters.saveCustom(original + "\n@@||blocked.blockads.test^")
             assertEquals("203.0.113.7", address(query("blocked.blockads.test")))
-            assertFalse(runCatching { model.filters.saveCustom("||bad/domain^") }.isSuccess)
+            assertFalse(runCatching { model.filters.saveCustom("||bad..domain^") }.isSuccess)
             assertEquals("203.0.113.7", address(query("blocked.blockads.test")))
             fixture.put("logging", false).put("blockMode", "nxdomain")
             assertTrue(bridge.configureDns(fixture.toString()))

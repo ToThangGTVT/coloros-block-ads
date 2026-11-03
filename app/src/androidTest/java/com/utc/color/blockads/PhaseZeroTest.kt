@@ -18,10 +18,10 @@ class PhaseZeroTest {
 
     @Test
     fun nativeBridgeAndThemePickerWork() {
-        assertEquals("0.2.0-phase2", EngineBridge().version())
+        assertEquals("0.3.0-phase3", EngineBridge().version())
         compose.waitUntil(10_000) {
             compose
-                .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.2.0-phase2"))
+                .onAllNodes(androidx.compose.ui.test.hasText("Rust JNI · 0.3.0-phase3"))
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
@@ -38,13 +38,9 @@ class PhaseZeroTest {
             compose.onNodeWithText("Cài đặt").performClick()
         }
         compose.onNodeWithText("Ứng dụng").performClick()
-        compose
-            .onNodeWithText("Lọc, bỏ qua lọc và bỏ qua tunnel theo ứng dụng sẽ có ở Phase 3.")
-            .assertExists()
+        compose.onNodeWithText("Tìm ứng dụng").assertExists()
         compose.activityRule.scenario.recreate()
-        compose
-            .onNodeWithText("Lọc, bỏ qua lọc và bỏ qua tunnel theo ứng dụng sẽ có ở Phase 3.")
-            .assertExists()
+        compose.onNodeWithText("Tìm ứng dụng").assertExists()
         val metrics = compose.activity.resources.displayMetrics
         shell(
             "input swipe 1 ${metrics.heightPixels / 2} ${metrics.widthPixels * 2 / 3} ${metrics.heightPixels / 2} 500"

@@ -38,6 +38,7 @@ fun BlockAdsApp(
     settings: com.utc.color.blockads.core.data.SettingsRepository,
     filters: com.utc.color.blockads.core.filter.FilterRepository,
     queries: com.utc.color.blockads.core.data.QueryLogRepository,
+    apps: com.utc.color.blockads.core.data.AppsRepository,
     onProtection: (Boolean) -> Unit,
 ) {
     val backStack = rememberNavBackStack(Destination.Home)
@@ -74,7 +75,8 @@ fun BlockAdsApp(
                         title = title,
                         selectedTab = selected,
                         onTab = selectTab,
-                        scrollable = destination != Destination.Log,
+                        scrollable =
+                            destination != Destination.Log && destination != Destination.Apps,
                         onBack =
                             if (
                                 destination == Destination.Apps ||
@@ -86,7 +88,7 @@ fun BlockAdsApp(
                         when (destination) {
                             Destination.Home ->
                                 HomeScreen(version, tunnel, filterStatus, onProtection)
-                            Destination.Log -> QueryLogScreen(queries, filters, settings)
+                            Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
                             Destination.Filters -> FiltersScreen(filters, settings)
                             Destination.Settings ->
                                 SettingsScreen(
@@ -97,7 +99,7 @@ fun BlockAdsApp(
                                     error = error,
                                     settings = settings,
                                 )
-                            Destination.Apps -> AppsScreen()
+                            Destination.Apps -> AppsScreen(apps)
                             Destination.Certificate -> CertificateScreen()
                         }
                     }

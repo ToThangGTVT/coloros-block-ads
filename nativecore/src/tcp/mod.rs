@@ -1,4 +1,6 @@
 //! Transparent TCP relay, preserving half-close and resetting upstreams on network changes.
+pub mod reset;
+pub mod sniff;
 use crate::{
     sockets::{self, Protector, Stats},
     tun::NetworkConfig,
@@ -7,6 +9,7 @@ use futures_util::StreamExt;
 use netstack_smoltcp::TcpListener;
 use std::{sync::Arc, time::Duration};
 use tokio::{
+    io::AsyncWriteExt,
     sync::{watch, Semaphore},
     task::JoinSet,
 };
@@ -17,6 +20,8 @@ pub async fn serve(
     stats: Arc<Stats>,
     mut network: watch::Receiver<NetworkConfig>,
     dns: crate::dns::Session,
+    resets: Arc<reset::Resets>,
+    raw: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) {
     let permits = Arc::new(Semaphore::new(256));
     let mut flows = JoinSet::new();
@@ -32,20 +37,37 @@ pub async fn serve(
             }
             _ = flows.join_next(), if !flows.is_empty() => {}
             incoming = listener.next() => {
-                let Some((client, _, destination)) = incoming else { break; };
+                let Some((client, source, destination)) = incoming else { break; };
                 let Ok(permit) = permits.clone().try_acquire_owned() else { continue; };
+                let owner = crate::policy::Owner::from_uid(protector.owner(6, source, destination));
                 if destination.port() == 53 {
                     let dns = dns.clone(); let physical = network.borrow().dns;
-                    flows.spawn(async move { let _permit = permit; crate::dns::serve_tcp(client, dns, physical).await; });
+                    flows.spawn(async move { let _permit = permit; crate::dns::serve_tcp(client, dns, physical, owner).await; });
                     continue;
                 }
                 let Some(destination) = network.borrow().destination(destination) else { continue; };
                 let protector = protector.clone();
                 let stats = stats.clone();
+                let resets = resets.clone(); let raw = raw.clone();
                 flows.spawn(async move {
                     let _permit = permit;
                     let mut client = CountedStream { inner: client, stats: stats.clone() };
+                    let (initial, parsed) = if owner.bypass { (vec![], sniff::Parsed::Unknown) } else { sniff::read_initial(&mut client).await };
+                    let (domain, url, protocol) = match &parsed {
+                        sniff::Parsed::Tls(host) => (host.clone(), None, "tls"),
+                        sniff::Parsed::Http { host, url } => (host.clone(), Some(url.as_str()), "http"),
+                        _ => (crate::dns::reverse::lookup(owner.uid, destination.ip()).unwrap_or_else(|| destination.ip().to_string()), None, "tcp"),
+                    };
+                    let decision = if owner.bypass { None } else { crate::filter::current().matches(&domain, url, &owner.packages) };
+                    let blocked = decision.as_ref().is_some_and(|d| d.blocked);
+                    crate::dns::event(domain, blocked, decision.map(|d| d.rule), false, owner.uid, protocol);
+                    if blocked {
+                        if matches!(parsed, sniff::Parsed::Http { .. }) { let _ = client.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await; let _ = client.shutdown().await; }
+                        else if let Some(packet) = resets.packet(source, destination) { let _ = raw.send(packet).await; }
+                        return;
+                    }
                     if let Ok(mut upstream) = sockets::connect_tcp(destination, protector.as_ref(), &stats).await {
+                        if upstream.write_all(&initial).await.is_err() { return; }
                         // The stack also has a two-hour dead-peer timeout. Bound abandoned relays.
                         let _ = tokio::time::timeout(Duration::from_secs(7200),
                             tokio::io::copy_bidirectional(&mut client, &mut upstream)).await;

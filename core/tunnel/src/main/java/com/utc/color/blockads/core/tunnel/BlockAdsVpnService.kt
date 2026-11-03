@@ -19,6 +19,9 @@ import com.utc.color.blockads.core.enginebridge.SocketProtector
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -26,6 +29,8 @@ import kotlinx.coroutines.sync.withLock
 class BlockAdsVpnService : VpnService(), SocketProtector {
     @javax.inject.Inject lateinit var filters: com.utc.color.blockads.core.filter.FilterRepository
     @javax.inject.Inject lateinit var queries: com.utc.color.blockads.core.data.QueryLogRepository
+    @javax.inject.Inject lateinit var settings: com.utc.color.blockads.core.data.SettingsRepository
+    @javax.inject.Inject lateinit var trafficPolicy: TrafficPolicyRepository
     private val engine = EngineBridge()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -37,6 +42,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     @Volatile private var acceptingSockets = false
     @Volatile private var lastStartId = 0
     private var snapshot: UnderlyingNetwork? = null
+    private var excludedPackages: Set<String>? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -62,6 +68,30 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             }
         }
         monitor = UnderlyingNetworkMonitor(this) { commands.trySend { refreshNetwork() } }
+        scope.launch {
+            settings.appPolicies
+                .map { policies ->
+                    policies
+                        .filterValues {
+                            it == com.utc.color.blockads.core.common.AppFilterMode.BypassTunnel
+                        }
+                        .keys
+                        .toSet()
+                }
+                .distinctUntilChanged()
+                .collect { excluded ->
+                    commands.trySend {
+                        if (
+                            excludedPackages != null &&
+                                excludedPackages != excluded &&
+                                engine.isRunning()
+                        ) {
+                            shutdown(TunnelState(TunnelStatus.Reconnecting))
+                            startTunnel(lastStartId)
+                        }
+                    }
+                }
+        }
         scope.launch {
             for (command in commands) gate.withLock {
                 try {
@@ -114,6 +144,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         TunnelRuntime.state.value = TunnelState(TunnelStatus.Connecting)
         try {
             filters.awaitReady()
+            trafficPolicy.awaitReady()
             check(prepare(this) == null) { "VPN permission required" }
             if (!monitoring) {
                 monitor.start()
@@ -134,7 +165,16 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                     .addDnsServer("172.19.0.2")
                     .addDnsServer("fdfe:dcba:9876::2")
                     .setMetered(false)
-            // Per-app exclusions are added here when the Phase 3 app policy repository exists.
+            val excluded =
+                settings.appPolicies
+                    .first()
+                    .filterValues {
+                        it == com.utc.color.blockads.core.common.AppFilterMode.BypassTunnel
+                    }
+                    .keys
+                    .toSet()
+            excluded.forEach { name -> runCatching { builder.addDisallowedApplication(name) } }
+            excludedPackages = excluded
             val connectivity = getSystemService(ConnectivityManager::class.java)
             val previous = connectivity.activeNetwork
             val tun = builder.establish() ?: error("VPN could not be established")
@@ -147,10 +187,20 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                 while (true) {
                     val active = connectivity.activeNetwork
                     val caps = active?.let { connectivity.getNetworkCapabilities(it) }
+                    val excludedSelf = packageName in excluded
+                    val ownVpn =
+                        excludedSelf &&
+                            connectivity.allNetworks.any { network ->
+                                connectivity.getNetworkCapabilities(network)?.let {
+                                    it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                                        it.ownerUid == Process.myUid()
+                                } == true
+                            }
                     if (
-                        active != previous &&
-                            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true &&
-                            caps.ownerUid == Process.myUid()
+                        ownVpn ||
+                            (active != previous &&
+                                caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true &&
+                                caps.ownerUid == Process.myUid())
                     )
                         break
                     delay(25)
@@ -231,6 +281,25 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         if (!allowed) TunnelRuntime.lastSocketFailure = "protect-rejected"
         return allowed
     }
+
+    override fun connectionOwner(
+        protocol: Int,
+        source: String,
+        sourcePort: Int,
+        destination: String,
+        destinationPort: Int,
+    ): Int = runCatching {
+        getSystemService(ConnectivityManager::class.java)
+            .getConnectionOwnerUid(
+                protocol,
+                java.net.InetSocketAddress(java.net.InetAddress.getByName(source), sourcePort),
+                java.net.InetSocketAddress(
+                    java.net.InetAddress.getByName(destination),
+                    destinationPort,
+                ),
+            )
+    }
+        .getOrDefault(-1)
 
     override fun onRevoke() {
         acceptingSockets = false

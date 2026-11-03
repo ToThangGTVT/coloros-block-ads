@@ -27,6 +27,8 @@ pub async fn serve(
     let mut serial = 0u64;
     let mut dns_jobs = JoinSet::new();
     let dns_limit = Arc::new(tokio::sync::Semaphore::new(128));
+    let mut owners = crate::policy::OwnerCache::default();
+    let mut quic_events: HashMap<Key, std::time::Instant> = HashMap::new();
     loop {
         tokio::select! {
             biased;
@@ -56,12 +58,23 @@ pub async fn serve(
             }
             packet = incoming.next() => {
                 let Some((mut data, client, original)) = packet else { break; };
+                let owner = owners.owner(protector.as_ref(), 17, client, original);
+                if original.port() == 443 && crate::policy::current().block_quic && !owner.bypass {
+                    let key = (client, original);
+                    if !quic_events.get(&key).is_some_and(|at| at.elapsed() < Duration::from_secs(30)) {
+                        if quic_events.len() >= 1024 { quic_events.retain(|_, at| at.elapsed() < Duration::from_secs(30)); }
+                        if quic_events.len() >= 1024 { quic_events.clear(); }
+                        quic_events.insert(key, std::time::Instant::now());
+                        crate::dns::event(crate::dns::reverse::lookup(owner.uid, original.ip()).unwrap_or_else(|| original.ip().to_string()), true, Some("QUIC policy · UDP/443".into()), false, owner.uid, "quic");
+                    }
+                    continue;
+                }
                 if original.port() == 53 {
                     let Ok(permit) = dns_limit.clone().try_acquire_owned() else { continue; };
                     let session = dns.clone(); let replies = reply_tx.clone(); let physical = network.borrow().dns;
                     dns_jobs.spawn(async move {
                         let _permit = permit;
-                        if let Ok(response) = session.resolve(&data, physical, false).await { let _ = replies.send((response, original, client)).await; }
+                        if let Ok(response) = session.resolve_for(&data, physical, false, &owner).await { let _ = replies.send((response, original, client)).await; }
                     });
                     continue;
                 }

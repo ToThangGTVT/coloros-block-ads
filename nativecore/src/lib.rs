@@ -2,6 +2,7 @@
 pub mod dns;
 pub mod filter;
 pub mod mitm;
+pub mod policy;
 pub mod sockets;
 pub mod tcp;
 pub mod tun;
@@ -20,7 +21,7 @@ use std::{
 };
 use tun::{Engine, NetworkConfig};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase2");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase3");
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 struct AndroidProtector {
@@ -28,6 +29,37 @@ struct AndroidProtector {
     callback: GlobalRef,
 }
 impl Protector for AndroidProtector {
+    fn owner(
+        &self,
+        protocol: u8,
+        source: std::net::SocketAddr,
+        destination: std::net::SocketAddr,
+    ) -> Option<u32> {
+        let mut env = self.vm.attach_current_thread().ok()?;
+        let local = JObject::from(env.new_string(source.ip().to_string()).ok()?);
+        let remote = JObject::from(env.new_string(destination.ip().to_string()).ok()?);
+        let result = env
+            .call_method(
+                self.callback.as_obj(),
+                "connectionOwner",
+                "(ILjava/lang/String;ILjava/lang/String;I)I",
+                &[
+                    JValue::Int(protocol as i32),
+                    JValue::Object(&local),
+                    JValue::Int(source.port() as i32),
+                    JValue::Object(&remote),
+                    JValue::Int(destination.port() as i32),
+                ],
+            )
+            .and_then(|v| v.i());
+        match result {
+            Ok(uid) if uid >= 0 => Some(uid as u32),
+            _ => {
+                let _ = env.exception_clear();
+                None
+            }
+        }
+    }
     fn protect(&self, fd: i32) -> io::Result<()> {
         let mut env = self.vm.attach_current_thread().map_err(io::Error::other)?;
         let result = env.call_method(
@@ -47,6 +79,23 @@ impl Protector for AndroidProtector {
                 ))
             }
         }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeConfigurePolicy(
+    mut env: JNIEnv,
+    _: JObject,
+    json: JString,
+) -> jboolean {
+    if env
+        .get_string(&json)
+        .ok()
+        .is_some_and(|s| policy::configure(&String::from(s)))
+    {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
     }
 }
 fn config(env: &mut JNIEnv, dns: &JString) -> NetworkConfig {

@@ -142,6 +142,8 @@ impl Engine {
                         let dns = crate::dns::Session::new(protector.clone(), thread_stats.clone());
                         let tcp_dns = dns.clone();
                         let (raw_tx, mut raw_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+                        let resets = Arc::new(crate::tcp::reset::Resets::default());
+                        let read_resets = resets.clone();
                         let mut tasks: JoinSet<io::Result<()>> = JoinSet::new();
                         let reader = tun.clone();
                         let read_stats = thread_stats.clone();
@@ -153,6 +155,7 @@ impl Engine {
                                     return Err(io::ErrorKind::UnexpectedEof.into());
                                 }
                                 read_stats.packets_in.fetch_add(1, Ordering::Relaxed);
+                                read_resets.observe(&buffer[..len]);
                                 // Reject malformed/fragmented input instead of terminating an upstream UDP stream.
                                 if !matches!(etherparse::SlicedPacket::from_ip(&buffer[..len]).ok().and_then(|packet| packet.transport),
                                     Some(etherparse::TransportSlice::Tcp(_) | etherparse::TransportSlice::Udp(_))) { continue; }
@@ -177,6 +180,7 @@ impl Engine {
                         let tcp_protector = protector.clone();
                         let tcp_stats = thread_stats.clone();
                         let tcp_network = network_rx.clone();
+                        let tcp_raw = raw_tx.clone();
                         tasks.spawn(async move {
                             crate::tcp::serve(
                                 tcp.expect("TCP enabled"),
@@ -184,6 +188,8 @@ impl Engine {
                                 tcp_stats,
                                 tcp_network,
                                 tcp_dns,
+                                resets,
+                                tcp_raw,
                             )
                             .await;
                             Ok(())

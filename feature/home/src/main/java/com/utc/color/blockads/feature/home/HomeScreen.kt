@@ -37,7 +37,7 @@ fun HomeScreen(
                 enabled = tunnel.status != TunnelStatus.Connecting,
             )
             tunnel.detail?.let { AppText(it) }
-            AppText("Phase 2 · Lọc DNS. Chưa lọc SNI/HTTP hoặc giải mã HTTPS.")
+            AppText("Lọc DNS, SNI/HTTP và theo ứng dụng. HTTPS mã hóa chưa được giải mã.")
         }
         AppCard {
             AppText("${filter.loaded} rule đang hoạt động", prominent = true)

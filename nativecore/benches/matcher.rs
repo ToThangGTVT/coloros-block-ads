@@ -10,7 +10,7 @@ fn main() {
     let started = std::time::Instant::now();
     for i in 0..1_000_000u64 {
         let domain = format!("ads{:06}.example.test", (i * 65537) % 750_000);
-        std::hint::black_box(rules.lookup(std::hint::black_box(&domain)));
+        std::hint::black_box(rules.matches(std::hint::black_box(&domain), None, &[]));
     }
     let micros = started.elapsed().as_secs_f64(); // million lookups: elapsed seconds == microseconds/lookup
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();

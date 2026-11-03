@@ -26,6 +26,8 @@ constructor(
     val tunnel: TunnelController,
     val filters: com.utc.color.blockads.core.filter.FilterRepository,
     val queries: com.utc.color.blockads.core.data.QueryLogRepository,
+    val apps: com.utc.color.blockads.core.data.AppsRepository,
+    val trafficPolicy: com.utc.color.blockads.core.tunnel.TrafficPolicyRepository,
 ) : ViewModel() {
     val theme =
         settings.theme.stateIn(
