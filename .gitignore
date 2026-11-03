@@ -12,4 +12,10 @@
 /captures
 .externalNativeBuild
 .cxx
+**/build/
+.tools/
+.kotlin/
 local.properties
+
+nativecore/target/
+core/engine-bridge/src/main/jniLibs/
