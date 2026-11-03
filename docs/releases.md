@@ -4,9 +4,10 @@ Repo: https://github.com/ToThangGTVT/coloros-block-ads
 
 ## Phát hành APK
 
-Workflow `.github/workflows/release.yml` tự build và phát hành khi push lên `main`, hoặc chọn
+Workflow `.github/workflows/release.yml` chỉ tự build và phát hành khi push tag `vX.Y.Z`, hoặc chọn
 **Actions → Release APK → Run workflow**. Tăng cả `versionCode` và `versionName`
-trong `app/build.gradle.kts` trước mỗi bản mới; workflow tạo tag `v` + `versionName`.
+trong `app/build.gradle.kts` trước mỗi bản mới; tag phải là `v` + `versionName`.
+Push code thường lên các nhánh không kích hoạt workflow.
 Không ghi đè release đã tồn tại; lần build cùng version chỉ lưu artifact và giữ release cũ.
 
 Workflow kiểm tra Rust, build native cho bốn ABI, chạy unit test/lint và build APK
