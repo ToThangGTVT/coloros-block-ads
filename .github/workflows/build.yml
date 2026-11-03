@@ -15,9 +15,10 @@ jobs:
           java-version: '25'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '16111833'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
       - uses: gradle/actions/setup-gradle@v4
       - run: rustup show
       - run: cargo fmt --manifest-path nativecore/Cargo.toml --check
@@ -40,9 +41,10 @@ jobs:
           java-version: '25'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '16111833'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
       - uses: gradle/actions/setup-gradle@v4
       - run: scripts/build-native.sh
       - name: Enable KVM

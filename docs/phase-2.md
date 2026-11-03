@@ -47,7 +47,9 @@ Có cả hồi quy Phase 1: HTTPS, handover Wi-Fi/cellular, 20 vòng start/stop,
 ## Kết quả và giới hạn
 
 - CI lần đầu phát hiện setup-android v3 cố cài package `tools` đã bị gỡ; workflow
-  đã chỉ định `platform-tools`. Theo dõi lại run sau push.
+  đã chỉ định `platform-tools`. Run tiếp phát hiện package SDK nay là
+  `platforms;android-37.0`; đã kiểm tra repository XML Google, pin command-line
+  tools 16111833 và sửa tên package. Compile/target vẫn 37.
 - Native 10 test qua; fmt/clippy qua. Build bốn ABI Android.
 - Emulator API 37 arm64: 5 test qua, không skip, gồm ba upstream mã hóa thực và
   hồi quy tunnel. Báo cáo ở `app/build/reports/androidTests/connected/debug/`.
