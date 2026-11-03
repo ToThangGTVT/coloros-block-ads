@@ -4,10 +4,10 @@ Repo: https://github.com/ToThangGTVT/coloros-block-ads
 
 ## Phát hành APK
 
-Workflow `.github/workflows/release.yml` chạy khi push tag `vX.Y.Z`, hoặc chọn
+Workflow `.github/workflows/release.yml` tự build và phát hành khi push lên `main`, hoặc chọn
 **Actions → Release APK → Run workflow**. Tăng cả `versionCode` và `versionName`
-trong `app/build.gradle.kts` trước mỗi bản mới; tag phải là `v` + `versionName`.
-Không ghi đè release đã tồn tại.
+trong `app/build.gradle.kts` trước mỗi bản mới; workflow tạo tag `v` + `versionName`.
+Không ghi đè release đã tồn tại; lần build cùng version chỉ lưu artifact và giữ release cũ.
 
 Workflow kiểm tra Rust, build native cho bốn ABI, chạy unit test/lint và build APK
 release có R8/resource shrink. APK được ký bằng khóa cố định từ bốn Actions secrets:
@@ -83,3 +83,16 @@ python3 scripts/prepare-release.py
 
 Nếu không có các biến ký, build local release vẫn tạo APK unsigned; workflow
 phát hành yêu cầu đủ secrets và kiểm tra chữ ký bằng `apksigner`.
+
+## Hiệu năng giao diện 1.0.0
+
+Danh sách app và nhật ký dùng key/content type ổn định, icon từ cache, ánh xạ UID
+được tính một lần. Nhật ký giữ tối đa bốn truy vấn phân trang trong cache, tối đa
+300 dòng mỗi truy vấn; tìm kiếm đợi 200 ms sau khi nhập để giảm truy vấn liên tục.
+Thống kê được chia sẻ qua StateFlow và giới hạn cập nhật biểu đồ mỗi giây.
+Cài đặt, bộ lọc và danh mục dùng các item lazy độc lập. Bảng chọn cũng dùng LazyColumn,
+bao gồm trường hợp 1.000 lựa chọn; không dựng cả danh sách khi mở sheet. Chuyển tab
+sử dụng fade 140 ms, tránh di chuyển hai lớp nội dung có backdrop cùng lúc.
+Mục cập nhật chỉ tạo vùng thông báo khi thực sự có nội dung, tránh khoảng trống
+thừa giữa hai hàng. Không có số phần trăm cải thiện hiệu năng được công bố khi
+chưa đo trên thiết bị đích.
