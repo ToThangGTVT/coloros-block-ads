@@ -135,7 +135,9 @@ chưa đo trên thiết bị đích.
 - Thread tunnel gắn vào ART một lần thay vì gắn và gỡ ở mỗi lần xác định app sở hữu kết nối, bảo vệ socket hoặc gửi log.
 - Đã kiểm tra 28 test Rust, Clippy, test lifecycle trên máy giả lập có CheckJNI và UDP tới 8.000 byte; chưa đo mức tiết kiệm pin trên máy thật.
 
-## 1.1.0 — Lọc quảng cáo trong trình duyệt
+## 1.1.0 — Lọc quảng cáo trong trình duyệt (không phát hành)
+
+Tag `v1.1.0` không có release: workflow dừng ở một test kết nối lại có điều kiện tranh chấp thời gian. Nội dung dưới đây phát hành trong 1.1.1.
 
 - Proxy HTTPS dùng engine `adblock` của Brave (MPL-2.0) cho quy tắc mạng có ngữ cảnh request, ẩn phần tử (kể cả quy tắc chung theo class/id và bộ lọc procedural), scriptlet `##+js` và `$redirect` từ AdGuard Scriptlets tải lúc chạy.
 - Style/script được chèn ngay sau `<head>`; trang gzip/deflate/br được giải nén trong proxy thay vì ép `identity`.
@@ -144,3 +146,8 @@ chưa đo trên thiết bị đích.
 - Danh sách DNS và bộ lọc trình duyệt tách riêng; bộ lọc trình duyệt không chặn DNS. Thêm danh mục bộ lọc của tiện ích AdGuard (7 nhóm).
 - Tải danh sách không còn bị hủy khi rời màn hình.
 - Đã kiểm tra test Rust (tuần tự), Clippy, build/lint debug và release; 16 danh sách AdGuard thật biên dịch được. Chưa chạy test instrumentation trên máy thật.
+
+## 1.1.1 — Phát hành nội dung của 1.1.0
+
+- Gồm toàn bộ thay đổi của 1.1.0 ở trên.
+- Test kết nối lại chấp nhận việc proxy đóng kết nối upstream ngay sau khi đã nhận đủ phản hồi `Connection: close`; trước đây test lỗi ngẫu nhiên trên máy chạy CI.
