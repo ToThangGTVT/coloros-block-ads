@@ -151,3 +151,9 @@ Tag `v1.1.0` không có release: workflow dừng ở một test kết nối lạ
 
 - Gồm toàn bộ thay đổi của 1.1.0 ở trên.
 - Test kết nối lại chấp nhận việc proxy đóng kết nối upstream ngay sau khi đã nhận đủ phản hồi `Connection: close`; trước đây test lỗi ngẫu nhiên trên máy chạy CI.
+
+## 1.1.2 — Chỉ chặn QUIC cho app lọc HTTPS
+
+- **Chặn QUIC** giờ chỉ drop UDP/443 của app đang lọc HTTPS (đã chọn, có CA), để chúng dùng TCP qua proxy. App khác như YouTube, Instagram giữ HTTP/3; chặn quảng cáo của chúng dựa vào DNS nên không đổi.
+- Với app lọc HTTPS, host proxy không giải mã (nhạy cảm, pinning) cũng giữ QUIC khi biết được tên miền.
+- Đã kiểm tra test Rust (tuần tự), Clippy và fmt. Chưa thử trên máy thật.
