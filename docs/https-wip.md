@@ -5,6 +5,17 @@ tra với Chrome 158.0.8127.2. Chưa tạo tag hoặc phát hành phiên bản m
 Bản release 1.0.4, dữ liệu và CA của bản release được giữ nguyên. Người dùng
 đã cài CA riêng của bản debug; không xóa hoặc tạo lại CA sau khi cài.
 
+## Giải nén HTML trong proxy
+
+Trước đây trang cần chèn bị ép `Accept-Encoding: identity`, nên HTML tải về qua
+mạng không nén (thường lớn gấp 5–10 lần), và `no-store` làm Back/Forward phải tải
+lại. Giờ proxy xin `gzip, deflate, br`, giải nén theo luồng bằng `async-compression`
+(Rust thuần, không cần zstd/C) rồi mới chèn; trình duyệt nhận bản không nén qua kết
+nối nội bộ. Cache đổi thành `private, no-cache`, vẫn bỏ validator. Test: bốn mã hóa
++ gzip nhiều member + dữ liệu hỏng (unit), origin gzip qua bốn tổ hợp H1/H2, và
+Chrome headless với origin gửi brotli (10/10). Chi tiết:
+[cosmetic-filtering.md](cosmetic-filtering.md#phạm-vi-và-giới-hạn).
+
 ## Chèn sớm ngay sau `<head>`
 
 Trước đây phải quét hết head tới `</head>` mới chèn, và bỏ qua cả trang khi gặp

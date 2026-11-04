@@ -76,9 +76,12 @@ khớp. Ngoại lệ chung không gắn tên miền (`#@#.ad`) không được h
   riêng sẽ báo lỗi; trong danh sách tải về thì được nạp nhưng không có tác dụng.
 - Chỉ GET HTML document/frame có khai báo Accept text/html, HTTP 200, không có
   Range hoặc Cache-Control: no-transform. Không sửa ảnh, video, JSON hay download.
-- Proxy yêu cầu `Accept-Encoding: identity` khi trang có gì để chèn, tránh giải
-  nén/nén lại. Nếu máy chủ vẫn gửi dữ liệu nén thì giữ nguyên. Chưa benchmark
-  CPU/pin trên thiết bị thật.
+- Với trang cần chèn, proxy xin máy chủ `Accept-Encoding: gzip, deflate, br`
+  (bỏ zstd), nên HTML vẫn đi nén qua mạng di động. Proxy giải nén theo luồng rồi
+  gửi bản không nén cho trình duyệt qua kết nối nội bộ; không nén lại. Mã hóa lạ
+  hoặc xếp chồng (`zstd`, `gzip, br`) thì truyền nguyên, không chèn. Dữ liệu nén
+  hỏng làm hỏng response đó, không làm sập proxy. Trên Mac: ~1,3 MB HTML giải nén
+  + chèn trong ~1 ms; chưa benchmark CPU/pin trên điện thoại.
 - Vị trí chèn (phân tích HTML theo luồng, chỉ giữ một thẻ chưa hoàn chỉnh tối đa
   8 KiB, chèn xong thì truyền thẳng phần còn lại):
   - Header `Content-Type` có charset (phần lớn website): ngay sau thẻ `<head …>`;
@@ -98,7 +101,10 @@ khớp. Ngoại lệ chung không gắn tên miền (`#@#.ad`) không được h
   (`style-src-elem`, `script-src-elem`), giữ nguyên các nguồn cũ. Không thêm nonce
   vào chính sách vốn cho phép inline (trừ khi có `'strict-dynamic'`, vốn làm
   `'unsafe-inline'` mất hiệu lực). Không sửa CSP trong meta HTML.
-- HTML được chèn bỏ Content-Length và validator/digest cũ, đặt no-store. Asset
+- HTML được chèn bỏ Content-Length, Content-Encoding và validator/digest cũ, đặt
+  `Cache-Control: private, no-cache`: không còn validator nên mỗi lần mở trang đều
+  tải bản mới (nonce mới, quy tắc mới), nhưng Back/Forward vẫn có thể dùng bản đã
+  lưu cùng CSP khớp với nó (trước đây `no-store` chặn cả việc này). Asset
   ảnh/video/script giữ cache thông thường.
 - Trang lấy từ cache/service worker mà không qua mạng sẽ không có phần chèn.
 

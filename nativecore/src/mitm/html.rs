@@ -1,7 +1,7 @@
 //! Streaming HTML-head rewrite with bounded token memory. Inserts the page's CSS and, when generic
 //! or procedural rules apply, the small content script in `html/content.js`.
 mod scanner;
-use super::proxy::Body;
+use super::proxy::{Body, BoxError};
 use crate::filter::Page;
 use bytes::Bytes;
 use futures_util::{stream, StreamExt};
@@ -39,15 +39,73 @@ pub(super) fn document_request<B>(request: &Request<B>) -> bool {
             .get("sec-fetch-dest")
             .is_none_or(|v| v == "document" || v == "iframe" || v == "frame")
 }
+/// Content codings the proxy can decode before rewriting. Asked of the origin for documents it
+/// will rewrite, so HTML still crosses the network compressed; the browser gets it decoded over
+/// the local connection, where size does not matter.
+pub(super) const ACCEPT_ENCODING: &str = "gzip, deflate, br";
+#[derive(Clone, Copy, PartialEq)]
+enum Coding {
+    Identity,
+    Gzip,
+    Deflate,
+    Brotli,
+}
+/// A single supported coding; stacked or unknown codings are left untouched.
+fn coding(headers: &HeaderMap) -> Option<Coding> {
+    let mut codings = headers
+        .get_all("content-encoding")
+        .iter()
+        .flat_map(|v| v.to_str().map_or(vec!["?"], |v| v.split(',').collect()))
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && !c.eq_ignore_ascii_case("identity"));
+    let coding = match codings.next() {
+        None => return Some(Coding::Identity),
+        Some(c) if c.eq_ignore_ascii_case("gzip") || c.eq_ignore_ascii_case("x-gzip") => {
+            Coding::Gzip
+        }
+        Some(c) if c.eq_ignore_ascii_case("deflate") => Coding::Deflate,
+        Some(c) if c.eq_ignore_ascii_case("br") => Coding::Brotli,
+        Some(_) => return None,
+    };
+    codings.next().is_none().then_some(coding)
+}
+fn decode(body: Body, coding: Coding) -> Body {
+    use async_compression::tokio::bufread::{BrotliDecoder, GzipDecoder, ZlibDecoder};
+    use tokio::io::AsyncRead;
+    // Trailers cannot survive decoding; HTML responses practically never carry them.
+    let input = tokio_util::io::StreamReader::new(BodyStream::new(body).filter_map(|frame| {
+        std::future::ready(match frame {
+            Ok(frame) => frame.into_data().ok().map(Ok),
+            Err(error) => Some(Err(std::io::Error::other(error))),
+        })
+    }));
+    let reader: std::pin::Pin<Box<dyn AsyncRead + Send>> = match coding {
+        Coding::Gzip => {
+            let mut decoder = GzipDecoder::new(input);
+            decoder.multiple_members(true);
+            Box::pin(decoder)
+        }
+        // HTTP "deflate" is the zlib format (RFC 9110 §8.4.1.2).
+        Coding::Deflate => Box::pin(ZlibDecoder::new(input)),
+        Coding::Brotli => Box::pin(BrotliDecoder::new(input)),
+        Coding::Identity => Box::pin(input),
+    };
+    StreamBody::new(
+        tokio_util::io::ReaderStream::with_capacity(reader, 16 * 1024).map(|chunk| {
+            chunk
+                .map(Frame::data)
+                .map_err(|e| -> BoxError { Box::new(e) })
+        }),
+    )
+    .boxed_unsync()
+}
 fn eligible(response: &Response<Body>) -> bool {
     let h = response.headers();
     response.status() == hyper::StatusCode::OK
         && !no_transform(h)
         && !h.contains_key("content-range")
         && !h.contains_key("content-disposition")
-        && h.get_all("content-encoding")
-            .iter()
-            .all(|v| v.as_bytes().eq_ignore_ascii_case(b"identity"))
+        && coding(h).is_some()
         && h.get("content-type")
             .and_then(|v| v.to_str().ok())
             .is_some_and(|v| {
@@ -116,7 +174,12 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
     let Some(csp) = csp_headers(response.headers(), &nonce, script.is_some()) else {
         return response;
     };
-    let (mut parts, body) = response.into_parts();
+    let coding = coding(response.headers()).unwrap_or(Coding::Identity);
+    let (mut parts, mut body) = response.into_parts();
+    if coding != Coding::Identity {
+        parts.headers.remove("content-encoding");
+        body = decode(body, coding);
+    }
     // Headers are sent before the head finishes streaming. All rewrite candidates must
     // therefore discard byte-dependent metadata, even if malformed markup later passes through.
     for name in [
@@ -131,9 +194,12 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
     ] {
         parts.headers.remove(name);
     }
-    parts
-        .headers
-        .insert("cache-control", HeaderValue::from_static("no-store"));
+    // Validators are gone, so every load fetches a fresh copy (fresh nonce, current rules),
+    // while back/forward navigation may still reuse the stored page with its matching CSP.
+    parts.headers.insert(
+        "cache-control",
+        HeaderValue::from_static("private, no-cache"),
+    );
     for (name, values) in csp {
         parts.headers.remove(name);
         for value in values {
@@ -623,11 +689,116 @@ mod tests {
             assert!(text.contains(".ad{display:none!important}"));
         }
     }
+    async fn encode(coding: Coding, data: &[u8]) -> Vec<u8> {
+        use async_compression::tokio::bufread::{BrotliEncoder, GzipEncoder, ZlibEncoder};
+        use tokio::io::AsyncReadExt;
+        let mut output = Vec::new();
+        match coding {
+            Coding::Gzip => GzipEncoder::new(data).read_to_end(&mut output).await,
+            Coding::Deflate => ZlibEncoder::new(data).read_to_end(&mut output).await,
+            Coding::Brotli => BrotliEncoder::new(data).read_to_end(&mut output).await,
+            Coding::Identity => unreachable!(),
+        }
+        .unwrap();
+        output
+    }
+    fn chunked(data: Vec<u8>, encoding: &'static str) -> Response<Body> {
+        let frames: Vec<Result<_, BoxError>> = data
+            .chunks(7)
+            .map(|c| Ok(Frame::data(Bytes::copy_from_slice(c))))
+            .collect();
+        Response::builder()
+            .header("content-type", "text/html; charset=utf-8")
+            .header("content-encoding", encoding)
+            .header("content-length", data.len())
+            .header("cache-control", "max-age=600")
+            .header("etag", "\"v1\"")
+            .body(StreamBody::new(stream::iter(frames)).boxed_unsync())
+            .unwrap()
+    }
+    #[tokio::test]
+    async fn compressed_documents_are_decoded_then_rewritten() {
+        let html = format!(
+            "<!doctype html><html><head><title>t</title></head><body>{}</body></html>",
+            "<p>Nội dung bài viết</p>".repeat(5000)
+        );
+        for (coding, name) in [
+            (Coding::Gzip, "gzip"),
+            (Coding::Gzip, "x-gzip"),
+            (Coding::Deflate, "deflate"),
+            (Coding::Brotli, "br"),
+        ] {
+            let encoded = encode(coding, html.as_bytes()).await;
+            assert!(encoded.len() < html.len() / 10);
+            let result = rewrite(chunked(encoded, name), ".ad{display:none!important}", None).await;
+            let headers = result.headers().clone();
+            assert!(!headers.contains_key("content-encoding"), "{name}");
+            assert!(!headers.contains_key("content-length"));
+            assert!(!headers.contains_key("etag"));
+            assert_eq!(headers["cache-control"], "private, no-cache");
+            let bytes = result.into_body().collect().await.unwrap().to_bytes();
+            let text = std::str::from_utf8(&bytes).unwrap();
+            let start = text.find("<style nonce=").unwrap();
+            let end = text[start..].find("</style>").unwrap() + start + "</style>".len();
+            assert!(text[..start].ends_with("<head>"), "{name}");
+            assert_eq!(
+                format!("{}{}", &text[..start], &text[end..]),
+                html,
+                "{name}"
+            );
+        }
+        // Two gzip members back to back are one valid gzip body.
+        let mut members = encode(Coding::Gzip, b"<html><head></head>").await;
+        members.extend(encode(Coding::Gzip, b"<body>tail</body></html>").await);
+        let result = rewrite(chunked(members, "gzip"), ".ad{}", None).await;
+        let bytes = result.into_body().collect().await.unwrap().to_bytes();
+        assert!(std::str::from_utf8(&bytes)
+            .unwrap()
+            .ends_with("</head><body>tail</body></html>"));
+    }
+    #[tokio::test]
+    #[ignore = "Throughput probe; run with --release --ignored --nocapture"]
+    async fn decode_and_rewrite_throughput() {
+        let html = format!(
+            "<!doctype html><html><head><title>t</title></head><body>{}</body></html>",
+            "<div class=\"post\"><p>Nội dung bài viết thử nghiệm</p></div>".repeat(20_000)
+        );
+        for (coding, name) in [(Coding::Gzip, "gzip"), (Coding::Brotli, "br")] {
+            let encoded = encode(coding, html.as_bytes()).await;
+            let frames: Vec<Result<_, BoxError>> = encoded
+                .chunks(16 * 1024)
+                .map(|c| Ok(Frame::data(Bytes::copy_from_slice(c))))
+                .collect();
+            let response = Response::builder()
+                .header("content-type", "text/html; charset=utf-8")
+                .header("content-encoding", name)
+                .body(StreamBody::new(stream::iter(frames)).boxed_unsync())
+                .unwrap();
+            let start = std::time::Instant::now();
+            let result = rewrite(response, ".ad{}", None).await;
+            let size = result.into_body().collect().await.unwrap().to_bytes().len();
+            eprintln!(
+                "{name}: {} KiB -> {} KiB in {:?}",
+                encoded.len() / 1024,
+                size / 1024,
+                start.elapsed()
+            );
+        }
+    }
+    #[tokio::test]
+    async fn corrupt_compressed_body_fails_the_stream_without_panicking() {
+        let mut encoded = encode(Coding::Gzip, b"<html><head></head><body>x</body></html>").await;
+        let middle = encoded.len() / 2;
+        encoded[middle..].iter_mut().for_each(|b| *b ^= 0x5a);
+        let result = rewrite(chunked(encoded, "gzip"), ".ad{}", None).await;
+        assert!(result.into_body().collect().await.is_err());
+    }
     #[tokio::test]
     async fn incompatible_documents_are_passed_through_byte_for_byte() {
         const HTML: &[u8] = b"<html><head></head><body>content</body></html>";
         for (header, value) in [
-            ("content-encoding", "gzip"),
+            ("content-encoding", "zstd"),
+            ("content-encoding", "gzip, br"),
             ("cache-control", "public, no-transform"),
             ("content-type", "application/json"),
             ("content-type", "text/html; charset=utf-16"),
@@ -641,7 +812,7 @@ mod tests {
             let result = rewrite(response, ".ad{display:none!important}", None).await;
             assert!(
                 !result.headers().contains_key("cache-control")
-                    || result.headers()["cache-control"] != "no-store"
+                    || result.headers()["cache-control"] != "private, no-cache"
             );
             assert_eq!(
                 result

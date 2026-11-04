@@ -478,10 +478,10 @@ async fn forward(
         .then(|| rules.cosmetic_page(domain))
         .filter(|page| !page.is_empty());
     if page.is_some() {
-        // Avoid decompression/recompression work. Noncompliant compressed responses pass through.
+        // Only codings the rewriter can decode; anything else would pass through unmodified.
         request.headers_mut().insert(
             hyper::header::ACCEPT_ENCODING,
-            hyper::header::HeaderValue::from_static("identity"),
+            hyper::header::HeaderValue::from_static(super::html::ACCEPT_ENCODING),
         );
         for name in ["if-none-match", "if-modified-since"] {
             request.headers_mut().remove(name);

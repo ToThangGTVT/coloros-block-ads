@@ -31,6 +31,24 @@ fn root() -> (Arc<rcgen::KeyPair>, Vec<u8>) {
     let der = ca::generate(key.clone()).unwrap();
     (key, der)
 }
+async fn gzip(data: &[u8]) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let mut output = Vec::new();
+    async_compression::tokio::bufread::GzipEncoder::new(data)
+        .read_to_end(&mut output)
+        .await
+        .unwrap();
+    output
+}
+async fn brotli(data: &[u8]) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let mut output = Vec::new();
+    async_compression::tokio::bufread::BrotliEncoder::new(data)
+        .read_to_end(&mut output)
+        .await
+        .unwrap();
+    output
+}
 fn owner() -> Owner {
     Owner {
         uid: Some(123),
@@ -318,12 +336,17 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                         }
                         async move {
                             if request.uri().path() == "/html" {
-                                assert_eq!(request.headers()["accept-encoding"], "identity");
+                                // Compressed on the wire; the proxy decodes before rewriting.
+                                assert_eq!(
+                                    request.headers()["accept-encoding"],
+                                    "gzip, deflate, br"
+                                );
                                 return Ok::<_, Infallible>(Response::builder()
                                     .header("content-type", "text/html; charset=utf-8")
+                                    .header("content-encoding", "gzip")
                                     .header("etag", "\"original\"")
                                     .header("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self'")
-                                    .body(Full::new(Bytes::from_static(b"<!doctype html><html><head><script>const fake='</head>';</script></head><body><div class='banner'>ad</div><p>content</p></body></html>"))).unwrap());
+                                    .body(Full::new(Bytes::from(gzip(b"<!doctype html><html><head><script>const fake='</head>';</script></head><body><div class='banner'>ad</div><p>content</p></body></html>").await))).unwrap());
                             }
                             Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(
                                 vec![7; 256 * 1024],
@@ -435,7 +458,8 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                 if path == "/html" {
                     assert!(!response.headers().contains_key("content-length"));
                     assert!(!response.headers().contains_key("etag"));
-                    assert_eq!(response.headers()["cache-control"], "no-store");
+                    assert_eq!(response.headers()["cache-control"], "private, no-cache");
+                    assert!(!response.headers().contains_key("content-encoding"));
                 }
                 let body = response.into_body().collect().await.unwrap().to_bytes();
                 if blocked {
@@ -815,19 +839,22 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
                 let Ok(tls) = TlsAcceptor::from(server_config).accept(raw).await else {
                     return;
                 };
-                let service =
-                    hyper::service::service_fn(|_: Request<hyper::body::Incoming>| async {
+                let service = hyper::service::service_fn(
+                    |request: Request<hyper::body::Incoming>| async move {
+                        assert_eq!(request.headers()["accept-encoding"], "gzip, deflate, br");
                         Ok::<_, Infallible>(
                             Response::builder()
                                 .header("content-type", "text/html; charset=utf-8")
+                                .header("content-encoding", "br")
                                 .header(
                                     "content-security-policy",
                                     "default-src 'none'; script-src 'nonce-page'; style-src 'self'",
                                 )
-                                .body(Full::new(Bytes::from_static(PAGE.as_bytes())))
+                                .body(Full::new(Bytes::from(brotli(PAGE.as_bytes()).await)))
                                 .unwrap(),
                         )
-                    });
+                    },
+                );
                 let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
                     .serve_connection(TokioIo::new(tls), service)
                     .await;

@@ -35,11 +35,15 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | --- | --- | --- | --- |
 | adblock | 0.13.5 | MPL-2.0 | https://github.com/brave/adblock-rust |
 | addr | 0.15.6 | MIT/Apache-2.0 | https://github.com/addr-rs/addr |
+| adler2 | 2.0.1 | 0BSD OR MIT OR Apache-2.0 | https://github.com/oyvindln/adler2 |
 | aho-corasick | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
+| alloc-no-stdlib | 3.0.0 | BSD-3-Clause | https://github.com/dropbox/rust-alloc-no-stdlib |
+| alloc-stdlib | 0.3.0 | BSD-3-Clause | https://github.com/dropbox/rust-alloc-no-stdlib |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | asn1-rs | 0.7.2 | MIT OR Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
 | asn1-rs-derive | 0.6.0 | MIT OR Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
 | asn1-rs-impl | 0.2.0 | MIT/Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
+| async-compression | 0.4.51 | MIT OR Apache-2.0 | https://github.com/Nullus157/async-compression |
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
@@ -47,6 +51,8 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | bit-vec | 0.9.1 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
 | bitflags | 1.3.2 | MIT/Apache-2.0 | https://github.com/bitflags/bitflags |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
+| brotli | 9.1.1 | BSD-3-Clause AND MIT | https://github.com/dropbox/rust-brotli |
+| brotli-decompressor | 6.2.0 | BSD-3-Clause/MIT | https://github.com/dropbox/rust-brotli-decompressor |
 | bumpalo | 3.20.3 | MIT OR Apache-2.0 | https://github.com/fitzgen/bumpalo |
 | byteorder | 1.5.0 | Unlicense OR MIT | https://github.com/BurntSushi/byteorder |
 | bytes | 1.12.1 | MIT | https://github.com/tokio-rs/bytes |
@@ -56,7 +62,10 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | cfg_aliases | 0.2.2 | MIT | https://github.com/katharostech/cfg_aliases |
 | chacha20 | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | combine | 4.6.9 | MIT | https://github.com/Marwes/combine |
+| compression-codecs | 0.4.47 | MIT OR Apache-2.0 | https://github.com/Nullus157/async-compression |
+| compression-core | 0.4.34 | MIT OR Apache-2.0 | https://github.com/Nullus157/async-compression |
 | cpufeatures | 0.3.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
+| crc32fast | 1.5.4 | MIT OR Apache-2.0 | https://github.com/srijs/rust-crc32fast |
 | critical-section | 1.2.0 | MIT OR Apache-2.0 | https://github.com/rust-embedded/critical-section |
 | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-epoch | 0.9.21 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
@@ -80,6 +89,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | etherparse | 0.16.0 | MIT OR Apache-2.0 | https://github.com/JulianSchmid/etherparse |
 | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | flatbuffers | 25.12.19 | Apache-2.0 | https://github.com/google/flatbuffers |
+| flate2 | 1.1.10 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
 | fnv | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | futures | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
@@ -136,6 +146,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | managed | 0.8.0 | 0BSD | https://github.com/m-labs/rust-managed.git |
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
 | minimal-lexical | 0.2.1 | MIT/Apache-2.0 | https://github.com/Alexhuszagh/minimal-lexical |
+| miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide |
 | mio | 1.2.4 | MIT | https://github.com/tokio-rs/mio |
 | moka | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 | https://github.com/moka-rs/moka |
 | netstack-smoltcp | 0.2.4 | MIT OR Apache-2.0 | https://github.com/cavivie/netstack-smoltcp |
@@ -200,6 +211,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | serde_json | 1.0.154 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
 | servo_arc | 0.4.3 | MIT OR Apache-2.0 | https://github.com/servo/stylo |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
+| simd-adler32 | 0.3.10 | MIT | https://github.com/mcountryman/simd-adler32 |
 | simd_cesu8 | 1.2.0 | Apache-2.0 OR MIT | https://github.com/seancroach/simd_cesu8 |
 | simdutf8 | 0.1.5 | MIT OR Apache-2.0 | https://github.com/rusticstuff/simdutf8 |
 | siphasher | 1.0.4 | MIT OR Apache-2.0 | https://github.com/jedisct1/rust-siphash |
@@ -282,6 +294,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | zerotrie | 0.2.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zerovec | 0.11.9 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | zerovec-derive | 0.11.7 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| zlib-rs | 0.6.8 | Zlib | https://github.com/trifectatechfoundation/zlib-rs |
 | zmij | 1.0.23 | MIT | https://github.com/dtolnay/zmij |
 
 ## Phase 1 network dependencies (review before integration)
@@ -368,3 +381,17 @@ feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
   parsed and rejected when they contain `url(`, `image-set(`, escapes or comments.
 - Only the HTTPS proxy queries it, in memory. Regex rules keep the Phase 3 compile limits;
   query log stores host and rule text, not path/query/body.
+
+## HTTPS HTML decompression (review before integration)
+
+- async-compression **0.4.51** (MIT OR Apache-2.0, https://github.com/Nullus157/async-compression),
+  features `tokio`, `gzip`, `zlib`, `brotli`; with compression-codecs 0.4.47 and
+  compression-core 0.4.34. tokio-util 0.7.20 (`io`) was already locked transitively.
+- Pure Rust codecs, no C toolchain: flate2 1.1.10, miniz_oxide 0.9.1, crc32fast 1.5.4,
+  adler2 2.0.1, simd-adler32 0.3.10 (MIT/Apache-2.0 family), zlib-rs 0.6.8 (Zlib),
+  brotli 9.1.1 / brotli-decompressor 6.2.0 (BSD-3-Clause and MIT), alloc-no-stdlib 3.0.0 /
+  alloc-stdlib 0.3.0 (BSD-3-Clause). BSD/Zlib texts: licenses/brotli-BSD-3-Clause.txt,
+  licenses/brotli-decompressor-LICENSE.txt, licenses/alloc-no-stdlib-BSD-3-Clause.txt,
+  licenses/zlib-rs-Zlib.txt.
+- Used only to decode HTML documents the proxy rewrites; zstd is not requested from origins,
+  so no zstd/C dependency is needed. Output is streamed, never buffered whole.
