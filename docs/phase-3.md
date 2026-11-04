@@ -20,8 +20,10 @@
   phủ định app với `~`, URL pattern `*`, `^`, `|`, `/regex/`. Regex Rust không
   backtracking; tối đa 256 URL/regex, 2048 ký tự/rule, program 128 KiB và DFA 32 KiB
   mỗi regex. Modifier chưa hỗ trợ bị ignored ở downloaded list, báo dòng ở custom.
-- `nativecore/src/udp`: mặc định drop UDP/443 trước tạo socket, gộp event theo flow
-  để tránh flood log. Tắt QUIC policy hoặc app bỏ qua lọc sẽ relay UDP bình thường.
+- `nativecore/src/udp`: drop UDP/443 trước tạo socket, gộp event theo flow để tránh
+  flood log. Chỉ drop cho app đang lọc HTTPS (đã chọn, có CA), trừ host
+  proxy không giải mã (nhạy cảm, pinning); app khác giữ HTTP/3 vì chặn DNS vẫn áp
+  dụng như với TCP. Tắt QUIC policy hoặc app bỏ qua lọc sẽ relay UDP bình thường.
 - `core/data/AppsRepository`, SettingsRepository: apps có INTERNET permission,
   async icon LRU 8 MiB, theo dõi package add/remove/change. Ba mode DataStore;
   app chung UID dùng chung mode vì Android không tách được socket của từng package.
@@ -88,6 +90,6 @@ https://adguard.com/kb/general/ad-filtering/create-own-filters/
 - Đây là subset network syntax, không phải toàn bộ EasyList/AdGuard. Không hỗ trợ
   cosmetic, scriptlet, resource type/third-party/domain modifier, redirect/rewrite.
   URL/regex list bị giới hạn và đếm ignored để tránh tải regex vô hạn.
-- QUIC drop có thể làm ứng dụng chỉ hỗ trợ QUIC không kết nối; người dùng có thể
+- QUIC drop có thể làm ứng dụng lọc HTTPS chỉ hỗ trợ QUIC không kết nối; người dùng có thể
   tắt policy hoặc bỏ qua lọc app đó. Không có plaintext DNS fallback tự ý.
 - Vẫn chưa nghiệm thu 24 giờ/pin, all OEM Always-on hay HTTPS MITM Phase 5.

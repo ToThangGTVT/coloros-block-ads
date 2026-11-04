@@ -173,7 +173,7 @@ fun SettingsScreen(
                 }
                 AppSwitchPreference(
                     "Chặn QUIC",
-                    "App chuyển sang TCP, dễ lọc hơn",
+                    "Áp dụng cho app lọc HTTPS, để lọc qua TCP",
                     blockQuic,
                 ) {
                     action { settings.setBlockQuic(it) }

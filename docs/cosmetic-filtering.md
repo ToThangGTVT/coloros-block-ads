@@ -29,7 +29,8 @@ mới xóa node. Không cần extension hoặc root, nhưng trình duyệt phả
    `example.com` là ví dụ; thay bằng website của bạn. URL danh sách có quy tắc
    cosmetic phải thêm vào **Bộ lọc trình duyệt**; danh sách DNS bỏ qua quy tắc ẩn
    phần tử.
-4. Bật VPN, giữ **Cài đặt → Chặn QUIC** bật để Chrome dùng HTTPS qua TCP.
+4. Bật VPN, giữ **Cài đặt → Chặn QUIC** bật để Chrome dùng HTTPS qua TCP. Công tắc
+   chỉ áp dụng cho app đang lọc HTTPS; app khác vẫn dùng HTTP/3.
    Tải lại trang. Nội dung có sẵn trong cache/service worker có thể cần xóa cache
    của website để tải lại qua proxy.
 

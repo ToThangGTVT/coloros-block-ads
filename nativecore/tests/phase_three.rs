@@ -202,15 +202,21 @@ fn blocked_sni_on_hardcoded_ip_sends_rst_without_opening_an_outbound_socket() {
 }
 
 #[test]
-fn quic_drop_setting_and_app_bypass_are_applied_before_socket_creation() {
+fn quic_is_dropped_only_for_https_filtered_apps_before_socket_creation() {
     use blockads_core::{
+        dns::reverse,
+        mitm::{self, ca},
         policy,
         sockets::Protector,
         tun::{Engine, NetworkConfig},
     };
+    use hickory_resolver::proto::{
+        op::Message,
+        rr::{rdata::A, Name, RData, Record},
+    };
     use std::{
         io,
-        net::SocketAddr,
+        net::{Ipv4Addr, SocketAddr},
         os::{fd::OwnedFd, unix::net::UnixDatagram},
         sync::{
             atomic::{AtomicU64, Ordering},
@@ -228,7 +234,13 @@ fn quic_drop_setting_and_app_bypass_are_applied_before_socket_creation() {
             Some(12345)
         }
     }
-    policy::configure("{}");
+    let browser = r#""packages":{"12345":["test.browser"]}"#;
+    let key = Arc::new(rcgen::KeyPair::generate().unwrap());
+    ca::set(Some(key.clone()), ca::generate(key).unwrap());
+    assert!(mitm::configure(
+        r#"{"enabled":true,"apps":["test.browser"]}"#
+    ));
+    policy::configure(&format!("{{{browser}}}"));
     let protector = Arc::new(Deny(AtomicU64::new(0)));
     let (fd, peer) = UnixDatagram::pair().unwrap();
     let mut engine = Engine::start(
@@ -237,26 +249,69 @@ fn quic_drop_setting_and_app_bypass_are_applied_before_socket_creation() {
         NetworkConfig::default(),
     )
     .unwrap();
-    let mut bytes = vec![];
-    etherparse::PacketBuilder::ipv4([172, 19, 0, 1], [203, 0, 113, 7], 64)
-        .udp(32002, 443)
-        .write(&mut bytes, b"quic-fixture")
-        .unwrap();
-    peer.send(&bytes).unwrap();
+    // A host the proxy never decrypts keeps QUIC even for the filtered browser. Recorded after
+    // the engine starts, since a new DNS session clears the reverse cache.
+    let mut answer = Message::query();
+    answer.answers.push(Record::from_rdata(
+        Name::from_ascii("pay.example.test.").unwrap(),
+        300,
+        RData::A(A(Ipv4Addr::new(203, 0, 113, 8))),
+    ));
+    reverse::remember(Some(12345), "pay.example.test", &answer);
+    let datagram = |destination: [u8; 4], port: u16| {
+        let mut bytes = vec![];
+        etherparse::PacketBuilder::ipv4([172, 19, 0, 1], destination, 64)
+            .udp(port, 443)
+            .write(&mut bytes, b"quic-fixture")
+            .unwrap();
+        bytes
+    };
+    peer.send(&datagram([203, 0, 113, 7], 32002)).unwrap();
     std::thread::sleep(Duration::from_millis(50));
-    assert_eq!(protector.0.load(Ordering::Relaxed), 0);
-    for (config, expected) in [
-        (r#"{"blockQuic":false}"#, 1),
-        (r#"{"blockQuic":true,"bypassUids":[12345]}"#, 2),
-    ] {
-        policy::configure(config);
-        peer.send(&bytes).unwrap();
+    assert_eq!(
+        protector.0.load(Ordering::Relaxed),
+        0,
+        "filtered browser falls back to TCP"
+    );
+    let not_filtered = r#""packages":{"12345":["other.app"]}"#;
+    // Each case uses a new flow so it opens (and counts) one upstream socket.
+    for (index, (config, destination, expected)) in [
+        (format!("{{{browser}}}"), [203, 0, 113, 8], 1),
+        (
+            format!(r#"{{"blockQuic":false,{browser}}}"#),
+            [203, 0, 113, 7],
+            2,
+        ),
+        (
+            format!(r#"{{"bypassUids":[12345],{browser}}}"#),
+            [203, 0, 113, 7],
+            3,
+        ),
+        (format!("{{{not_filtered}}}"), [203, 0, 113, 7], 4),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        policy::configure(&config);
+        peer.send(&datagram(destination, 32010 + index as u16))
+            .unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
         while protector.0.load(Ordering::Relaxed) < expected && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert_eq!(protector.0.load(Ordering::Relaxed), expected);
+        assert_eq!(protector.0.load(Ordering::Relaxed), expected, "{config}");
     }
+    // Without a CA nothing is decrypted, so nothing loses QUIC.
+    policy::configure(&format!("{{{browser}}}"));
+    ca::set(None, vec![]);
+    peer.send(&datagram([203, 0, 113, 7], 32020)).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while protector.0.load(Ordering::Relaxed) < 5 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(protector.0.load(Ordering::Relaxed), 5);
     engine.shutdown();
+    mitm::configure("{}");
+    reverse::clear();
     policy::configure("{}");
 }

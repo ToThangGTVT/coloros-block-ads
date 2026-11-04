@@ -311,3 +311,12 @@ Tải danh sách chạy trong scope của `FilterRepository`, không theo màn h
 Trước đây bật bộ lọc trong danh mục rồi bấm Back sẽ hủy coroutine đang tải: AdGuard
 Base (6,4 MB) và EasyList không bao giờ tải xong, cũng không ghi lỗi. Trên máy thật
 hai danh sách này đã bật nhưng `updatedAt` vẫn là 0 và không có file.
+
+## QUIC chỉ bị chặn cho app lọc HTTPS
+
+Trước đây **Chặn QUIC** drop UDP/443 của mọi app không bỏ qua lọc. Giờ chỉ drop khi
+app đang lọc HTTPS (`mitm::filters_app`: đã bật, app được chọn, có CA) và host không
+thuộc loại proxy luôn bỏ qua (nhạy cảm, pinning; tra theo reverse DNS, không tra
+được thì vẫn drop). App khác như YouTube, Instagram giữ HTTP/3: chặn quảng cáo của
+chúng dựa vào DNS, hoạt động như nhau với QUIC hay TCP. Đổi lại, app khác dùng
+IP cứng hoặc DoH riêng qua QUIC không còn bị chặn theo SNI như khi đi TCP.

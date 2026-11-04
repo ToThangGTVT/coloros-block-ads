@@ -105,6 +105,15 @@ pub fn sensitive(domain: &str) -> bool {
             .any(|word| label.contains(word))
         })
 }
+/// The app is selected for HTTPS filtering and a CA is installed; the domain is not checked.
+pub fn filters_app(owner: &Owner) -> bool {
+    let options = current();
+    options.enabled
+        && !owner.bypass
+        && owner.uid.is_some()
+        && options.apps.iter().any(|app| owner.packages.contains(app))
+        && ca::authority().is_some()
+}
 pub fn eligible(domain: &str, owner: &Owner) -> bool {
     let options = current();
     if !options.enabled

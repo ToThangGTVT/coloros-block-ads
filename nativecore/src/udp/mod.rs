@@ -76,13 +76,13 @@ pub async fn serve(
                     }
                     continue;
                 }
-                if original.port() == 443 && crate::policy::current().block_quic && !owner.bypass {
+                if let Some(domain) = drops_quic(&owner, original) {
                     let key = (client, original);
                     if !quic_events.get(&key).is_some_and(|at| at.elapsed() < Duration::from_secs(30)) {
                         if quic_events.len() >= 1024 { quic_events.retain(|_, at| at.elapsed() < Duration::from_secs(30)); }
                         if quic_events.len() >= 1024 { quic_events.clear(); }
                         quic_events.insert(key, std::time::Instant::now());
-                        crate::dns::event(crate::dns::reverse::lookup(owner.uid, original.ip()).unwrap_or_else(|| original.ip().to_string()), true, Some("QUIC policy · UDP/443".into()), false, owner.uid, "quic");
+                        crate::dns::event(domain.unwrap_or_else(|| original.ip().to_string()), true, Some("QUIC policy · UDP/443".into()), false, owner.uid, "quic");
                     }
                     continue;
                 }
@@ -142,6 +142,24 @@ pub async fn serve(
     while dns_jobs.join_next().await.is_some() {}
     flows.abort_all();
     while flows.join_next().await.is_some() {}
+}
+
+/// UDP/443 is dropped only for apps whose HTTPS is filtered, so they fall back to TCP where the
+/// proxy can decrypt it. Every other app keeps HTTP/3: DNS blocking works the same over QUIC.
+/// Returns the reverse-looked-up domain for the event when the datagram is dropped.
+fn drops_quic(owner: &crate::policy::Owner, original: SocketAddr) -> Option<Option<String>> {
+    if original.port() != 443
+        || !crate::policy::current().block_quic
+        || !crate::mitm::filters_app(owner)
+    {
+        return None;
+    }
+    let domain = crate::dns::reverse::lookup(owner.uid, original.ip());
+    // A known host the proxy would not decrypt anyway (sensitive, pinned) keeps QUIC too.
+    match &domain {
+        Some(name) if !crate::mitm::eligible(name, owner) => None,
+        _ => Some(domain),
+    }
 }
 
 fn encode_reply(
