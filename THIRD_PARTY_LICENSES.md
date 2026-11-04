@@ -273,8 +273,9 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | tracing | 0.1 (locked by Cargo.lock) | MIT | https://github.com/tokio-rs/tracing |
 
-netstack-smoltcp and smoltcp license texts are in licenses/. No Go/gVisor/lwIP
-implementation is linked. Upstream tracing is disabled at compile time so no
+netstack-smoltcp and smoltcp license texts are in licenses/. The locally patched
+netstack-smoltcp source is in nativecore/vendor/netstack-smoltcp; modification
+notes are in BLOCKADS_PATCHES.md there. No Go/gVisor/lwIP implementation is linked. Upstream tracing is disabled at compile time so no
 packet payload can be printed by netstack diagnostic calls.
 
 ## Phase 2 DNS dependencies (review before integration)

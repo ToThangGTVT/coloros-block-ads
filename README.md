@@ -1,8 +1,8 @@
 # BlockAds
 
-Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN. **1.0.1** thêm thống kê
-request/lượt chặn theo ứng dụng, biểu đồ theo giờ và Live Updates trên Android 16+,
-trên nền lọc DNS/SNI/HTTP, tường lửa theo app và HTTPS tùy chọn.
+Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN. **1.0.3** giảm tác vụ nền:
+TCP chờ tín hiệu khi rảnh thay vì polling 5 ms; log/thống kê gom theo lô 5 giây.
+Hỗ trợ lọc DNS/SNI/HTTP, tường lửa theo app, HTTPS tùy chọn và Live Updates Android 16+.
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -31,9 +31,9 @@ API 33 và page alignment 16 KB. Các binary được đóng gói qua `core/engi
 không commit binary. Xem [phát hành, khóa ký và cập nhật](docs/releases.md).
 
 ```sh
-cargo fmt --manifest-path nativecore/Cargo.toml --check
-cargo clippy --manifest-path nativecore/Cargo.toml --locked --all-targets -- -D warnings
-cargo test --manifest-path nativecore/Cargo.toml --locked
+cargo fmt --manifest-path nativecore/Cargo.toml --all --check
+cargo clippy --manifest-path nativecore/Cargo.toml --locked --workspace --all-targets -- -D warnings
+cargo test --manifest-path nativecore/Cargo.toml --locked --workspace
 ./gradlew :core:data:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
 ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest
 ```
@@ -51,6 +51,7 @@ Không có plaintext fallback tự động khi upstream mã hóa không dùng đ
 TLS ClientHello SNI và HTTP Host/path đầu kết nối được lọc cả khi app dùng DNS riêng.
 Apps có tìm kiếm, icon cache và ba chế độ: Lọc / Bỏ qua lọc / Bỏ qua tunnel.
 Log có UID/app, protocol và bộ lọc theo app; QUIC bị chặn mặc định, có thể tắt.
+Log/thống kê được gom mỗi 5 giây hoặc khi đủ 100 sự kiện log; tắt VPN đẩy phần còn chờ.
 Home có tổng/blocked/tỷ lệ, top domain và chart 7 ngày bằng MPAndroidChart **4.0.1**.
 WorkManager cập nhật list mỗi 24 giờ với ETag/Last-Modified. Settings có custom
 DoH/DoT + IP bootstrap, retention 1/7/30 ngày, auto-start, IPv6, export/import JSON.

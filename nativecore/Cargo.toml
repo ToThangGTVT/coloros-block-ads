@@ -1,3 +1,7 @@
+[workspace]
+members = ["vendor/netstack-smoltcp"]
+resolver = "2"
+
 [package]
 name = "blockads-core"
 version = "0.5.0"
@@ -11,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jni = { version = "=0.21.1", default-features = false }
 
-netstack-smoltcp = "=0.2.4"
+netstack-smoltcp = { version = "=0.2.4", path = "vendor/netstack-smoltcp" }
 tokio = { version = "=1.54.1", features = ["rt", "net", "io-util", "sync", "time", "macros"] }
 futures-util = { version = "=0.3.34", features = ["sink"] }
 socket2 = "=0.6.5"

@@ -11,7 +11,9 @@ def source_files(root):
     fixed = ["nativecore/Cargo.toml", "nativecore/Cargo.lock", "rust-toolchain.toml",
              "scripts/build-native.sh", "scripts/native-stamp.py",
              "core/engine-bridge/src/main/java/com/utc/color/blockads/core/enginebridge/EngineBridge.kt"]
-    return sorted([root / name for name in fixed] + list((root / "nativecore/src").rglob("*.rs")), key=lambda p: p.relative_to(root).as_posix())
+    vendored = [p for p in (root / "nativecore/vendor").rglob("*")
+                if p.is_file() and (p.suffix == ".rs" or p.name == "Cargo.toml")]
+    return sorted([root / name for name in fixed] + list((root / "nativecore/src").rglob("*.rs")) + vendored, key=lambda p: p.relative_to(root).as_posix())
 
 
 def fingerprint(root):

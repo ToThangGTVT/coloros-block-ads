@@ -34,9 +34,9 @@ jobs:
       - name: Check native code
         run: |
           rustup show
-          cargo fmt --manifest-path nativecore/Cargo.toml --check
-          cargo clippy --manifest-path nativecore/Cargo.toml --locked --all-targets -- -D warnings
-          cargo test --manifest-path nativecore/Cargo.toml --locked -- --test-threads=1
+          cargo fmt --manifest-path nativecore/Cargo.toml --all --check
+          cargo clippy --manifest-path nativecore/Cargo.toml --locked --workspace --all-targets -- -D warnings
+          cargo test --manifest-path nativecore/Cargo.toml --locked --workspace -- --test-threads=1
       - name: Restore release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.BLOCKADS_KEYSTORE_BASE64 }}

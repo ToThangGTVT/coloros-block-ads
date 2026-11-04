@@ -120,3 +120,11 @@ sử dụng fade 140 ms, tránh di chuyển hai lớp nội dung có backdrop c�
 Mục cập nhật chỉ tạo vùng thông báo khi thực sự có nội dung, tránh khoảng trống
 thừa giữa hai hàng. Không có số phần trăm cải thiện hiệu năng được công bố khi
 chưa đo trên thiết bị đích.
+
+## 1.0.3 — Giảm tác vụ nền
+
+- TCP chờ tín hiệu khi không có hạn giờ cần xử lý, bỏ idle polling 5 ms.
+- Gom log/thống kê mỗi 5 giây thay vì 0,5 giây; đủ 100 sự kiện log vẫn đẩy sớm.
+- Tắt VPN bình thường đẩy dữ liệu còn chờ; lọc/chặn lưu lượng vẫn diễn ra ngay.
+- Thư viện netstack-smoltcp được lưu trong repo để bản sửa có mặt ở mọi bản build.
+- Đã kiểm tra 27 test Rust, Clippy và build debug; chưa đo mức tiết kiệm pin trên máy thật.

@@ -208,7 +208,9 @@ impl Engine {
                             Ok(())
                         });
                         tasks.spawn(async {
-                            loop { tokio::time::sleep(std::time::Duration::from_millis(500)).await; crate::dns::flush(); }
+                            // Batch metadata every five seconds; full batches still flush early.
+                            // The final flush below drains pending data on shutdown.
+                            loop { tokio::time::sleep(std::time::Duration::from_secs(5)).await; crate::dns::flush(); }
                             #[allow(unreachable_code)] Ok(())
                         });
                         let _ = ready_tx.send(Ok(()));

@@ -81,6 +81,7 @@ val verifyNativeCore =
         repositoryRoot.set(rootProject.layout.projectDirectory)
         sources.from(
             rootProject.fileTree("nativecore/src") { include("**/*.rs") },
+            rootProject.fileTree("nativecore/vendor") { include("**/*.rs", "**/Cargo.toml") },
             rootProject.files(
                 "nativecore/Cargo.toml",
                 "nativecore/Cargo.lock",
