@@ -5,6 +5,36 @@ tra với Chrome 158.0.8127.2. Chưa tạo tag hoặc phát hành phiên bản m
 Bản release 1.0.4, dữ liệu và CA của bản release được giữ nguyên. Người dùng
 đã cài CA riêng của bản debug; không xóa hoặc tạo lại CA sau khi cài.
 
+## IPv6 khi mạng thật không có IPv6 (kiểm tra Chrome trên CPH2825)
+
+Nhật ký trên máy (bản debug mới, chỉ đọc qua adb, không thao tác UI): 256 request
+Chrome được giải mã (vnexpress), nhưng 182 lần `tls-bypass` "upstream TLS không xác
+minh được" — **toàn bộ** là host có AAAA (`www.googletagmanager.com`,
+`imasdk.googleapis.com`, `accounts.google.com`, `www.google.com`,
+`challenges.cloudflare.com`…), còn mọi host chạy tốt đều không có AAAA. Từ Mac, cùng
+hàm upstream tới các host đó đều thành công. Nguyên nhân: VPN luôn quảng bá `::/0`
+(địa chỉ ULA `fdfe:dcba:9876::1`) trong khi Wi‑Fi và 4G lúc đó chỉ có IPv4. Chrome
+mở TCP IPv6 vào tunnel, netstack nhận handshake, rồi proxy không ra được mạng: kết nối
+bị đóng giữa TLS, Chrome không tự lùi về IPv4. Quảng cáo Google (GTM, IMA) vì thế không
+qua proxy, và trang Google/Cloudflare có thể lỗi.
+
+Sửa giống AdGuard ("lọc AAAA khi không có IPv6"):
+- `sockets::probe_ipv6` dò route IPv6 công cộng bằng một socket UDP đã protect
+  (`connect` không gửi gói) khi engine khởi động và mỗi lần `nativeUpdateNetwork`.
+  Protect thất bại thì giữ kết quả cũ.
+- Không có IPv6: DNS trả AAAA rỗng (NOERROR, không hỏi upstream, không ghi cache) và bỏ
+  `ipv6hint` (cả trong `mandatory`) khỏi HTTPS/SVCB cho mọi app.
+- Kết nối TCP IPv6 còn lọt vào (IP cache/hard-code) nhận RST ngay, không mở socket ra
+  ngoài, để app lùi về IPv4.
+Phép dò chỉ chạy khi `NetworkConfig::probe_ipv6` bật (JNI luôn bật; test dùng
+mặc định tắt để giữ bất biến "không protect socket nào"). Test: `tests/ipv6.rs`,
+`tests/ipv6_tunnel.rs`.
+
+Cũng trên máy: sau khi cài mới chỉ còn "AdGuard DNS filter" được bật, nên gần như không
+có quy tắc ẩn phần tử/URL. Cần bật ABPVN, EasyList hoặc AdGuard Base trong **Bộ lọc**.
+Tên preset bỏ chữ "Network subset" (đã sai từ khi lọc HTTPS dùng đủ cú pháp); máy đã cài
+cũng được cập nhật tên khi đọc lại cài đặt.
+
 ## Bỏ ECH khỏi DNS cho ứng dụng được lọc HTTPS
 
 Chrome bật Encrypted Client Hello khi bản ghi DNS HTTPS/SVCB có tham số `ech`. Khi

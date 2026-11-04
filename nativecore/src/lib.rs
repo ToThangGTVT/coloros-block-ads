@@ -114,6 +114,7 @@ fn config(env: &mut JNIEnv, dns: &JString) -> NetworkConfig {
         .and_then(|s| s.split('%').next().unwrap_or("").parse().ok());
     NetworkConfig {
         dns,
+        probe_ipv6: true,
         ..NetworkConfig::default()
     }
 }

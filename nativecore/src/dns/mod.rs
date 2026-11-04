@@ -271,6 +271,17 @@ impl Session {
                 tcp,
             );
         }
+        if request.queries[0].query_type() == RecordType::AAAA && !crate::sockets::ipv6_available()
+        {
+            // No IPv6 on the physical network: an empty answer makes apps use IPv4 at once,
+            // instead of connecting over the VPN's IPv6 route to an address nobody can reach.
+            event(domain, false, rule, false, owner.uid, "dns");
+            return encode(
+                &error_response(&request, ResponseCode::NoError),
+                &request,
+                tcp,
+            );
+        }
         let revision = REVISION.load(Ordering::Acquire);
         let config = options();
         let mut key = data.to_vec();
@@ -280,7 +291,7 @@ impl Session {
         key.extend_from_slice(&filter::revision().to_be_bytes());
         if let Some(mut response) = cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
             response.metadata.id = request.metadata.id;
-            strip_ech_for(&mut response, &domain, owner);
+            adjust_service_records(&mut response, &domain, owner);
             reverse::remember(owner.uid, &domain, &response);
             event(domain, false, rule, true, owner.uid, "dns");
             return encode(&response, &request, tcp);
@@ -342,27 +353,41 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .put(key, response.clone());
         reverse::remember(owner.uid, &domain, &response);
-        strip_ech_for(&mut response, &domain, owner);
+        adjust_service_records(&mut response, &domain, owner);
         event(domain, false, rule, false, owner.uid, "dns");
         encode(&response, &request, tcp)
     }
 }
-/// Apps whose HTTPS is filtered get HTTPS/SVCB records without `ech`, so the browser sends the
-/// real SNI that the proxy needs; it would otherwise offer ECH with an outer name such as
-/// `cloudflare-ech.com`. The cache keeps the original answer, so other apps, sensitive hosts and
-/// pinned (bypassed) hosts keep ECH.
-fn strip_ech_for(response: &mut Message, domain: &str, owner: &crate::policy::Owner) {
-    if response
+/// Edits HTTPS/SVCB answers on the way out; the cache keeps the original.
+/// - Apps whose HTTPS is filtered lose `ech`, so the browser sends the real SNI the proxy needs
+///   instead of an outer name such as `cloudflare-ech.com`. Other apps, sensitive hosts and pinned
+///   (bypassed) hosts keep ECH.
+/// - Without IPv6 on the physical network, `ipv6hint` goes too, like AAAA answers.
+fn adjust_service_records(response: &mut Message, domain: &str, owner: &crate::policy::Owner) {
+    if !response
         .answers
         .iter()
         .chain(&response.additionals)
         .any(|r| matches!(r.data, RData::HTTPS(_) | RData::SVCB(_)))
-        && crate::mitm::eligible(domain, owner)
     {
-        strip_ech(response);
+        return;
     }
+    let mut keys = Vec::new();
+    if crate::mitm::eligible(domain, owner) {
+        keys.push(SvcParamKey::EchConfigList);
+    }
+    if !crate::sockets::ipv6_available() {
+        keys.push(SvcParamKey::Ipv6Hint);
+    }
+    strip_params(response, &keys);
 }
 pub fn strip_ech(response: &mut Message) {
+    strip_params(response, &[SvcParamKey::EchConfigList]);
+}
+fn strip_params(response: &mut Message, keys: &[SvcParamKey]) {
+    if keys.is_empty() {
+        return;
+    }
     for record in response
         .answers
         .iter_mut()
@@ -373,11 +398,11 @@ pub fn strip_ech(response: &mut Message) {
             RData::SVCB(svcb) => &mut svcb.svc_params,
             _ => continue,
         };
-        params.retain(|(key, _)| *key != SvcParamKey::EchConfigList);
-        // A record that still listed `ech` as mandatory would have to be ignored entirely.
+        params.retain(|(key, _)| !keys.contains(key));
+        // A record that still listed a removed key as mandatory would have to be ignored.
         for (_, value) in params.iter_mut() {
             if let SvcParamValue::Mandatory(mandatory) = value {
-                mandatory.0.retain(|key| *key != SvcParamKey::EchConfigList);
+                mandatory.0.retain(|key| !keys.contains(key));
             }
         }
         params.retain(|(_, value)| !matches!(value, SvcParamValue::Mandatory(m) if m.0.is_empty()));

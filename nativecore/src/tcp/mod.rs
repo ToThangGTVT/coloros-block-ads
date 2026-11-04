@@ -63,6 +63,12 @@ pub async fn serve(
                 let resets = resets.clone(); let raw = raw.clone();
                 flows.spawn(async move {
                     let _permit = permit;
+                    if destination.is_ipv6() && !crate::sockets::ipv6_available() {
+                        // Cached or hard-coded IPv6 address with no IPv6 upstream: reset at once so
+                        // the app falls back to IPv4 instead of losing the connection mid-TLS.
+                        if let Some(packet) = resets.packet(source, destination) { let _ = raw.send(packet).await; }
+                        return;
+                    }
                     let activity = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
                     let mut client = CountedStream { inner: client, stats: stats.clone(), activity: activity.clone() };
                     let (initial, parsed) = if owner.bypass { (vec![], sniff::Parsed::Unknown) } else { sniff::read_initial(&mut client).await };

@@ -25,6 +25,8 @@ pub const MTU: usize = 9000;
 pub struct NetworkConfig {
     pub dns: Option<IpAddr>,
     pub applied: Option<Arc<AtomicU8>>,
+    /// Probe whether the physical network has IPv6 (one protected UDP socket, nothing sent).
+    pub probe_ipv6: bool,
 }
 impl NetworkConfig {
     pub fn destination(&self, original: SocketAddr) -> Option<SocketAddr> {
@@ -106,6 +108,7 @@ pub struct Engine {
     stop: Option<oneshot::Sender<()>>,
     network: watch::Sender<NetworkConfig>,
     thread: Option<JoinHandle<()>>,
+    protector: Arc<dyn Protector>,
     pub running: Arc<AtomicBool>,
     pub stats: Arc<Stats>,
 }
@@ -115,6 +118,10 @@ impl Engine {
         protector: Arc<dyn Protector>,
         config: NetworkConfig,
     ) -> io::Result<Self> {
+        if config.probe_ipv6 {
+            crate::sockets::probe_ipv6(protector.as_ref());
+        }
+        let engine_protector = protector.clone();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
@@ -235,6 +242,7 @@ impl Engine {
             stop: Some(stop_tx),
             network: network_tx,
             thread: Some(thread),
+            protector: engine_protector,
             running,
             stats,
         };
@@ -251,6 +259,9 @@ impl Engine {
         }
     }
     pub fn update_network(&self, mut config: NetworkConfig) -> bool {
+        if config.probe_ipv6 {
+            crate::sockets::probe_ipv6(self.protector.as_ref());
+        }
         let applied = Arc::new(AtomicU8::new(0));
         config.applied = Some(applied.clone());
         if self.network.send(config).is_err() {
