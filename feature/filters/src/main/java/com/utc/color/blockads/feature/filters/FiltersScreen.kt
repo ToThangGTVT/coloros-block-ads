@@ -14,12 +14,14 @@ fun FiltersScreen(
     filters: FilterRepository,
     settings: SettingsRepository,
     onCatalog: () -> Unit,
+    onBrowserCatalog: () -> Unit,
 ) {
     val lists by filters.lists.collectAsStateWithLifecycle(initialValue = emptyList())
     val status by filters.status.collectAsStateWithLifecycle()
     val saved by settings.customRules.collectAsStateWithLifecycle(initialValue = "")
     var custom by rememberSaveable { mutableStateOf<String?>(null) }
-    var url by rememberSaveable { mutableStateOf("") }
+    var dnsUrl by rememberSaveable { mutableStateOf("") }
+    var browserUrl by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val dateFormat = remember { java.text.DateFormat.getDateTimeInstance() }
@@ -39,41 +41,74 @@ fun FiltersScreen(
                 (error ?: status.error)?.let { AppText(it) }
             }
         }
-        item(key = "filter-title", contentType = "title") { AppSectionTitle("Danh sách lọc") }
-        // Browser cosmetic lists must be discoverable before their first download as well.
-        items(lists, key = { it.id }, contentType = { "filter" }) { list ->
-            AppPreferenceGroup {
-                AppSwitchPreference(
-                    title = list.name,
-                    summary =
-                        list.error
-                            ?: ("${list.ruleCount} rule · " +
-                                if (list.updatedAt == 0L) "Chưa tải"
-                                else dateFormat.format(java.util.Date(list.updatedAt))),
-                    checked = list.enabled,
-                    onCheckedChange = { action { filters.setEnabled(list.id, it) } },
+        // DNS lists block domains for every app; browser lists only filter decrypted HTTPS.
+        listOf(false, true).forEach { browser ->
+            val section = if (browser) "browser" else "dns"
+            item(key = "$section-title", contentType = "title") {
+                AppSectionTitle(if (browser) "Bộ lọc trình duyệt" else "Danh sách DNS")
+            }
+            item(key = "$section-hint", contentType = "hint") {
+                AppHint(
+                    if (browser)
+                        "Chặn quảng cáo, ẩn phần tử như tiện ích trình duyệt. Chỉ áp dụng cho trình duyệt đã bật lọc HTTPS, không chặn DNS."
+                    else "Chặn tên miền cho mọi ứng dụng qua DNS."
                 )
             }
-        }
-        item(key = "filter-actions", contentType = "card") {
-            AppPreferenceGroup {
-                AppArrowPreference("Chọn danh sách chặn", "Danh sách của AdGuard Home", onCatalog)
-                AppArrowPreference("Cập nhật tất cả") {
-                    action {
-                        lists.filter { it.enabled }.forEach { filters.download(it.id) }
-                        filters.updateResources()
+            // Browser cosmetic lists must be discoverable before their first download as well.
+            items(
+                lists.filter { it.browser == browser },
+                key = { it.id },
+                contentType = { "filter" },
+            ) { list ->
+                AppPreferenceGroup {
+                    AppSwitchPreference(
+                        title = list.name,
+                        summary =
+                            list.error
+                                ?: ("${list.ruleCount} rule · " +
+                                    if (list.updatedAt == 0L) "Chưa tải"
+                                    else dateFormat.format(java.util.Date(list.updatedAt))),
+                        checked = list.enabled,
+                        onCheckedChange = { action { filters.setEnabled(list.id, it) } },
+                    )
+                }
+            }
+            item(key = "$section-catalog", contentType = "card") {
+                AppPreferenceGroup {
+                    if (browser)
+                        AppArrowPreference(
+                            "Chọn bộ lọc trình duyệt",
+                            "Bộ lọc của tiện ích AdGuard",
+                            onBrowserCatalog,
+                        )
+                    else
+                        AppArrowPreference(
+                            "Chọn danh sách DNS",
+                            "Danh sách của AdGuard Home",
+                            onCatalog,
+                        )
+                }
+            }
+            item(key = "$section-add", contentType = "card") {
+                AppCard {
+                    AppTextInput(
+                        value = if (browser) browserUrl else dnsUrl,
+                        label = if (browser) "URL bộ lọc trình duyệt" else "URL danh sách DNS",
+                        onChange = { if (browser) browserUrl = it else dnsUrl = it },
+                    )
+                    AppAction("Thêm", primary = true) {
+                        action {
+                            filters.addUrl(if (browser) browserUrl else dnsUrl, browser = browser)
+                            if (browser) browserUrl = "" else dnsUrl = ""
+                        }
                     }
                 }
             }
         }
-        item(key = "add-filter", contentType = "card") {
-            AppCard {
-                AppTextInput(value = url, label = "URL danh sách lọc", onChange = { url = it })
-                AppAction("Thêm danh sách", primary = true) {
-                    action {
-                        filters.addUrl(url)
-                        url = ""
-                    }
+        item(key = "filter-update", contentType = "card") {
+            AppPreferenceGroup {
+                AppArrowPreference("Cập nhật tất cả") {
+                    action { filters.updateAll() }
                 }
             }
         }

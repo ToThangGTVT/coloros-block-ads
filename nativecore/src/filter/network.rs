@@ -66,16 +66,27 @@ pub(super) fn candidate(line: &str) -> bool {
 pub(super) fn accepts(line: &str) -> bool {
     let rule = line.strip_prefix("@@").unwrap_or(line);
     if let Some(body) = rule.strip_prefix('/') {
-        let Some(end) = body.rfind('/') else {
-            return false;
+        // As in ABP, `/x/` (before the options) is a regex; `/path.js$script` is a plain pattern.
+        let end = if body.ends_with('/') {
+            Some(body.len() - 1)
+        } else {
+            body.rfind("/$")
         };
-        if super::bounded_regex(&body[..end]).is_err() {
+        if end.is_some_and(|end| super::bounded_regex(&body[..end]).is_err()) {
             return false;
         }
     }
     if let Some(host) = rule.strip_prefix("||") {
-        let end = host.find(['/', '^', '*', '|', '$']).unwrap_or(host.len());
-        if !super::valid_domain(&host[..end]) {
+        let end = host
+            .find(['/', '^', '*', '|', '$', ':'])
+            .unwrap_or(host.len());
+        let name = &host[..end];
+        // `||ads-*.example.com^` and `||192.0.2.1^` are valid hosts for the engine.
+        let wildcard = host[end..].starts_with('*')
+            && name
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'));
+        if !(super::valid_domain(name) || name.parse::<std::net::IpAddr>().is_ok() || wildcard) {
             return false;
         }
     }

@@ -12,6 +12,7 @@ import com.utc.color.blockads.core.designsystem.AppPage
 import com.utc.color.blockads.core.designsystem.AppTab
 import com.utc.color.blockads.core.designsystem.AppTabHost
 import com.utc.color.blockads.core.designsystem.appTabMetadata
+import com.utc.color.blockads.core.filter.CatalogSource
 import com.utc.color.blockads.feature.apps.AppsScreen
 import com.utc.color.blockads.feature.certificate.CertificateScreen
 import com.utc.color.blockads.feature.filters.FilterCatalogScreen
@@ -31,6 +32,7 @@ private enum class Destination : NavKey {
     Apps,
     Certificate,
     Catalog,
+    BrowserCatalog,
 }
 
 private val Destination.tab
@@ -40,7 +42,8 @@ private val Destination.tab
             Destination.Log -> AppTab.Log
             Destination.Firewall -> AppTab.Firewall
             Destination.Filters,
-            Destination.Catalog -> AppTab.Filters
+            Destination.Catalog,
+            Destination.BrowserCatalog -> AppTab.Filters
             else -> AppTab.Settings
         }
 
@@ -98,7 +101,8 @@ fun BlockAdsApp(
                             when (destination) {
                                 Destination.Apps -> "Ứng dụng"
                                 Destination.Certificate -> "Lọc HTTPS"
-                                Destination.Catalog -> "Chọn danh sách chặn"
+                                Destination.Catalog -> "Danh sách DNS"
+                                Destination.BrowserCatalog -> "Bộ lọc trình duyệt"
                                 else -> destination.tab.label
                             }
                         AppPage(
@@ -108,13 +112,15 @@ fun BlockAdsApp(
                                     destination != Destination.Apps &&
                                     destination != Destination.Firewall &&
                                     destination != Destination.Catalog &&
+                                    destination != Destination.BrowserCatalog &&
                                     destination != Destination.Filters &&
                                     destination != Destination.Settings,
                             onBack =
                                 if (
                                     destination == Destination.Apps ||
                                         destination == Destination.Certificate ||
-                                        destination == Destination.Catalog
+                                        destination == Destination.Catalog ||
+                                        destination == Destination.BrowserCatalog
                                 )
                                     pop
                                 else null,
@@ -141,8 +147,14 @@ fun BlockAdsApp(
                                         filters,
                                         settings,
                                         onCatalog = { backStack.add(Destination.Catalog) },
+                                        onBrowserCatalog = {
+                                            backStack.add(Destination.BrowserCatalog)
+                                        },
                                     )
-                                Destination.Catalog -> FilterCatalogScreen(filters)
+                                Destination.Catalog ->
+                                    FilterCatalogScreen(filters, CatalogSource.Dns)
+                                Destination.BrowserCatalog ->
+                                    FilterCatalogScreen(filters, CatalogSource.Browser)
                                 Destination.Settings ->
                                     SettingsScreen(
                                         theme,

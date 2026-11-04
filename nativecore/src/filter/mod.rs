@@ -45,26 +45,71 @@ pub struct Decision<'a> {
     pub rank: u8,
 }
 
+/// Where a rule list applies.
+#[derive(Clone, Copy, PartialEq)]
+enum Scope {
+    /// Domain matcher only: DNS answers and connection decisions. Cosmetic and request-context
+    /// rules are ignored, as AdGuard Home ignores them.
+    Dns,
+    /// Request and cosmetic rules for decrypted HTTPS only; never blocks a DNS answer.
+    Browser,
+    /// Everywhere: user rules and the `system` text of [`Rules::compile`].
+    All,
+}
 impl Rules {
+    /// `system` applies everywhere, like `custom`. The app passes DNS and browser lists apart
+    /// with [`Rules::compile_lists`].
     pub fn compile(system: &str, custom: &str) -> Self {
-        let capacity = system.lines().count() + custom.lines().count();
+        Self::build(&[(system, Scope::All, false), (custom, Scope::All, true)])
+    }
+    pub fn compile_lists(dns: &str, browser: &str, custom: &str) -> Self {
+        Self::build(&[
+            (dns, Scope::Dns, false),
+            (browser, Scope::Browser, false),
+            (custom, Scope::All, true),
+        ])
+    }
+    fn build(sources: &[(&str, Scope, bool)]) -> Self {
+        let capacity = sources
+            .iter()
+            .filter(|(_, scope, _)| *scope != Scope::Browser)
+            .map(|(text, _, _)| text.lines().count())
+            .sum();
         let mut rules = Self {
             entries: HashMap::with_capacity(capacity),
             ..Self::default()
         };
         let mut network = network::Builder::default();
         let mut cosmetic = String::new();
-        for (text, is_custom) in [(system, false), (custom, true)] {
+        for &(text, scope, is_custom) in sources {
             for (index, line) in text.lines().enumerate() {
                 let line = line.trim();
                 let parsed = if cosmetic::candidate(line) {
-                    cosmetic::accepts(line).map(|()| {
-                        cosmetic.push_str(line);
-                        cosmetic.push('\n');
+                    if scope == Scope::Dns {
+                        Err("Danh sách DNS không áp dụng ẩn phần tử")
+                    } else {
+                        cosmetic::accepts(line).map(|()| {
+                            cosmetic.push_str(line);
+                            cosmetic.push('\n');
+                            rules.report.loaded += 1;
+                        })
+                    }
+                } else if scope == Scope::Browser {
+                    if comment(line) {
+                        Ok(())
+                    } else if network::accepts(line) {
+                        network.push(line, is_custom);
+                        if cosmetic::switches_hiding(line) {
+                            cosmetic.push_str(line);
+                            cosmetic.push('\n');
+                        }
                         rules.report.loaded += 1;
-                    })
+                        Ok(())
+                    } else {
+                        Err("Network rule chưa được hỗ trợ")
+                    }
                 } else {
-                    let candidate = network::candidate(line);
+                    let candidate = scope == Scope::All && network::candidate(line);
                     let parsed = rules.parse(line, is_custom);
                     if candidate && (parsed.is_ok() || network::accepts(line)) {
                         network.push(line, is_custom);
@@ -97,11 +142,7 @@ impl Rules {
     }
     fn parse(&mut self, line: &str, custom: bool) -> Result<(), &'static str> {
         let line = line.trim();
-        if line.is_empty()
-            || line.starts_with('!')
-            || line.starts_with('#')
-            || line.starts_with('[')
-        {
+        if comment(line) {
             return Ok(());
         }
         let original = line;
@@ -339,6 +380,10 @@ impl Rules {
         self.cosmetic.generic(page, classes, ids)
     }
 }
+/// Blank, `! comment`, `# comment` or an `[Adblock Plus 2.0]` header.
+fn comment(line: &str) -> bool {
+    line.is_empty() || line.starts_with(['!', '#', '['])
+}
 fn bounded_regex(pattern: &str) -> Result<regex::Regex, &'static str> {
     regex::RegexBuilder::new(pattern)
         .case_insensitive(true)
@@ -488,7 +533,12 @@ pub fn revision() -> u64 {
     REVISION.load(Ordering::Acquire)
 }
 pub fn replace(system: &str, custom: &str) -> Report {
-    let mut rules = Rules::compile(system, custom);
+    install(Rules::compile(system, custom))
+}
+pub fn replace_lists(dns: &str, browser: &str, custom: &str) -> Report {
+    install(Rules::compile_lists(dns, browser, custom))
+}
+fn install(mut rules: Rules) -> Report {
     if !rules.report.errors.is_empty() {
         return rules.report;
     }

@@ -272,3 +272,42 @@ Hai lần reload trong Chrome, giữ cache/service worker bình thường:
 - Không sửa source, nâng giới hạn hoặc thay rule/config trong lượt kiểm tra này.
   Cần xử lý việc chèn CSS cho head lớn và lỗi HTTP/2 upstream trước khi coi
   Tinhte hoặc mọi tài nguyên HTTPS đã được hỗ trợ đầy đủ.
+
+## Danh sách DNS và bộ lọc trình duyệt tách riêng
+
+Mỗi danh sách là DNS hoặc trình duyệt (`FilterList.browser`); native nhận ba
+phần riêng (`Rules::compile_lists(dns, browser, custom)`, JNI
+`nativeReplaceRules(dns, browser, custom, apply)`):
+
+- Danh sách DNS (AdGuard DNS filter, StevenBlack, danh mục AdGuard Home) chỉ vào
+  matcher tên miền: chặn câu trả lời DNS cho mọi ứng dụng. Quy tắc ẩn phần tử và
+  quy tắc cần ngữ cảnh request trong danh sách DNS bị bỏ qua, như AdGuard Home.
+- Bộ lọc trình duyệt (AdGuard Base, EasyList, EasyPrivacy, ABPVN, danh mục tiện
+  ích AdGuard) chỉ vào engine `adblock` và CSS/scriptlet của proxy HTTPS, kể cả
+  `||domain^`. Chúng không bao giờ chặn DNS, nên ứng dụng không bật lọc HTTPS
+  không bị ảnh hưởng.
+- Quy tắc riêng vẫn áp dụng ở cả hai nơi. `Rules::compile(system, custom)` cũ
+  vẫn coi `system` là áp dụng mọi nơi (dùng trong test).
+- Danh sách đã lưu trước khi tách được coi là DNS, trừ các preset trình duyệt.
+  Một URL chỉ thuộc một loại; thêm trùng sang loại kia sẽ báo lỗi.
+
+Danh mục trình duyệt lấy từ `https://filters.adtidy.org/extension/ublock/filters.json`
+(bản cú pháp uBlock Origin của danh mục tiện ích AdGuard, 7 nhóm), lưu cache 4
+ngày. EasyList (101), EasyPrivacy (118) và ABPVN (214) trỏ về URL của preset để
+không tải hai bản. Danh sách của ngôn ngữ máy được xếp lên đầu nhóm Theo ngôn ngữ.
+
+Engine nhận thêm `/path.js$script` (không phải regex nếu không kết thúc bằng
+`/`), `||ads-*.example.com^` và `||192.0.2.1^`. Kiểm tra với 16 danh sách thật
+(`BLOCKADS_LISTS=... cargo test --release --test real_lists -- --ignored`):
+AdGuard Base 128.709 quy tắc nạp, 3.783 bỏ qua (chủ yếu `$popup`), Tracking
+Protection 406.632/41, EasyPrivacy 56.459/3, ABPVN 1.193/3; URL Tracking bỏ
+208/2.736 vì `$removeparam` không giá trị hoặc dạng regex mà adblock-rust chưa
+hỗ trợ. Cả 16 danh sách cùng lúc biên dịch trong khoảng 1,1 giây trên Mac.
+
+`tests/dns_filter.rs` chạy song song có thể lỗi ngẫu nhiên vì dùng chung cấu
+hình toàn cục (lỗi có sẵn ở HEAD); chạy `cargo test -- --test-threads=1`.
+
+Tải danh sách chạy trong scope của `FilterRepository`, không theo màn hình gọi nó.
+Trước đây bật bộ lọc trong danh mục rồi bấm Back sẽ hủy coroutine đang tải: AdGuard
+Base (6,4 MB) và EasyList không bao giờ tải xong, cũng không ghi lỗi. Trên máy thật
+hai danh sách này đã bật nhưng `updatedAt` vẫn là 0 và không có file.

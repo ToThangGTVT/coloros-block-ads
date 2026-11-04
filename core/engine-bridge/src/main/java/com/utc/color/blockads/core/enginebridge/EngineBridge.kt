@@ -35,14 +35,20 @@ class EngineBridge {
 
     private external fun nativeConfigurePolicy(json: String): Boolean
 
-    fun replaceRules(system: String, custom: String, apply: Boolean = true): String =
-        nativeReplaceRules(system, custom, apply)
+    /** DNS lists feed only the domain matcher; browser lists only decrypted HTTPS. */
+    fun replaceRules(dns: String, browser: String, custom: String, apply: Boolean = true): String =
+        nativeReplaceRules(dns, browser, custom, apply)
 
     fun configureDns(json: String): Boolean = nativeConfigureDns(json)
 
     fun setDnsEventSink(sink: DnsEventSink?) = nativeSetDnsEventSink(sink)
 
-    private external fun nativeReplaceRules(system: String, custom: String, apply: Boolean): String
+    private external fun nativeReplaceRules(
+        dns: String,
+        browser: String,
+        custom: String,
+        apply: Boolean,
+    ): String
 
     /**
      * Installs AdGuard Scriptlets `scriptlets.corelibs.json` / `redirects.json` (either may be

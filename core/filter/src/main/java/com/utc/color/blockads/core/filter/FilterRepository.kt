@@ -14,8 +14,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-/** One blocklist from AdGuard Home's registry; [group] is the registry groupId. */
-data class CatalogEntry(val group: Int, val name: String, val url: String)
+/** Where a catalog comes from; its lists are added as DNS or browser lists. */
+enum class CatalogSource(val url: String, val cache: String, val browser: Boolean) {
+    /** AdGuard Home's blocklist registry. */
+    Dns("https://adguardteam.github.io/HostlistsRegistry/assets/filters.json", "catalog.json", false),
+    /** The AdGuard browser extension's filters, in the uBlock Origin syntax the engine reads. */
+    Browser(
+        "https://filters.adtidy.org/extension/ublock/filters.json",
+        "catalog-browser.json",
+        true,
+    ),
+}
+
+/** One list of a catalog; [group] is the catalog's groupId. */
+data class CatalogEntry(
+    val group: Int,
+    val name: String,
+    val url: String,
+    val recommended: Boolean = false,
+    val languages: List<String> = emptyList(),
+)
 
 class FilterRepository(
     context: Context,
@@ -109,7 +127,7 @@ class FilterRepository(
 
     /** Downloads changed resources, installs them, and only then replaces the copies on disk. */
     suspend fun updateResources(): Boolean =
-        withContext(Dispatchers.IO) {
+        detached {
             resourceLock.withLock {
                 runCatching {
                         val fetched =
@@ -168,6 +186,13 @@ class FilterRepository(
         dnsReady.await()
     }
 
+    /**
+     * Downloads outlive the screen that started them: leaving a screen cancels its scope, and a
+     * multi-megabyte browser list cancelled midway left no file and no error.
+     */
+    private suspend fun <T> detached(block: suspend CoroutineScope.() -> T): T =
+        scope.async(block = block).await()
+
     private fun file(id: String) = File(directory, "$id.txt")
 
     private suspend fun reload() = compileLock.withLock {
@@ -176,8 +201,8 @@ class FilterRepository(
         require(active.sumOf { file(it.id).length() } <= 32L * 1024 * 1024) {
             "Tổng filter bật vượt quá 32 MB"
         }
-        val system = buildString {
-            active.forEach { list ->
+        fun join(browser: Boolean) = buildString {
+            active.filter { it.browser == browser }.forEach { list ->
                 val path = file(list.id)
                 if (path.exists()) {
                     append(path.readText())
@@ -185,16 +210,18 @@ class FilterRepository(
                 }
             }
         }
+        val dns = join(browser = false)
+        val browser = join(browser = true)
         val custom = settings.customRules.first()
         val signature =
             MessageDigest.getInstance("SHA-256")
-                .digest((system + "\u0000" + custom).toByteArray())
+                .digest(listOf(dns, browser, custom).joinToString("\u0000").toByteArray())
                 .joinToString("") { "%02x".format(it) }
         if (signature == compiledSignature) {
             _status.value = _status.value.copy(loading = false)
             return@withLock
         }
-        val result = JSONObject(engine.replaceRules(system, custom))
+        val result = JSONObject(engine.replaceRules(dns, browser, custom))
         check(result.optBoolean("applied")) {
             "Custom rules không hợp lệ: ${result.optJSONArray("errors")}"
         }
@@ -215,20 +242,27 @@ class FilterRepository(
     }
 
     /**
-     * AdGuard Home's blocklist registry. It is fetched at runtime and cached for the registry's
-     * 4-day expiry, never bundled (the registry is GPL-3.0; each list keeps its own license).
+     * Fetched at runtime and cached for 4 days (the registry's expiry), never bundled: AdGuard
+     * Home's registry is GPL-3.0 and each list keeps its own license.
      */
-    suspend fun catalog(): List<CatalogEntry> =
+    suspend fun catalog(source: CatalogSource): List<CatalogEntry> =
         withContext(Dispatchers.IO) {
-            val cache = File(directory, "catalog.json")
+            val cache = File(directory, source.cache)
             val fresh = System.currentTimeMillis() - cache.lastModified() < 4 * 24 * 3600 * 1000L
             val text =
                 if (cache.exists() && fresh) cache.readText()
                 else
-                    runCatching { fetchCatalog() }
+                    runCatching { fetchCatalog(source.url) }
                         .onSuccess { cache.writeText(it) }
                         .getOrElse { if (cache.exists()) cache.readText() else throw it }
-            val filters = JSONObject(text).getJSONArray("filters")
+            val json = JSONObject(text)
+            val tags = json.optJSONArray("tags")
+            val recommended =
+                (0 until (tags?.length() ?: 0))
+                    .map { tags!!.getJSONObject(it) }
+                    .firstOrNull { it.optString("keyword") == "recommended" }
+                    ?.optInt("tagId")
+            val filters = json.getJSONArray("filters")
             (0 until filters.length())
                 .map { filters.getJSONObject(it) }
                 .filter { !it.optBoolean("deprecated") }
@@ -236,14 +270,27 @@ class FilterRepository(
                     compareBy({ it.optInt("groupId") }, { it.optInt("displayNumber") })
                 )
                 .mapNotNull { item ->
-                    val url = item.optString("downloadUrl")
-                    if (!url.startsWith("https://")) null
-                    else CatalogEntry(item.optInt("groupId"), item.getString("name").take(200), url)
+                    val url =
+                        (if (source.browser) Mirrored[item.optInt("filterId")] else null)
+                            ?: item.optString("downloadUrl")
+                    if (!url.startsWith("https://")) return@mapNotNull null
+                    val tagIds = item.optJSONArray("tags")
+                    val languages = item.optJSONArray("languages")
+                    CatalogEntry(
+                        item.optInt("groupId"),
+                        item.getString("name").take(200),
+                        url,
+                        recommended != null &&
+                            (0 until (tagIds?.length() ?: 0)).any {
+                                tagIds!!.optInt(it) == recommended
+                            },
+                        (0 until (languages?.length() ?: 0)).map { languages!!.getString(it) },
+                    )
                 }
         }
 
-    private fun fetchCatalog(): String {
-        val connection = URI(CatalogUrl).toURL().openConnection() as HttpURLConnection
+    private fun fetchCatalog(url: String): String {
+        val connection = URI(url).toURL().openConnection() as HttpURLConnection
         connection.connectTimeout = 15000
         connection.readTimeout = 15000
         connection.instanceFollowRedirects = false
@@ -270,7 +317,7 @@ class FilterRepository(
     suspend fun remove(id: String) =
         downloadLock.withLock { if (settings.removeList(id)) file(id).delete() }
 
-    suspend fun addUrl(url: String, name: String? = null) {
+    suspend fun addUrl(url: String, name: String? = null, browser: Boolean = false) {
         val uri = URI(url.trim())
         require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) {
             "Cần URL HTTPS hợp lệ"
@@ -278,6 +325,11 @@ class FilterRepository(
         val normalized = uri.toASCIIString()
         require(normalized.length <= 4096) { "URL quá dài" }
         val existing = lists.first()
+        existing.firstOrNull { it.url == normalized && it.browser != browser }?.let {
+            throw IllegalArgumentException(
+                if (it.browser) "Đã có trong bộ lọc trình duyệt" else "Đã có trong danh sách DNS"
+            )
+        }
         require(existing.any { it.url == normalized } || existing.size < 30) {
             "Tối đa 30 danh sách"
         }
@@ -287,13 +339,22 @@ class FilterRepository(
             }
         settings.editLists { all ->
             if (all.any { it.url == normalized }) all
-            else all + FilterList(id, name ?: uri.host, normalized, enabled = true)
+            else
+                all +
+                    FilterList(id, name ?: uri.host, normalized, enabled = true, browser = browser)
         }
         download(id)
     }
 
-    suspend fun download(id: String) =
-        withContext(Dispatchers.IO) {
+    /** Every enabled list, then the scriptlet resources. */
+    suspend fun updateAll() = detached {
+        lists.first().filter { it.enabled }.forEach { download(it.id) }
+        updateResources()
+    }
+
+    /** Returns whether the list was downloaded (or is unchanged) and applied. */
+    suspend fun download(id: String): Boolean =
+        detached {
             downloadLock.withLock {
                 val list = lists.first().first { it.id == id }
                 _status.value = _status.value.copy(loading = true, error = null)
@@ -336,7 +397,11 @@ class FilterRepository(
                         } finally {
                             connection.disconnect()
                         }
-                    val compiled = JSONObject(engine.replaceRules(content, "", apply = false))
+                    val compiled =
+                        JSONObject(
+                            if (list.browser) engine.replaceRules("", content, "", apply = false)
+                            else engine.replaceRules(content, "", "", apply = false)
+                        )
                     check(compiled.getInt("loaded") > 0) { "List không có quy tắc được hỗ trợ" }
                     val temporary = File(directory, "$id.tmp")
                     temporary.writeText(content)
@@ -376,7 +441,7 @@ class FilterRepository(
     suspend fun importConfiguration(text: String) {
         val custom = JSONObject(text).optString("custom_rules", "")
         val validation =
-            JSONObject(engine.replaceRules("", custom, apply = false)).getJSONArray("errors")
+            JSONObject(engine.replaceRules("", "", custom, apply = false)).getJSONArray("errors")
         require(validation.length() == 0) { "Custom rules không hợp lệ: $validation" }
         settings.importConfiguration(text)
         reload()
@@ -388,7 +453,7 @@ class FilterRepository(
     suspend fun saveCustom(text: String) {
         require(text.length <= 1024 * 1024) { "Custom rules vượt quá 1 MB" }
         val validation =
-            JSONObject(engine.replaceRules("", text, apply = false)).getJSONArray("errors")
+            JSONObject(engine.replaceRules("", "", text, apply = false)).getJSONArray("errors")
         require(validation.length() == 0) {
             (0 until validation.length()).joinToString("\n") { index ->
                 validation.getJSONObject(index).let {
@@ -401,7 +466,16 @@ class FilterRepository(
     }
 
     private companion object {
-        const val CatalogUrl = "https://adguardteam.github.io/HostlistsRegistry/assets/filters.json"
+        /**
+         * Browser catalog entries that are a preset under another URL: toggling one switches the
+         * preset instead of adding a second copy.
+         */
+        val Mirrored =
+            mapOf(
+                101 to "https://easylist.to/easylist/easylist.txt",
+                118 to "https://easylist.to/easylist/easyprivacy.txt",
+                214 to "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn.txt",
+            )
         // Major version pinned: same JSON formats, fixes arrive without an app update.
         val ResourceUrls =
             mapOf(

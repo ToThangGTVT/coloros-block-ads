@@ -289,20 +289,22 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
 pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeReplaceRules(
     mut env: JNIEnv,
     _: JObject,
-    system: JString,
+    dns: JString,
+    browser: JString,
     custom: JString,
     apply: jboolean,
 ) -> jstring {
-    let (Ok(system), Ok(custom)) = (
-        env.get_string(&system).map(String::from),
+    let (Ok(dns), Ok(browser), Ok(custom)) = (
+        env.get_string(&dns).map(String::from),
+        env.get_string(&browser).map(String::from),
         env.get_string(&custom).map(String::from),
     ) else {
         return std::ptr::null_mut();
     };
     let report = if apply == JNI_TRUE {
-        filter::replace(&system, &custom)
+        filter::replace_lists(&dns, &browser, &custom)
     } else {
-        filter::Rules::compile(&system, &custom).report
+        filter::Rules::compile_lists(&dns, &browser, &custom).report
     };
     match serde_json::to_string(&report)
         .ok()

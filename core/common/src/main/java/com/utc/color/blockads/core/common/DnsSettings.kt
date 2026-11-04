@@ -29,6 +29,10 @@ data class DnsSettings(
     val customBootstrap: String = "1.1.1.1",
 )
 
+/**
+ * A rule list. DNS lists only block domains; [browser] lists (EasyList, AdGuard extension filters)
+ * only apply to decrypted HTTPS of browsers, so they never block a DNS answer.
+ */
 data class FilterList(
     val id: String,
     val name: String,
@@ -39,6 +43,7 @@ data class FilterList(
     val error: String? = null,
     val etag: String? = null,
     val lastModified: String? = null,
+    val browser: Boolean = false,
 )
 
 data class DnsEndpoint(

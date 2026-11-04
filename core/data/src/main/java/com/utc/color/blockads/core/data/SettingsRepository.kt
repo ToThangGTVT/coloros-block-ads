@@ -201,6 +201,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                         .put("error", list.error)
                         .put("etag", list.etag)
                         .put("lastModified", list.lastModified)
+                        .put("browser", list.browser)
                 )
             }
             preferences[Lists] = array.toString()
@@ -226,10 +227,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 val array = JSONArray(json)
                 (0 until array.length()).map { index ->
                     array.getJSONObject(index).let { item ->
+                        val id = item.getString("id")
+                        val url = item.getString("url")
+                        val preset = presets.firstOrNull { it.id == id && it.url == url }
                         FilterList(
-                            item.getString("id"),
-                            item.getString("name"),
-                            item.getString("url"),
+                            id,
+                            // Preset names follow the app, e.g. dropping the old "Network subset".
+                            preset?.name ?: item.getString("name"),
+                            url,
                             item.optBoolean("enabled"),
                             item.optLong("updatedAt"),
                             item.optInt("ruleCount"),
@@ -238,6 +243,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                             item.optString("lastModified").takeIf {
                                 it.isNotBlank() && it != "null"
                             },
+                            // Lists saved before the split were DNS lists, except the presets.
+                            preset?.browser ?: item.optBoolean("browser"),
                         )
                     }
                 }
@@ -316,6 +323,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                     .put("name", list.name.take(200))
                     .put("url", list.url)
                     .put("enabled", list.enabled)
+                    .put("browser", list.browser)
             )
         }
         store.edit { prefs ->
@@ -349,23 +357,27 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ),
                 FilterList(
                     "adguard-base",
-                    "AdGuard Base · Network subset",
+                    "AdGuard Base",
                     "https://filters.adtidy.org/extension/ublock/filters/2.txt",
+                    browser = true,
                 ),
                 FilterList(
                     "easylist",
-                    "EasyList · Network subset",
+                    "EasyList",
                     "https://easylist.to/easylist/easylist.txt",
+                    browser = true,
                 ),
                 FilterList(
                     "easyprivacy",
-                    "EasyPrivacy · Network subset",
+                    "EasyPrivacy",
                     "https://easylist.to/easylist/easyprivacy.txt",
+                    browser = true,
                 ),
                 FilterList(
                     "abpvn",
                     "ABPVN · Tiếng Việt",
                     "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn.txt",
+                    browser = true,
                 ),
             )
         val AutoStart = booleanPreferencesKey("auto_start")

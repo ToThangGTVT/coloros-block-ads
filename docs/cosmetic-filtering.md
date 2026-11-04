@@ -12,7 +12,8 @@ mới xóa node. Không cần extension hoặc root, nhưng trình duyệt phả
 2. Chọn Chrome trong phần **Chọn ứng dụng**, rồi bật **Bật lọc HTTPS**.
    HTTPS áp dụng cho mọi website của ứng dụng đã chọn; không cần nhập domain.
    Tắt công tắc sẽ dừng giải mã HTTPS, bộ lọc DNS vẫn hoạt động.
-3. Bật danh sách có CSS, chẳng hạn **ABPVN · Tiếng Việt**, và cập nhật bộ lọc.
+3. Trong **Bộ lọc → Bộ lọc trình duyệt**, bật **ABPVN · Tiếng Việt**, **EasyList**
+   hoặc chọn thêm từ **Chọn bộ lọc trình duyệt** (danh mục của tiện ích AdGuard).
    Hoặc vào **Bộ lọc → Quy tắc riêng**, nhập quy tắc theo phần tử thực tế của trang:
 
    ```text
@@ -25,9 +26,9 @@ mới xóa node. Không cần extension hoặc root, nhưng trình duyệt phả
    example.com##.popup:remove()
    ```
 
-   `example.com` là ví dụ; thay bằng website của bạn. Có thể thêm URL HTTPS của
-   danh sách có quy tắc cosmetic trong mục thêm danh sách lọc. Các danh sách chỉ
-   chứa tên miền DNS không cung cấp CSS ẩn phần tử.
+   `example.com` là ví dụ; thay bằng website của bạn. URL danh sách có quy tắc
+   cosmetic phải thêm vào **Bộ lọc trình duyệt**; danh sách DNS bỏ qua quy tắc ẩn
+   phần tử.
 4. Bật VPN, giữ **Cài đặt → Chặn QUIC** bật để Chrome dùng HTTPS qua TCP.
    Tải lại trang. Nội dung có sẵn trong cache/service worker có thể cần xóa cache
    của website để tải lại qua proxy.
