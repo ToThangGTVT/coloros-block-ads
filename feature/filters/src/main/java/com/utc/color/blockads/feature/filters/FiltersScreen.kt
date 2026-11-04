@@ -22,7 +22,6 @@ fun FiltersScreen(
     var url by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val visibleLists = remember(lists) { lists.filter { it.updatedAt != 0L || it.enabled } }
     val dateFormat = remember { java.text.DateFormat.getDateTimeInstance() }
     fun action(block: suspend () -> Unit) {
         scope.launch {
@@ -41,8 +40,8 @@ fun FiltersScreen(
             }
         }
         item(key = "filter-title", contentType = "title") { AppSectionTitle("Danh sách lọc") }
-        // Hide lists never downloaded, unless on (downloading or failed) so they can be turned off.
-        items(visibleLists, key = { it.id }, contentType = { "filter" }) { list ->
+        // Browser cosmetic lists must be discoverable before their first download as well.
+        items(lists, key = { it.id }, contentType = { "filter" }) { list ->
             AppPreferenceGroup {
                 AppSwitchPreference(
                     title = list.name,
@@ -79,6 +78,8 @@ fun FiltersScreen(
         item(key = "custom-editor", contentType = "card") {
             AppCard {
                 AppHint("||domain^ để chặn · @@||domain^ để cho phép")
+                AppHint("example.com##.banner để ẩn phần tử · example.com#@#.banner để bỏ ẩn")
+                AppHint("Ẩn phần tử cần bật lọc HTTPS và chọn trình duyệt trong danh sách ứng dụng.")
                 AppTextInput(
                     value = custom ?: saved,
                     label = "Mỗi dòng một rule",

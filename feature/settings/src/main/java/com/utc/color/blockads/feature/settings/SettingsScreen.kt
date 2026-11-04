@@ -183,7 +183,7 @@ fun SettingsScreen(
                     "Lọc quảng cáo và HTTPS theo app",
                     onApps,
                 )
-                AppArrowPreference("Lọc HTTPS", "Chặn quảng cáo theo URL", onCertificate)
+                AppArrowPreference("Lọc HTTPS", "Chặn theo URL và ẩn phần tử quảng cáo", onCertificate)
                 AppArrowPreference("VPN luôn bật", "Cài đặt hệ thống") {
                     runCatching {
                         context.startActivity(

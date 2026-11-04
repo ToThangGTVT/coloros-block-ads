@@ -46,7 +46,10 @@ fn hosts_suffix_and_priority_are_deterministic() {
         !rules.lookup("important.test").unwrap().blocked,
         "custom allow must outrank important"
     );
-    assert_eq!(rules.report.ignored, 1);
+    assert_eq!(rules.report.ignored, 0);
+    assert!(rules
+        .cosmetic_css("example.test")
+        .contains(".banner{display:none!important}"));
     assert!(Rules::compile("", "! ok\n||bad..domain^\n||good.test^")
         .report
         .errors

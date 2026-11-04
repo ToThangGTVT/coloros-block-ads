@@ -23,9 +23,9 @@ fun CertificateScreen(
     val state by repository.state.collectAsStateWithLifecycle()
     val config by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
     val installed by apps.apps.collectAsStateWithLifecycle()
-    var domains by rememberSaveable { mutableStateOf<String?>(null) }
-    var excluded by rememberSaveable { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     fun action(success: String? = null, block: suspend () -> Unit) {
@@ -52,6 +52,7 @@ fun CertificateScreen(
         AppCard {
             AppHint("Chỉ app tin CA người dùng, thường là trình duyệt.")
             AppHint("Ngân hàng, thanh toán, y tế luôn được bỏ qua.")
+            AppHint("Có thể ẩn quảng cáo bằng quy tắc CSS theo website trong Bộ lọc → Quy tắc riêng.")
         }
         (feedback ?: state.error)?.let { AppCard { AppText(it) } }
         AppSectionTitle("1 · Tạo CA")
@@ -88,48 +89,7 @@ fun CertificateScreen(
                 action { repository.refresh() }
             }
         }
-        AppSectionTitle("3 · Chọn domain")
-        AppCard {
-            AppHint("Mỗi dòng một domain, gồm cả subdomain")
-            AppTextInput(
-                domains ?: config.domains.joinToString("\n"),
-                "Domain lọc HTTPS",
-                multiline = true,
-                onChange = { domains = it },
-            )
-            AppTextInput(
-                excluded ?: config.excluded.joinToString("\n"),
-                "Domain luôn bỏ qua",
-                multiline = true,
-                onChange = { excluded = it },
-            )
-            AppAction("Lưu domain", primary = true) {
-                action("Đã lưu domain") {
-                    val saved = settings.https.first()
-                    settings.setHttps(
-                        saved.copy(
-                            domains =
-                                (domains ?: saved.domains.joinToString("\n"))
-                                    .lineSequence()
-                                    .map(String::trim)
-                                    .filter(String::isNotBlank)
-                                    .map(::normalizeHttpsDomain)
-                                    .toList(),
-                            excluded =
-                                (excluded ?: saved.excluded.joinToString("\n"))
-                                    .lineSequence()
-                                    .map(String::trim)
-                                    .filter(String::isNotBlank)
-                                    .map(::normalizeHttpsDomain)
-                                    .toList(),
-                        )
-                    )
-                    domains = null
-                    excluded = null
-                }
-            }
-        }
-        AppSectionTitle("Ứng dụng")
+        AppSectionTitle("3 · Chọn ứng dụng")
         AppPreferenceGroup {
             installed
                 .filter { it.packageName in HttpsSettings().apps || it.packageName in config.apps }
@@ -156,12 +116,51 @@ fun CertificateScreen(
         AppPreferenceGroup {
             AppSwitchPreference(
                 "Bật lọc HTTPS",
-                "Cần CA đã cài và ít nhất một domain",
+                "Áp dụng cho ứng dụng đã chọn, cần CA đã cài",
                 config.enabled && state.installed,
             ) { enabled ->
                 action { repository.setEnabled(enabled) }
             }
         }
+        AppPreferenceGroup {
+            AppArrowPreference(
+                if (deleting) "Đang xóa CA…" else "Xóa CA đã lưu",
+                "Xóa khóa trong bộ nhớ bảo mật và chứng chỉ của app",
+            ) {
+                if (!deleting) confirmDelete = true
+            }
+        }
         AppHint("Gỡ app không tự gỡ CA. Có thể gỡ trong Cài đặt → Thông tin xác thực.")
+    }
+    AppBottomSheet(
+        show = confirmDelete,
+        title = "Xóa CA đã lưu?",
+        onDismiss = { confirmDelete = false },
+    ) {
+        AppColumn {
+            AppText("Khóa riêng trong Android Keystore sẽ bị xóa vĩnh viễn. Lọc HTTPS sẽ tắt.")
+            AppHint("Chứng chỉ đã cài trong Android và các file CA đã xuất vẫn còn. Gỡ chứng chỉ trong Cài đặt → Bảo mật → Thông tin xác thực người dùng.")
+            AppHint("Nếu tạo CA mới, bạn cần cài lại chứng chỉ mới để dùng lọc HTTPS.")
+            AppButtonRow {
+                AppButton("Hủy") { confirmDelete = false }
+                AppButton("Xóa CA", primary = true) {
+                    confirmDelete = false
+                    if (!deleting) {
+                        deleting = true
+                        scope.launch {
+                            try {
+                                repository.delete()
+                                feedback = "Đã xóa khóa CA trong Keystore và chứng chỉ của app. Lọc HTTPS đã tắt."
+                            } catch (error: Exception) {
+                                if (error is CancellationException) throw error
+                                feedback = error.message ?: "Không xóa được CA"
+                            } finally {
+                                deleting = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,4 +1,5 @@
 //! Immutable exact/suffix domain matcher. Compiles off the tunnel worker and swaps atomically.
+mod cosmetic;
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -29,6 +30,7 @@ pub struct Rules {
     pub report: Report,
     scoped: HashMap<Box<str>, Vec<Scoped>>,
     patterns: Vec<Pattern>,
+    cosmetic: cosmetic::Cosmetic,
 }
 #[derive(Debug, PartialEq)]
 pub struct Decision<'a> {
@@ -62,6 +64,11 @@ impl Rules {
     }
     fn parse(&mut self, line: &str, custom: bool) -> Result<(), &'static str> {
         let line = line.trim();
+        if let Some(result) = self.cosmetic.parse(line) {
+            result?;
+            self.report.loaded += 1;
+            return Ok(());
+        }
         if line.is_empty()
             || line.starts_with('!')
             || line.starts_with('#')
@@ -278,6 +285,10 @@ impl Rules {
             }
         }
         best
+    }
+    /// Bounded per-domain cache belongs to this immutable rule snapshot; reload invalidates it.
+    pub fn cosmetic_css(&self, domain: &str) -> Arc<str> {
+        self.cosmetic.css(domain)
     }
 }
 fn valid_domain(domain: &str) -> bool {

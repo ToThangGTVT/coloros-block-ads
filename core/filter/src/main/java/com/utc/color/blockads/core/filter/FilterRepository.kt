@@ -262,7 +262,7 @@ class FilterRepository(
                             connection.disconnect()
                         }
                     val compiled = JSONObject(engine.replaceRules(content, "", apply = false))
-                    check(compiled.getInt("loaded") > 0) { "List không có rule DNS được hỗ trợ" }
+                    check(compiled.getInt("loaded") > 0) { "List không có quy tắc được hỗ trợ" }
                     val temporary = File(directory, "$id.tmp")
                     temporary.writeText(content)
                     check(temporary.renameTo(file(id))) { "Không lưu được filter" }

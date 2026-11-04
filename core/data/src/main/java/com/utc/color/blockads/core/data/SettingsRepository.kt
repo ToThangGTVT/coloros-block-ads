@@ -52,8 +52,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                         HttpsSettings(
                             json.optBoolean("enabled", false),
                             names("apps", HttpsSettings().apps),
-                            names("domains", emptyList()),
-                            names("excluded", emptyList()),
                         )
                     }
                     .getOrDefault(HttpsSettings())
@@ -62,22 +60,18 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setHttps(value: HttpsSettings) {
         require(
-            value.apps.size <= 100 && value.domains.size <= 100 && value.excluded.size <= 1000
+            value.apps.size <= 100
         ) {
             "Danh sách HTTPS quá dài"
         }
         require(value.apps.all { it.matches(Regex("[A-Za-z0-9_.]+")) }) {
             "Package ứng dụng không hợp lệ"
         }
-        val domains = value.domains.map(::normalizeHttpsDomain).distinct()
-        val excluded = value.excluded.map(::normalizeHttpsDomain).distinct()
         store.edit {
             it[Https] =
                 JSONObject()
                     .put("enabled", value.enabled)
                     .put("apps", JSONArray(value.apps.distinct()))
-                    .put("domains", JSONArray(domains))
-                    .put("excluded", JSONArray(excluded))
                     .toString()
         }
     }

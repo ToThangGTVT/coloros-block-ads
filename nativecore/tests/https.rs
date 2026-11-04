@@ -39,10 +39,10 @@ fn owner() -> Owner {
         blocked: false,
     }
 }
-fn enable(domain: &str) {
-    assert!(mitm::configure(&format!(
-        r#"{{"enabled":true,"apps":["test.browser"],"domains":["{domain}"]}}"#
-    )));
+fn enable() {
+    assert!(mitm::configure(
+        r#"{"enabled":true,"apps":["test.browser"]}"#
+    ));
 }
 fn client_config(root: &[u8], h2: bool) -> Arc<rustls::ClientConfig> {
     let mut roots = rustls::RootCertStore::empty();
@@ -88,9 +88,19 @@ fn default_off_scope_sensitive_domains_cache_and_rejected_client_bypass() {
     ca::set(Some(key), der);
     mitm::configure("{}");
     assert!(!mitm::eligible("scope.test", &owner()));
-    enable("scope.test");
+    enable();
     assert!(mitm::eligible("sub.scope.test", &owner()));
-    assert!(!mitm::eligible("not-scope.test", &owner()));
+    assert!(mitm::eligible("another-website.test", &owner()));
+    let mut other = owner();
+    other.packages = vec!["unselected.app".into()];
+    assert!(!mitm::eligible("scope.test", &other));
+    assert!(mitm::configure(
+        r#"{"enabled":true,"apps":["test.browser"],"domains":["legacy.test"],"excluded":["scope.test"]}"#
+    ));
+    assert!(
+        mitm::eligible("scope.test", &owner()),
+        "legacy domain settings must not narrow app scope"
+    );
     assert!(!mitm::eligible("sub.scope.test", &Owner::default()));
     for domain in [
         "bank.scope.test",
@@ -110,6 +120,7 @@ fn default_off_scope_sensitive_domains_cache_and_rejected_client_bypass() {
     mitm::reject_client("scope.test", &owner());
     assert!(!mitm::eligible("scope.test", &owner()));
     mitm::configure("{}");
+    assert!(!mitm::eligible("another-website.test", &owner()));
     ca::set(None, vec![]);
 }
 #[tokio::test]
@@ -147,6 +158,8 @@ async fn request(client: &mut Client, domain: &str, path: &str) -> Response<hype
     let request = Request::builder()
         .uri(uri)
         .header("Host", domain)
+        .header("Accept", "text/html")
+        .header("Sec-Fetch-Dest", "document")
         .body(Empty::<Bytes>::new())
         .unwrap();
     match client {
@@ -171,8 +184,8 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
             );
             let (key, root) = root();
             ca::set(Some(key), root.clone());
-            enable(&domain);
-            assert!(filter::replace("", &format!("||{domain}/ads/*")).applied);
+            enable();
+            assert!(filter::replace("", &format!("||{domain}/ads/*\n{domain}##.banner")).applied);
             let (peer_root, server_config) = peer_config(&domain, upstream_h2);
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
@@ -181,15 +194,24 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
             let server = tokio::spawn(async move {
                 let (raw, _) = listener.accept().await.unwrap();
                 let tls = TlsAcceptor::from(server_config).accept(raw).await.unwrap();
-                let service =
-                    hyper::service::service_fn(move |_: Request<hyper::body::Incoming>| {
+                let service = hyper::service::service_fn(
+                    move |request: Request<hyper::body::Incoming>| {
                         requests.fetch_add(1, Ordering::Relaxed);
-                        async {
+                        async move {
+                            if request.uri().path() == "/html" {
+                                assert_eq!(request.headers()["accept-encoding"], "identity");
+                                return Ok::<_, Infallible>(Response::builder()
+                                    .header("content-type", "text/html; charset=utf-8")
+                                    .header("etag", "\"original\"")
+                                    .header("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self'")
+                                    .body(Full::new(Bytes::from_static(b"<!doctype html><html><head><script>const fake='</head>';</script></head><body><div class='banner'>ad</div><p>content</p></body></html>"))).unwrap());
+                            }
                             Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(
                                 vec![7; 256 * 1024],
                             ))))
                         }
-                    });
+                    },
+                );
                 if upstream_h2 {
                     let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
                         .serve_connection(TokioIo::new(tls), service)
@@ -244,7 +266,12 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                     }),
                 )
             };
-            for path in ["/allowed", "/ads/banner?private=query-not-logged", "/next"] {
+            for path in [
+                "/allowed",
+                "/ads/banner?private=query-not-logged",
+                "/next",
+                "/html",
+            ] {
                 let response = request(&mut client, &domain, path).await;
                 let blocked = path.starts_with("/ads/");
                 assert_eq!(
@@ -255,9 +282,31 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                         StatusCode::OK
                     }
                 );
+                let csp = response.headers().get("content-security-policy").cloned();
+                if path == "/html" {
+                    assert!(!response.headers().contains_key("content-length"));
+                    assert!(!response.headers().contains_key("etag"));
+                    assert_eq!(response.headers()["cache-control"], "no-store");
+                }
                 let body = response.into_body().collect().await.unwrap().to_bytes();
                 if blocked {
                     assert!(body.is_empty());
+                } else if path == "/html" {
+                    let text = std::str::from_utf8(&body).unwrap();
+                    assert!(text.contains("</script><style nonce="));
+                    assert!(text.contains(".banner{display:none!important}"));
+                    assert!(text.contains("<p>content</p>"));
+                    let nonce = text
+                        .split("<style nonce=\"")
+                        .nth(1)
+                        .unwrap()
+                        .split('"')
+                        .next()
+                        .unwrap();
+                    let csp = csp.unwrap();
+                    let csp = csp.to_str().unwrap();
+                    assert!(csp.contains(&format!("style-src-elem 'self' 'nonce-{nonce}'")));
+                    assert!(csp.contains("script-src 'self'"));
                 } else {
                     assert_eq!(body.len(), 256 * 1024);
                     assert!(body.iter().all(|v| *v == 7));
@@ -265,7 +314,7 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
             }
             assert_eq!(
                 count.load(Ordering::Relaxed),
-                2,
+                3,
                 "blocked path reached upstream"
             );
             assert_eq!(guard.0.load(Ordering::Relaxed), 1);
@@ -290,7 +339,7 @@ async fn http2_concurrent_streams_multiplex_over_one_upstream_connection() {
     let domain = "multiplex.test".to_owned();
     let (key, root) = root();
     ca::set(Some(key), root.clone());
-    enable(&domain);
+    enable();
     let (peer_root, server_config) = peer_config(&domain, true);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();

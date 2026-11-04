@@ -1,5 +1,6 @@
-//! Opt-in TLS interception. Requires an installed local CA and explicit app + domain scopes.
+//! Opt-in TLS interception. Requires an installed local CA and explicitly selected apps.
 pub mod ca;
+mod html;
 pub mod proxy;
 use crate::policy::Owner;
 use serde::Deserialize;
@@ -14,8 +15,6 @@ use std::{
 pub struct Options {
     pub enabled: bool,
     pub apps: Vec<String>,
-    pub domains: Vec<String>,
-    pub excluded: Vec<String>,
 }
 static OPTIONS: OnceLock<RwLock<Arc<Options>>> = OnceLock::new();
 static REVISION: OnceLock<tokio::sync::watch::Sender<u64>> = OnceLock::new();
@@ -56,15 +55,7 @@ pub fn configure(json: &str) -> bool {
     let Ok(options) = serde_json::from_str::<Options>(json) else {
         return false;
     };
-    if options.apps.len() > 100
-        || options.domains.len() > 100
-        || options.excluded.len() > 1000
-        || !options
-            .domains
-            .iter()
-            .chain(&options.excluded)
-            .all(|d| valid_domain(d))
-    {
+    if options.apps.len() > 100 {
         return false;
     }
     *OPTIONS
@@ -122,8 +113,6 @@ pub fn eligible(domain: &str, owner: &Owner) -> bool {
         || sensitive(domain)
         || !valid_domain(domain)
         || !options.apps.iter().any(|app| owner.packages.contains(app))
-        || !options.domains.iter().any(|d| under(domain, d))
-        || options.excluded.iter().any(|d| under(domain, d))
     {
         return false;
     }

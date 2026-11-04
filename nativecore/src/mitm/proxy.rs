@@ -1,4 +1,4 @@
-//! TLS-verified upstream and streaming HTTP/1.1 + HTTP/2 policy proxy. No bodies are buffered/logged.
+//! TLS-verified upstream and streaming HTTP/1.1 + HTTP/2 proxy with bounded HTML-head rewriting.
 use super::{ca, eligible, reject_client};
 use crate::{
     policy::Owner,
@@ -24,8 +24,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_rustls::{client::TlsStream, TlsAcceptor, TlsConnector};
-type BoxError = Box<dyn Error + Send + Sync>;
-type Body = UnsyncBoxBody<Bytes, BoxError>;
+pub(super) type BoxError = Box<dyn Error + Send + Sync>;
+pub(super) type Body = UnsyncBoxBody<Bytes, BoxError>;
 enum Sender {
     H1(hyper::client::conn::http1::SendRequest<Body>),
     H2(hyper::client::conn::http2::SendRequest<Body>),
@@ -272,14 +272,19 @@ async fn forward(
         super::bypass(domain, owner, "HTTP Upgrade/CONNECT chưa hỗ trợ");
         return empty(StatusCode::NOT_IMPLEMENTED);
     }
-    let path = request.uri().path_and_query().map_or("/", |p| p.as_str());
+    let path = request
+        .uri()
+        .path_and_query()
+        .map_or("/", |p| p.as_str())
+        .to_owned();
     let authority = if destination.port() == 443 {
         domain.to_owned()
     } else {
         format!("{domain}:{}", destination.port())
     };
     let url = format!("https://{authority}{path}");
-    let decision = crate::filter::current().matches(domain, Some(&url), &owner.packages);
+    let rules = crate::filter::current();
+    let decision = rules.matches(domain, Some(&url), &owner.packages);
     let blocked = decision.as_ref().is_some_and(|d| d.blocked);
     crate::dns::event(
         domain.into(),
@@ -291,6 +296,21 @@ async fn forward(
     );
     if blocked {
         return empty(StatusCode::NO_CONTENT);
+    }
+    let css = if super::html::document_request(&request) {
+        rules.cosmetic_css(domain)
+    } else {
+        Arc::from("")
+    };
+    if !css.is_empty() {
+        // Avoid decompression/recompression work. Noncompliant compressed responses pass through.
+        request.headers_mut().insert(
+            hyper::header::ACCEPT_ENCODING,
+            hyper::header::HeaderValue::from_static("identity"),
+        );
+        for name in ["if-none-match", "if-modified-since"] {
+            request.headers_mut().remove(name);
+        }
     }
     let uri = if upstream_h2 {
         url.parse::<Uri>()
@@ -335,9 +355,39 @@ async fn forward(
         Ok(Ok(mut response)) => {
             *response.version_mut() = client_version;
             clean_headers(response.headers_mut());
-            response.map(|body| body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync())
+            let response =
+                response.map(|body| body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync());
+            super::html::inject(response, css).await
         }
-        _ => empty(StatusCode::BAD_GATEWAY),
+        Ok(Err(error)) => {
+            let mut reason = error.to_string();
+            let mut source = error.source();
+            while let Some(cause) = source {
+                reason.push_str(": ");
+                reason.push_str(&cause.to_string());
+                source = cause.source();
+            }
+            crate::dns::event(
+                domain.into(),
+                false,
+                Some(format!("Lỗi proxy HTTPS · {reason}")),
+                false,
+                owner.uid,
+                "https-error",
+            );
+            empty(StatusCode::BAD_GATEWAY)
+        }
+        Err(_) => {
+            crate::dns::event(
+                domain.into(),
+                false,
+                Some("Lỗi proxy HTTPS · upstream quá thời gian chờ".into()),
+                false,
+                owner.uid,
+                "https-error",
+            );
+            empty(StatusCode::GATEWAY_TIMEOUT)
+        }
     }
 }
 

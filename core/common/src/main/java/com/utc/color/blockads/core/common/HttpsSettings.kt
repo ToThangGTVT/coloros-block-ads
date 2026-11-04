@@ -12,28 +12,7 @@ data class HttpsSettings(
             "com.sec.android.app.sbrowser",
             "com.brave.browser",
         ),
-    val domains: List<String> = emptyList(),
-    val excluded: List<String> = emptyList(),
 )
-
-fun normalizeHttpsDomain(input: String): String {
-    val value = java.net.IDN.toASCII(input.trim().trimEnd('.')).lowercase(java.util.Locale.ROOT)
-    require(
-        value.length <= 253 &&
-            value.contains('.') &&
-            value.split('.').all { label ->
-                label.isNotEmpty() &&
-                    label.length <= 63 &&
-                    !label.startsWith('-') &&
-                    !label.endsWith('-') &&
-                    label.all { it.isLetterOrDigit() || it == '-' }
-            } &&
-            !value.all { it.isDigit() || it == '.' }
-    ) {
-        "Cần tên domain, không dùng URL, IP hoặc ký tự đại diện"
-    }
-    return value
-}
 
 data class CertificateState(
     val created: Boolean = false,

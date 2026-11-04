@@ -42,19 +42,23 @@ class CertificateRepository(
             if (!ready.isCompleted) ready.complete(Unit)
         }
         scope.launch {
-            combine(settings.https, state) { config, state -> config to state }
-                .collect { (config, state) ->
-                    val json =
-                        JSONObject()
-                            .put("enabled", config.enabled && state.installed && state.created)
-                            .put("apps", JSONArray(config.apps))
-                            .put("domains", JSONArray(config.domains))
-                            .put("excluded", JSONArray(config.excluded))
-                    // Never crash the process on a rejected config: fall back to MITM off.
-                    if (nativeSupported && !engine.configureHttps(json.toString())) {
-                        engine.configureHttps("{}")
-                        _state.update {
-                            it.copy(error = "Cấu hình HTTPS không hợp lệ; đã tắt xét HTTPS")
+            combine(settings.https, state) { _, _ -> Unit }
+                .collect {
+                    // Serialize native updates with create/refresh/delete. Read the latest values
+                    // inside the lock so a queued emission cannot restore a deleted CA's config.
+                    lock.withLock {
+                        val config = settings.https.first()
+                        val state = _state.value
+                        val json =
+                            JSONObject()
+                                .put("enabled", config.enabled && state.installed && state.created)
+                                .put("apps", JSONArray(config.apps))
+                        // Never crash the process on a rejected config: fall back to MITM off.
+                        if (nativeSupported && !engine.configureHttps(json.toString())) {
+                            engine.configureHttps("{}")
+                            _state.update {
+                                it.copy(error = "Cấu hình HTTPS không hợp lệ; đã tắt xét HTTPS")
+                            }
                         }
                     }
                 }
@@ -212,21 +216,45 @@ class CertificateRepository(
 
     suspend fun exportCertificate(): ByteArray =
         withContext(Dispatchers.IO) {
-            require(file.exists())
-            file.readBytes()
+            lock.withLock {
+                require(file.exists())
+                file.readBytes()
+            }
+        }
+
+    /** Deletes the non-exportable private key and app-owned files, not Android's user CA store. */
+    suspend fun delete() =
+        withContext(Dispatchers.IO + NonCancellable) {
+            lock.withLock {
+                settings.setHttps(settings.https.first().copy(enabled = false))
+                if (nativeSupported) {
+                    check(engine.configureHttps("{}")) { "Không tắt được lọc HTTPS" }
+                    // Drops the native signer and leaf cache; also closes current HTTPS proxies.
+                    check(engine.setCa(null)) { "Không gỡ được CA khỏi lõi HTTPS" }
+                }
+                val keys = store()
+                keys.deleteEntry(Alias)
+                check(!keys.containsAlias(Alias)) { "Không xóa được khóa CA trong Keystore" }
+                _state.value = CertificateState()
+                for (path in listOf(file, File(file.parentFile, "root-ca.tmp"))) {
+                    check(!path.exists() || path.delete()) { "Không xóa được file ${path.name}" }
+                }
+            }
         }
 
     suspend fun setEnabled(enabled: Boolean) {
         refresh()
-        if (enabled) {
-            require(state.value.created && state.value.installed) {
-                "Hãy tạo và cài CA trong Settings hệ thống trước"
+        lock.withLock {
+            if (enabled) {
+                require(state.value.created && state.value.installed) {
+                    "Hãy tạo và cài CA trong Settings hệ thống trước"
+                }
+                require(settings.https.first().apps.isNotEmpty()) {
+                    "Chọn ít nhất một ứng dụng để lọc HTTPS"
+                }
             }
-            require(settings.https.first().domains.isNotEmpty()) {
-                "Chọn ít nhất một domain cho phép HTTPS"
-            }
+            settings.setHttps(settings.https.first().copy(enabled = enabled))
         }
-        settings.setHttps(settings.https.first().copy(enabled = enabled))
     }
 
     companion object {

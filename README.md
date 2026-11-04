@@ -37,6 +37,7 @@ Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình th
 - Không chặn được mọi quảng cáo, chẳng hạn quảng cáo dùng chung máy chủ với nội dung.
 - Nếu app bị dừng nền, vào **Cài đặt → Ưu tiên chạy ngầm**. Nếu có cảnh báo Private DNS, tắt DNS riêng trong cài đặt Android để lọc đầy đủ hơn.
 - Log/thống kê cập nhật theo lô khoảng 5 giây, có thể sớm hơn khi nhiều kết nối. Lọc HTTPS là tùy chọn nâng cao, mặc định tắt.
+- Có thể ẩn phần tử quảng cáo trong Chrome bằng [quy tắc CSS theo website](docs/cosmetic-filtering.md), cần cấu hình lọc HTTPS và cài CA.
 
 Cập nhật tại **Cài đặt → Cập nhật ứng dụng → Kiểm tra cập nhật GitHub**.
 

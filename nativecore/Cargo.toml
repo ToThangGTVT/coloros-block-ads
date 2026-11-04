@@ -37,6 +37,7 @@ hyper = { version = "=1.12.0", features = ["http1", "http2", "client", "server"]
 hyper-util = { version = "=0.1.21", features = ["tokio"] }
 http-body-util = "=0.1.5"
 bytes = "=1.12.1"
+ring = "=0.17.14"
 
 [[bench]]
 name = "matcher"

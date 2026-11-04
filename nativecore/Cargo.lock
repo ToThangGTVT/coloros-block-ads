@@ -117,6 +117,7 @@ dependencies = [
  "quinn",
  "rcgen",
  "regex",
+ "ring",
  "rustls",
  "serde",
  "serde_json",

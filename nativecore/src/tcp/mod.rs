@@ -58,6 +58,7 @@ pub async fn serve(
                 }
                 let Some(destination) = network.borrow().destination(destination) else { continue; };
                 let protector = protector.clone();
+                let mut https_changes = crate::mitm::subscribe();
                 let stats = stats.clone();
                 let resets = resets.clone(); let raw = raw.clone();
                 flows.spawn(async move {
@@ -93,10 +94,22 @@ pub async fn serve(
                             }
                         }
                     }
+                    let selected = crate::mitm::current().apps.iter().any(|app| owner.packages.contains(app));
+                    let tls = matches!(parsed, sniff::Parsed::Tls(_)) && matches!(destination.port(), 443 | 8443) && !owner.bypass;
                     if let Ok(mut upstream) = sockets::connect_tcp(destination, protector.as_ref(), &stats).await {
                         if upstream.write_all(&initial).await.is_err() { return; }
                         let idle = idle_timeout(activity.clone());
-                        tokio::select! { _ = tokio::io::copy_bidirectional(&mut client, &mut upstream) => {}, _ = idle => {} }
+                        let relay = tokio::io::copy_bidirectional(&mut client, &mut upstream);
+                        tokio::pin!(relay, idle);
+                        loop {
+                            tokio::select! {
+                                _ = &mut relay => break,
+                                _ = &mut idle => break,
+                                changed = https_changes.changed(), if tls => {
+                                    if changed.is_err() || selected || crate::mitm::current().apps.iter().any(|app| owner.packages.contains(app)) { break; }
+                                }
+                            }
+                        }
                     }
                 });
             }

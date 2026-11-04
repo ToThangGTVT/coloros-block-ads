@@ -1,5 +1,9 @@
 # Phase 5 — Lọc HTTPS tùy chọn (local CA)
 
+Bổ sung: [ẩn phần tử bằng CSS theo website](cosmetic-filtering.md), dùng lại
+phạm vi ứng dụng và CA của bộ lọc HTTPS. Phần ghi nhận kiểm tra phía dưới là
+lịch sử Phase 5; hướng dẫn mới và phạm vi cosmetic nằm trong tài liệu liên kết.
+
 ## File và thiết kế
 
 - `core/certificate/CertificateRepository`: root key EC P-256 tạo trong Android
@@ -11,12 +15,13 @@
   `AndroidCAStore`. Chưa cài/không đọc được → `setCa(null)`, MITM tắt. Kiểm tra lại
   khi `onResume`, khi start VPN và khi bấm “Kiểm tra trạng thái đã cài”.
 - `core/common/HttpsSettings`, DataStore `https_local_settings`: mặc định tắt, app
-  là các trình duyệt phổ biến, domain cho phép **rỗng**. Domain chuẩn hóa IDN →
+  là các trình duyệt phổ biến. HTTPS hiện áp dụng theo ứng dụng, không chọn domain.
+  Phần mô tả domain dưới đây là thiết kế cũ và đã được thay thế. Domain chuẩn hóa IDN →
   ASCII, không nhận URL/IP/wildcard. Cấu hình JSON gửi native bị từ chối thì
   repository tự gửi `{}` (tắt) và báo lỗi, không crash process.
 - `nativecore/src/mitm/mod.rs`: `eligible` yêu cầu enabled + UID có package nằm
-  trong app đã chọn + domain/subdomain được cho phép + không nằm trong excluded +
-  không sensitive + có CA. Danh sách sensitive cố định (ngân hàng/thanh toán/y tế,
+  trong app đã chọn + không sensitive + có CA. Các trường domains/excluded cũ
+  được bỏ qua khi đọc cấu hình để chuyển sang phạm vi theo ứng dụng. Danh sách sensitive cố định (ngân hàng/thanh toán/y tế,
   nhãn chứa `bank`/`pay`/`health`/…), luôn thắng cấu hình người dùng.
 - `mitm/ca.rs`: leaf P-256 7 ngày, cache 128 domain/24 giờ, ALPN h2 + http/1.1.
 - `mitm/proxy.rs`: upstream TLS verify WebPKI + hostname, socket protect trước
@@ -31,7 +36,13 @@
 - `EngineBridge.supportsHttps()` dùng `nativeHttpsApiVersion`; `.so` cũ thiếu API
   không làm app crash, màn Chứng chỉ báo cần build lại native.
 - UI: màn Chứng chỉ dạng wizard 3 bước (tạo CA → xuất .crt và cài qua Settings →
-  phạm vi domain/app) và switch bật; Apps có switch “Xét lọc HTTPS” theo app.
+  chọn ứng dụng) và switch bật/tắt; Apps có switch “Xét lọc HTTPS” theo app.
+- **Xóa CA đã lưu**: tắt HTTPS, gỡ signer/cache CA khỏi native (đóng các proxy
+  HTTPS), xóa alias `blockads-local-ca-p256-v1` trong Android Keystore và file
+  `root-ca.der`/`root-ca.tmp` nội bộ. Tạo lại sẽ tạo khóa và fingerprint mới.
+  Các cập nhật native, tạo/xóa/refresh được serialize bằng cùng mutex để tránh
+  cấu hình cũ bật lại sau khi xóa. Không tự gỡ CA đã cài trong AndroidCAStore
+  hoặc các bản `.crt` đã xuất; UI có thông báo và hướng dẫn gỡ trong Settings.
 
 ## Giới hạn đã biết
 
