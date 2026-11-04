@@ -12,7 +12,10 @@ use hickory_resolver::{
     proto::{
         op::{DnsRequest, DnsRequestOptions, Message, MessageType, OpCode, ResponseCode},
         rr::{
-            rdata::{A, AAAA},
+            rdata::{
+                svcb::{SvcParamKey, SvcParamValue},
+                A, AAAA,
+            },
             RData, Record, RecordType,
         },
     },
@@ -277,6 +280,7 @@ impl Session {
         key.extend_from_slice(&filter::revision().to_be_bytes());
         if let Some(mut response) = cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
             response.metadata.id = request.metadata.id;
+            strip_ech_for(&mut response, &domain, owner);
             reverse::remember(owner.uid, &domain, &response);
             event(domain, false, rule, true, owner.uid, "dns");
             return encode(&response, &request, tcp);
@@ -338,8 +342,45 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .put(key, response.clone());
         reverse::remember(owner.uid, &domain, &response);
+        strip_ech_for(&mut response, &domain, owner);
         event(domain, false, rule, false, owner.uid, "dns");
         encode(&response, &request, tcp)
+    }
+}
+/// Apps whose HTTPS is filtered get HTTPS/SVCB records without `ech`, so the browser sends the
+/// real SNI that the proxy needs; it would otherwise offer ECH with an outer name such as
+/// `cloudflare-ech.com`. The cache keeps the original answer, so other apps, sensitive hosts and
+/// pinned (bypassed) hosts keep ECH.
+fn strip_ech_for(response: &mut Message, domain: &str, owner: &crate::policy::Owner) {
+    if response
+        .answers
+        .iter()
+        .chain(&response.additionals)
+        .any(|r| matches!(r.data, RData::HTTPS(_) | RData::SVCB(_)))
+        && crate::mitm::eligible(domain, owner)
+    {
+        strip_ech(response);
+    }
+}
+pub fn strip_ech(response: &mut Message) {
+    for record in response
+        .answers
+        .iter_mut()
+        .chain(response.additionals.iter_mut())
+    {
+        let params = match &mut record.data {
+            RData::HTTPS(https) => &mut https.0.svc_params,
+            RData::SVCB(svcb) => &mut svcb.svc_params,
+            _ => continue,
+        };
+        params.retain(|(key, _)| *key != SvcParamKey::EchConfigList);
+        // A record that still listed `ech` as mandatory would have to be ignored entirely.
+        for (_, value) in params.iter_mut() {
+            if let SvcParamValue::Mandatory(mandatory) = value {
+                mandatory.0.retain(|key| *key != SvcParamKey::EchConfigList);
+            }
+        }
+        params.retain(|(_, value)| !matches!(value, SvcParamValue::Mandatory(m) if m.0.is_empty()));
     }
 }
 pub fn error_response(request: &Message, code: ResponseCode) -> Message {

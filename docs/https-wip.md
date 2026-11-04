@@ -5,6 +5,19 @@ tra với Chrome 158.0.8127.2. Chưa tạo tag hoặc phát hành phiên bản m
 Bản release 1.0.4, dữ liệu và CA của bản release được giữ nguyên. Người dùng
 đã cài CA riêng của bản debug; không xóa hoặc tạo lại CA sau khi cài.
 
+## Bỏ ECH khỏi DNS cho ứng dụng được lọc HTTPS
+
+Chrome bật Encrypted Client Hello khi bản ghi DNS HTTPS/SVCB có tham số `ech`. Khi
+đó SNI nhìn thấy chỉ là tên ngoài (ví dụ `cloudflare-ech.com`), proxy không biết
+host thật để chọn quy tắc và chứng chỉ, và phải chờ Chrome thử lại không ECH. Giống
+AdGuard, `dns/mod.rs` giờ bỏ `ech` (và `ech` trong `mandatory`) khỏi câu trả lời
+HTTPS/SVCB, **chỉ khi** `mitm::eligible` đúng cho app và host đó. Cache giữ bản gốc,
+nên app khác, host nhạy cảm (ngân hàng/thanh toán/y tế) và host đang bypass do
+pinning vẫn nhận ECH. Các tham số khác (ALPN, ipv4hint...) giữ nguyên. Test:
+`tests/ech.rs`. Giới hạn: chỉ áp dụng cho truy vấn DNS gán được UID của trình duyệt;
+Chrome dùng resolver riêng nên thường gán được, còn truy vấn đi qua resolver hệ
+thống hoặc Secure DNS (DoH) do người dùng tự bật trong Chrome thì không qua bước này.
+
 ## Scriptlet, `$redirect`, `$removeparam`
 
 AdGuard Scriptlets được tải lúc chạy (không đóng gói, GPL-3.0) và chuyển sang
