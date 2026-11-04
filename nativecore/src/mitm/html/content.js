@@ -51,7 +51,8 @@
       link.rel = 'stylesheet';
       link.nonce = nonce;
       link.setAttribute('data-blockads', '');
-      link.href = endpoint + '?c=' + encodeURIComponent(c.join(' ')) + '&i=' + encodeURIComponent(i.join(' '));
+      // Absolute, so a page's <base href> cannot send it to another origin.
+      link.href = location.origin + endpoint + '?c=' + encodeURIComponent(c.join(' ')) + '&i=' + encodeURIComponent(i.join(' '));
       (doc.head || doc.documentElement).appendChild(link);
     }
   }

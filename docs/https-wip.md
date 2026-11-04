@@ -5,6 +5,17 @@ tra với Chrome 158.0.8127.2. Chưa tạo tag hoặc phát hành phiên bản m
 Bản release 1.0.4, dữ liệu và CA của bản release được giữ nguyên. Người dùng
 đã cài CA riêng của bản debug; không xóa hoặc tạo lại CA sau khi cài.
 
+## Chèn sớm ngay sau `<head>`
+
+Trước đây phải quét hết head tới `</head>` mới chèn, và bỏ qua cả trang khi gặp
+meta CSP, `<template>`, script legacy hay thiếu thẻ head. Giờ khi header có
+charset, `<style>`/`<script>` của BlockAds đứng ngay sau `<head>` (hoặc trước phần
+tử đầu tiên), nên CSS áp dụng trước khi trang vẽ và script chạy trước script của
+trang — điều kiện cần cho scriptlet ở bước sau. Không có charset trong header thì
+chèn sau `<meta charset>`, không có nữa thì giữ cách cũ. Chi tiết:
+[cosmetic-filtering.md](cosmetic-filtering.md#phạm-vi-và-giới-hạn).
+Script nạp CSS chung bằng URL tuyệt đối để `<base href>` không làm hỏng.
+
 ## Ẩn phần tử qua adblock-rust
 
 Parser CSS riêng (chỉ nhận CSS ASCII đơn giản, cắt ở 64 KiB theo thứ tự chữ cái

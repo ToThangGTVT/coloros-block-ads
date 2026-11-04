@@ -102,6 +102,17 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
         return response;
     }
     let nonce: String = random.iter().map(|b| format!("{b:02x}")).collect();
+    // eligible() already rejected unsupported charsets; a declared one lets the browser decode
+    // without prescanning the head, so the snippet can go first.
+    let early = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(';')
+                .skip(1)
+                .any(|p| p.trim().to_ascii_lowercase().starts_with("charset="))
+        });
     let Some(csp) = csp_headers(response.headers(), &nonce, script.is_some()) else {
         return response;
     };
@@ -140,7 +151,7 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
             "<script nonce=\"{nonce}\" data-blockads>{script}</script>"
         ));
     }
-    let mut scanner = scanner::Scanner::new(Bytes::from(snippet));
+    let mut scanner = scanner::Scanner::new(Bytes::from(snippet), early);
     let frames = BodyStream::new(body)
         .map(Some)
         .chain(stream::once(async { None }))
@@ -296,7 +307,7 @@ enum Head {
 }
 #[cfg(test)]
 fn head_end(input: &[u8]) -> Head {
-    let mut scanner = scanner::Scanner::new(Bytes::from_static(b"INJECT"));
+    let mut scanner = scanner::Scanner::new(Bytes::from_static(b"INJECT"), false);
     let output = scanner.write(Bytes::copy_from_slice(input));
     if scanner.inserted {
         Head::End(output.windows(6).position(|v| v == b"INJECT").unwrap())
@@ -433,7 +444,9 @@ mod tests {
         );
         assert_eq!(head_end(b"\xff\xfe<head></head>"), Head::Skip);
         let genk = b"<head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><meta http-equiv=\"x-dns-prefetch-control\" content=\"on\"></head>";
-        assert_eq!(head_end(genk), Head::End(genk.len() - 7));
+        // Without a header charset the snippet follows the charset declaration.
+        let after_charset = genk.windows(3).position(|w| w == b"\"><").unwrap() + 2;
+        assert_eq!(head_end(genk), Head::End(after_charset));
         assert_eq!(head_end(b"<head><meta charset=utf-16></head>"), Head::Skip);
     }
     #[test]
@@ -581,27 +594,34 @@ mod tests {
     #[tokio::test]
     async fn multi_megabyte_head_is_rewritten_without_changing_content() {
         let original = format!(
-            "<!doctype html><html><head><meta charset=utf-8><script>{}</script></head><body><p>article</p></body></html>",
+            "<!doctype html><html><head><script>{}</script></head><body><p>article</p></body></html>",
             " ".repeat(2 * 1024 * 1024)
         );
-        let response = Response::builder()
-            .header("content-type", "text/html; charset=utf-8")
-            .header("content-length", original.len())
-            .body(
-                Full::new(Bytes::from(original.clone()))
-                    .map_err(|never: Infallible| match never {})
-                    .boxed_unsync(),
-            )
-            .unwrap();
-        let result = rewrite(response, ".ad{display:none!important}", None).await;
-        assert!(!result.headers().contains_key("content-length"));
-        let bytes = result.into_body().collect().await.unwrap().to_bytes();
-        let text = std::str::from_utf8(&bytes).unwrap();
-        let start = text.find("<style nonce=").unwrap();
-        let end = text[start..].find("</style>").unwrap() + start + "</style>".len();
-        assert_eq!(format!("{}{}", &text[..start], &text[end..]), original);
-        assert!(text.contains("</script><style nonce="));
-        assert!(text.contains(".ad{display:none!important}"));
+        // Charset in the header: right after <head>. Otherwise, with no meta charset, the
+        // whole 2 MiB head streams through before the snippet goes in front of </head>.
+        for (content_type, before) in [
+            ("text/html; charset=utf-8", "<head><style nonce="),
+            ("text/html", "</script><style nonce="),
+        ] {
+            let response = Response::builder()
+                .header("content-type", content_type)
+                .header("content-length", original.len())
+                .body(
+                    Full::new(Bytes::from(original.clone()))
+                        .map_err(|never: Infallible| match never {})
+                        .boxed_unsync(),
+                )
+                .unwrap();
+            let result = rewrite(response, ".ad{display:none!important}", None).await;
+            assert!(!result.headers().contains_key("content-length"));
+            let bytes = result.into_body().collect().await.unwrap().to_bytes();
+            let text = std::str::from_utf8(&bytes).unwrap();
+            let start = text.find("<style nonce=").unwrap();
+            let end = text[start..].find("</style>").unwrap() + start + "</style>".len();
+            assert_eq!(format!("{}{}", &text[..start], &text[end..]), original);
+            assert!(text.contains(before), "{content_type}");
+            assert!(text.contains(".ad{display:none!important}"));
+        }
     }
     #[tokio::test]
     async fn incompatible_documents_are_passed_through_byte_for_byte() {
@@ -634,12 +654,17 @@ mod tests {
                 HTML
             );
         }
+        // Without a header charset, documents the head tokenizer cannot vouch for pass through.
         for data in [
             b"<body>no head</body>".as_slice(),
             b"<head><meta http-equiv='Content-Security-Policy'></head>",
             b"<head><script>unfinished",
         ] {
-            let result = rewrite(response(data), ".ad{display:none!important}", None).await;
+            let mut response = response(data);
+            response
+                .headers_mut()
+                .insert("content-type", HeaderValue::from_static("text/html"));
+            let result = rewrite(response, ".ad{display:none!important}", None).await;
             assert_eq!(
                 result
                     .into_body()

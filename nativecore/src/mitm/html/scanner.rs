@@ -1,7 +1,18 @@
 //! Incremental, conservative head tokenizer. Holds one unfinished tag, never the whole head.
+//!
+//! Insertion point, earliest first, so injected styles apply and scripts run before the page's:
+//! - charset known from the HTTP header: right after `<head>`, or before the first element when
+//!   the head tag is omitted (never before a doctype or comment);
+//! - otherwise right after the `<meta charset>` declaration, keeping it within the first bytes
+//!   the browser prescans; without one, before `</head>`.
 use bytes::Bytes;
 
 const MAX_TAG: usize = 8 * 1024;
+enum Insert {
+    No,
+    Before,
+    After,
+}
 pub(super) struct Scanner {
     pending: Vec<u8>,
     quote: u8,
@@ -13,9 +24,12 @@ pub(super) struct Scanner {
     pub(super) inserted: bool,
     style: Bytes,
     leading: Vec<u8>,
+    early: bool,
 }
 impl Scanner {
-    pub(super) fn new(style: Bytes) -> Self {
+    /// `early`: the response header declares the charset, so nothing in the head has to precede
+    /// the injected markup.
+    pub(super) fn new(style: Bytes, early: bool) -> Self {
         Self {
             pending: Vec::new(),
             quote: 0,
@@ -27,6 +41,7 @@ impl Scanner {
             inserted: false,
             style,
             leading: Vec::with_capacity(2),
+            early,
         }
     }
     pub(super) fn write(&mut self, data: Bytes) -> Bytes {
@@ -121,30 +136,57 @@ impl Scanner {
             } else if matches!(byte, b'\'' | b'"') {
                 self.quote = byte;
             } else if byte == b'>' {
-                if self.raw.is_some() {
+                let insert = if self.raw.is_some() {
                     self.raw = None;
-                } else if self.tag() {
+                    Insert::No
+                } else {
+                    self.tag()
+                };
+                if matches!(insert, Insert::Before) {
                     output.extend_from_slice(&self.style);
+                }
+                output.append(&mut self.pending);
+                if matches!(insert, Insert::After) {
+                    output.extend_from_slice(&self.style);
+                }
+                if !matches!(insert, Insert::No) {
                     self.inserted = true;
                     self.stopped = true;
                 }
-                output.append(&mut self.pending);
             }
         }
         Bytes::from(output)
     }
-    fn tag(&mut self) -> bool {
+    fn tag(&mut self) -> Insert {
         let content = &self.pending[1..self.pending.len() - 1];
         let name = content
             .split(|c| c.is_ascii_whitespace() || *c == b'/')
             .next()
             .unwrap_or_default();
+        if self.early {
+            // Doctype, processing instructions, end tags and <html> come before the head.
+            return if name.is_empty()
+                || name.starts_with(b"!")
+                || name.starts_with(b"?")
+                || name.eq_ignore_ascii_case(b"html")
+            {
+                Insert::No
+            } else if name.eq_ignore_ascii_case(b"head") {
+                Insert::After
+            } else {
+                Insert::Before
+            };
+        }
         if content
             .strip_prefix(b"/")
             .is_some_and(|n| n.trim_ascii_end().eq_ignore_ascii_case(b"head"))
         {
             self.stopped = true;
-            return self.head;
+            return if self.head {
+                Insert::Before
+            } else {
+                Insert::No
+            };
         }
         if name.eq_ignore_ascii_case(b"head") {
             self.head = true;
@@ -173,8 +215,12 @@ impl Scanner {
         {
             self.stopped = true;
         }
-        if name.eq_ignore_ascii_case(b"meta") && !super::safe_meta(content) {
-            self.stopped = true;
+        if name.eq_ignore_ascii_case(b"meta") {
+            if !super::safe_meta(content) {
+                self.stopped = true;
+            } else if self.head && declares_charset(content) {
+                return Insert::After;
+            }
         }
         for (name_match, closing) in [
             (b"script".as_slice(), b"</script".as_slice()),
@@ -189,37 +235,84 @@ impl Scanner {
                 break;
             }
         }
-        false
+        Insert::No
     }
     pub(super) fn finish(&mut self) -> Bytes {
         self.stopped = true;
         Bytes::from(std::mem::take(&mut self.pending))
     }
 }
+/// `<meta charset=...>` or `<meta http-equiv="content-type" ...>`; values were checked by
+/// `safe_meta`.
+fn declares_charset(content: &[u8]) -> bool {
+    let content = content.to_ascii_lowercase();
+    content
+        .windows(9)
+        .any(|w| w[0].is_ascii_whitespace() && &w[1..] == b"charset=")
+        || (content.windows(10).any(|w| w == b"http-equiv")
+            && content.windows(12).any(|w| w == b"content-type"))
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn run(input: &[u8], early: bool, chunk_size: usize) -> Vec<u8> {
+        let mut scanner = Scanner::new(Bytes::from_static(b"<style data-test></style>"), early);
+        let mut output = Vec::new();
+        for chunk in input.chunks(chunk_size) {
+            output.extend_from_slice(&scanner.write(Bytes::copy_from_slice(chunk)));
+            assert!(scanner.pending.len() <= MAX_TAG);
+        }
+        output.extend_from_slice(&scanner.finish());
+        output
+    }
     #[test]
     fn tokens_can_be_split_at_any_byte_without_changing_the_document() {
-        let input = b"<!doctype html><html><head data-x='>'><!-- </head> --><meta charset=utf-8><title></head></title><script>let fake='</head>'; let t='<</scriptX>';</script><style>/* </head> */</style></head><body>text</body></html>";
-        let at = input
-            .windows(12)
-            .position(|s| s == b"</head><body")
-            .unwrap();
-        let mut expected = input[..at].to_vec();
-        expected.extend_from_slice(b"<style data-test></style>");
-        expected.extend_from_slice(&input[at..]);
-        for chunk_size in 1..=input.len() {
-            let mut scanner = Scanner::new(Bytes::from_static(b"<style data-test></style>"));
-            let mut output = Vec::new();
-            for chunk in input.chunks(chunk_size) {
-                output.extend_from_slice(&scanner.write(Bytes::copy_from_slice(chunk)));
-                assert!(scanner.pending.len() <= MAX_TAG);
+        const TRICKY: &[u8] = b"<!doctype html><html><head data-x='>'><!-- </head> --><title></head></title><script>let fake='</head>'; let t='<</scriptX>';</script><style>/* </head> */</style></head><body>text</body></html>";
+        let with_meta = [
+            b"<!doctype html><html><head data-x='>'><!-- <meta charset=x> --><meta charset=utf-8>"
+                .as_slice(),
+            b"<title>t</title></head><body>text</body></html>",
+        ]
+        .concat();
+        let headless = b"\xef\xbb\xbf<!DOCTYPE html><!-- <head> --><?x?><html lang=vi><meta charset=utf-8><title>x</title><p>text";
+        for (input, early, marker, after) in [
+            // Header charset: right after <head>, or before the first element without one.
+            (TRICKY, true, b"<head data-x='>'>".as_slice(), true),
+            (headless.as_slice(), true, b"<meta charset=utf-8>", false),
+            // No header charset: after <meta charset>, else before </head>.
+            (with_meta.as_slice(), false, b"<meta charset=utf-8>", true),
+            (TRICKY, false, b"</head><body", false),
+        ] {
+            let at = input
+                .windows(marker.len())
+                .rposition(|s| s == marker)
+                .unwrap()
+                + if after { marker.len() } else { 0 };
+            let mut expected = input[..at].to_vec();
+            expected.extend_from_slice(b"<style data-test></style>");
+            expected.extend_from_slice(&input[at..]);
+            for chunk_size in 1..=input.len() {
+                assert_eq!(
+                    run(input, early, chunk_size),
+                    expected,
+                    "early {early}, chunk size {chunk_size}"
+                );
             }
-            output.extend_from_slice(&scanner.finish());
-            assert_eq!(output, expected, "chunk size {chunk_size}");
         }
+    }
+    #[test]
+    fn charset_meta_detection_is_attribute_based() {
+        assert!(declares_charset(b"meta charset=utf-8"));
+        assert!(declares_charset(
+            b"meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\""
+        ));
+        assert!(!declares_charset(
+            b"meta name=description content=\"charset=x\""
+        ));
+        assert!(!declares_charset(
+            b"meta name=viewport content=\"width=device-width\""
+        ));
     }
     #[test]
     fn large_raw_text_and_comments_stream_with_constant_token_memory() {
@@ -228,7 +321,7 @@ mod tests {
             (b"<head><script>", b"</script></head>"),
             (b"<head><!--", b"--></head>"),
         ] {
-            let mut scanner = Scanner::new(Bytes::from_static(b"INJECT"));
+            let mut scanner = Scanner::new(Bytes::from_static(b"INJECT"), false);
             assert_eq!(scanner.write(Bytes::copy_from_slice(start)), start);
             let chunk = Bytes::from(vec![b'x'; 4096]);
             for _ in 0..1024 {
@@ -250,7 +343,7 @@ mod tests {
             b"'></head>",
         ]
         .concat();
-        let mut scanner = Scanner::new(Bytes::from_static(b"INJECT"));
+        let mut scanner = Scanner::new(Bytes::from_static(b"INJECT"), false);
         let mut output = Vec::new();
         for chunk in input.chunks(97) {
             output.extend_from_slice(&scanner.write(Bytes::copy_from_slice(chunk)));

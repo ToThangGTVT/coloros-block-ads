@@ -442,7 +442,9 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                     assert!(body.is_empty());
                 } else if path == "/html" {
                     let text = std::str::from_utf8(&body).unwrap();
-                    assert!(text.contains("</script><style nonce="));
+                    // Charset in the header: before the page's own head scripts.
+                    assert!(text.contains("<head><style nonce="));
+                    assert!(text.contains("</script><script>const fake='</head>';"));
                     assert!(text.contains(".banner{display:none!important}"));
                     assert!(text.contains("<p>content</p>"));
                     let nonce = text
@@ -776,7 +778,8 @@ async fn live_genk_in_desktop_chrome() {
 #[ignore = "Requires BLOCKADS_CHROME (a Chrome executable); no network access"]
 async fn content_script_hides_generic_and_procedural_targets_in_desktop_chrome() {
     use std::process::Command;
-    const PAGE: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body>
+    const PAGE: &str = r#"<!doctype html><html><head><meta charset="utf-8"><base href="https://elsewhere.test/">
+<script nonce="page">window.early = !!document.querySelector('script[data-blockads]');</script><title>t</title></head><body>
 <div class="generic-ad" id="g">generic</div><div class="keep" id="k">keep</div>
 <div class="box" id="t">Quảng cáo ở đây</div><div class="box" id="t2">Nội dung</div>
 <div class="popup" id="p">popup</div><div id="sponsor-x">specific</div><div id="holder"></div>
@@ -786,6 +789,7 @@ setTimeout(function () { var d = document.createElement('div'); d.className = 'l
 setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].forEach(function (id) {
   var e = document.getElementById(id); r[id] = e ? getComputedStyle(e).display : 'missing'; });
   r.p = document.getElementById('p') ? 'present' : 'removed';
+  r.early = window.early;
   r.links = Array.prototype.map.call(document.querySelectorAll('link[data-blockads]'), function (l) {
     return l.sheet ? l.sheet.cssRules.length : -1; }).join(',');
   var pre = document.createElement('pre'); pre.id = 'result'; pre.textContent = JSON.stringify(r);
@@ -925,6 +929,14 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
     ] {
         assert_eq!(result[id], display, "{id}: {json}");
     }
+    assert_eq!(
+        result["early"], true,
+        "BlockAds must run before head scripts"
+    );
+    assert_eq!(
+        result["links"], "1,1",
+        "generic CSS must load despite <base href>"
+    );
 }
 
 #[tokio::test]
