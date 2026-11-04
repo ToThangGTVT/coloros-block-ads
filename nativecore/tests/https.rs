@@ -996,6 +996,19 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
     );
 }
 
+/// The proxy may hang up as soon as it has read a `Connection: close` response, before the
+/// origin has finished closing its side; that is not a failure of the exchange.
+fn closed_by_peer(error: &hyper::Error) -> bool {
+    std::error::Error::source(error)
+        .and_then(|source| source.downcast_ref::<io::Error>())
+        .is_some_and(|error| {
+            matches!(
+                error.kind(),
+                io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+            )
+        })
+}
+
 #[tokio::test]
 async fn closed_upstream_is_reopened_while_browser_keeps_its_tls_connection() {
     for upstream_h2 in [false, true] {
@@ -1059,7 +1072,9 @@ async fn closed_upstream_is_reopened_while_browser_keeps_its_tls_connection() {
                         .await
                 };
                 if index != 2 {
-                    result.unwrap();
+                    if let Err(error) = result {
+                        assert!(closed_by_peer(&error), "{error:?}");
+                    }
                 }
                 closed_server.notify_one();
             }
