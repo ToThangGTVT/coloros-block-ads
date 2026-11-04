@@ -72,8 +72,19 @@ khớp. Ngoại lệ chung không gắn tên miền (`#@#.ad`) không được h
 
 ## Phạm vi và giới hạn
 
-- Scriptlet (`##+js(...)`) chưa chạy: chưa nạp tài nguyên scriptlet. Trong quy tắc
-  riêng sẽ báo lỗi; trong danh sách tải về thì được nạp nhưng không có tác dụng.
+- **Scriptlet** (`##+js(...)`, cú pháp uBO): chạy bằng thư viện AdGuard Scriptlets
+  (GPL-3.0), app tự tải `scriptlets.corelibs.json` và `redirects.json` từ jsDelivr
+  (`@adguard/scriptlets@2`) lần đầu và kiểm tra lại mỗi ngày bằng ETag; không đóng gói
+  trong APK. Khoảng 100 scriptlet, nhận cả tên uBO (`set-constant`, `aopr`,
+  `ubo-…`). Scriptlet được chèn thành `<script nonce>` riêng, **đứng đầu**, nên chạy trước
+  mọi script của trang. Scriptlet `trusted-*` (đặt cookie, localStorage, chèn nội dung)
+  không chạy được từ danh sách hay quy tắc riêng. Scriptlet chỉ có trong uBO mà AdGuard
+  không có thì bị bỏ qua. Chưa tải được tài nguyên thì quy tắc `+js` chưa có tác dụng.
+- **`$redirect`/`$redirect-rule`**: request bị chặn được trả bằng tài nguyên thay thế
+  (script rỗng, ảnh 1x1, stub Google Publisher Tag/Analytics/IMA…, 43 loại) thay vì 204,
+  để trang phụ thuộc thư viện quảng cáo không bị lỗi. Không có tài nguyên thì vẫn 204.
+- **`$removeparam`**: request được gửi tới máy chủ không kèm tham số theo dõi (chỉ khi
+  URL mới cùng origin); trình duyệt vẫn thấy URL cũ.
 - Chỉ GET HTML document/frame có khai báo Accept text/html, HTTP 200, không có
   Range hoặc Cache-Control: no-transform. Không sửa ảnh, video, JSON hay download.
 - Với trang cần chèn, proxy xin máy chủ `Accept-Encoding: gzip, deflate, br`
@@ -128,4 +139,7 @@ khớp. Ngoại lệ chung không gắn tên miền (`#@#.ad`) không được h
   Sau khi chèn sớm: thêm 10/10 lần với `<base href>` trỏ sang host khác và script
   của trang trong head xác nhận script BlockAds đã chạy trước nó. Bỏ URL tuyệt đối
   thì test này fail (đã thử).
+  Scriptlet và `$redirect`: 10/10 với tài nguyên giả lập, 5/5 với file AdGuard thật
+  (`BLOCKADS_RESOURCES=<thư mục chứa corelibs.json, redirects.json>`): `set-constant`
+  chạy trước script của trang, `/ad-lib.js` bị chặn được trả bằng `noopjs`.
   Chưa kiểm tra Chrome Android trên điện thoại.

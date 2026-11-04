@@ -100,7 +100,9 @@ impl Builder {
                 // Debug keeps the raw rule so the query log can name what matched.
                 let mut set = FilterSet::new(true);
                 set.add_filter_list(list, options());
-                Engine::new_with_filter_set(set)
+                let mut engine = Engine::new_with_filter_set(set);
+                engine.use_resource_storage(super::resources::Shared);
+                engine
             })
         };
         Network {
@@ -113,17 +115,27 @@ fn text(info: Option<FilterRuleDebugInfo>) -> String {
     info.and_then(|i| i.raw_line)
         .unwrap_or_else(|| "adblock".into())
 }
-impl Network {
-    /// Returns `(rank, rule)` using the domain matcher's ranks: custom allow 6 > custom block 5 >
+#[derive(Default)]
+pub(super) struct Verdict {
+    /// `(rank, rule)` using the domain matcher's ranks: custom allow 6 > custom block 5 >
     /// important 3 > list exception 2 > list block 1.
-    pub fn check(&self, context: &Context) -> Option<(u8, String)> {
-        let request = adblock::request::Request::new(
+    pub decision: Option<(u8, String)>,
+    /// `data:` URL to answer with instead of an empty response, if the request ends up blocked.
+    pub redirect: Option<String>,
+    /// URL without `$removeparam` parameters, if the request goes through.
+    pub rewritten: Option<String>,
+}
+impl Network {
+    pub fn check(&self, context: &Context) -> Verdict {
+        let mut verdict = Verdict::default();
+        let Ok(request) = adblock::request::Request::new(
             context.url,
             context.source,
             context.kind,
             context.method,
-        )
-        .ok()?;
+        ) else {
+            return verdict;
+        };
         for (engine, ranks) in [(&self.custom, (5, 5, 6)), (&self.system, (3, 1, 2))] {
             let Some(engine) = engine else {
                 continue;
@@ -131,16 +143,21 @@ impl Network {
             // Exceptions are always reported so a list `@@` can lift a DNS-list block for this
             // request, and a custom `@@` can lift any list block.
             let result = engine.check_network_request_subset(&request, false, true);
-            if result.important {
-                return Some((ranks.0, text(result.filter)));
+            verdict.redirect = verdict.redirect.or(result.redirect);
+            verdict.rewritten = verdict.rewritten.or(result.rewritten_url);
+            if verdict.decision.is_some() {
+                continue;
             }
-            if let Some(exception) = result.exception {
-                return Some((ranks.2, text(Some(exception))));
-            }
-            if result.filter.is_some() {
-                return Some((ranks.1, text(result.filter)));
-            }
+            verdict.decision = if result.important {
+                Some((ranks.0, text(result.filter)))
+            } else if let Some(exception) = result.exception {
+                Some((ranks.2, text(Some(exception))))
+            } else if result.filter.is_some() {
+                Some((ranks.1, text(result.filter)))
+            } else {
+                None
+            };
         }
-        None
+        verdict
     }
 }

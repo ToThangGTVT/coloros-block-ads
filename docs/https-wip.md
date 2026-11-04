@@ -5,6 +5,19 @@ tra với Chrome 158.0.8127.2. Chưa tạo tag hoặc phát hành phiên bản m
 Bản release 1.0.4, dữ liệu và CA của bản release được giữ nguyên. Người dùng
 đã cài CA riêng của bản debug; không xóa hoặc tạo lại CA sau khi cài.
 
+## Scriptlet, `$redirect`, `$removeparam`
+
+AdGuard Scriptlets được tải lúc chạy (không đóng gói, GPL-3.0) và chuyển sang
+`Resource` của adblock-rust trong `filter/resources.rs`. Hàm CoreLibs nhận
+`(source, args)` nên mỗi scriptlet được bọc trong `function blockads_<tên>(...args)`
+cho khớp cách adblock-rust gọi; loại `application/javascript` vì adblock-rust chỉ
+tiêm loại này. Redirect nạp trước; tên trùng (`noeval.js`…) thì bản redirect dùng
+cho cả hai, như uBO. Một kho chung cho mọi engine của mọi snapshot quy tắc, nên cập
+nhật tài nguyên không phải biên dịch lại bộ lọc; cache trang tự làm mới theo
+`resources::generation()`. Lỗi định dạng giữ bộ cũ; phía app chỉ thay file trên đĩa
+sau khi native nhận bộ mới. JNI mới: `nativeSetResources`. Chi tiết người dùng:
+[cosmetic-filtering.md](cosmetic-filtering.md#phạm-vi-và-giới-hạn).
+
 ## Giải nén HTML trong proxy
 
 Trước đây trang cần chèn bị ép `Accept-Encoding: identity`, nên HTML tải về qua

@@ -803,7 +803,8 @@ async fn live_genk_in_desktop_chrome() {
 async fn content_script_hides_generic_and_procedural_targets_in_desktop_chrome() {
     use std::process::Command;
     const PAGE: &str = r#"<!doctype html><html><head><meta charset="utf-8"><base href="https://elsewhere.test/">
-<script nonce="page">window.early = !!document.querySelector('script[data-blockads]');</script><title>t</title></head><body>
+<script nonce="page">window.early = !!document.querySelector('script[data-blockads]');
+window.scriptletFirst = window.blockadsProbe;</script><script nonce="page" src="https://content.test/ad-lib.js"></script><title>t</title></head><body>
 <div class="generic-ad" id="g">generic</div><div class="keep" id="k">keep</div>
 <div class="box" id="t">Quảng cáo ở đây</div><div class="box" id="t2">Nội dung</div>
 <div class="popup" id="p">popup</div><div id="sponsor-x">specific</div><div id="holder"></div>
@@ -813,7 +814,7 @@ setTimeout(function () { var d = document.createElement('div'); d.className = 'l
 setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].forEach(function (id) {
   var e = document.getElementById(id); r[id] = e ? getComputedStyle(e).display : 'missing'; });
   r.p = document.getElementById('p') ? 'present' : 'removed';
-  r.early = window.early;
+  r.early = window.early; r.scriptletFirst = window.scriptletFirst; r.redirected = window.noopLoaded === true; r.adlib = performance.getEntriesByType('resource').filter(function (e) { return e.name.indexOf('ad-lib') >= 0; }).map(function (e) { return e.name + ' ' + e.responseStatus + ' ' + e.decodedBodySize; }).join('|');
   r.links = Array.prototype.map.call(document.querySelectorAll('link[data-blockads]'), function (l) {
     return l.sheet ? l.sheet.cssRules.length : -1; }).join(',');
   var pre = document.createElement('pre'); pre.id = 'result'; pre.textContent = JSON.stringify(r);
@@ -824,10 +825,25 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
     ca::set(Some(key), der);
     enable();
     assert!(filter::replace(
-        "##.generic-ad\n##.late-ad\ncontent.test###sponsor-x\ncontent.test##.box:has-text(Quảng cáo)\ncontent.test##.popup:remove()",
+        "##.generic-ad\n##.late-ad\ncontent.test###sponsor-x\ncontent.test##.box:has-text(Quảng cáo)\ncontent.test##.popup:remove()\ncontent.test##+js(set-constant, blockadsProbe, yes)\n||content.test^*/ad-lib.js$script,redirect=noopjs",
         ""
     )
     .applied);
+    // Minimal stand-ins in the AdGuard Scriptlets formats; the real files are downloaded by the app.
+    // BLOCKADS_RESOURCES: real AdGuard Scriptlets files (scriptlets.corelibs.json saved as
+    // corelibs.json, redirects.json); otherwise minimal stand-ins in the same formats.
+    let real = std::env::var("BLOCKADS_RESOURCES").ok();
+    match &real {
+        Some(dir) => {
+            let read = |name: &str| std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
+            filter::resources::install(&read("corelibs.json"), &read("redirects.json")).unwrap()
+        }
+        None => filter::resources::install(
+            r#"{"scriptlets":[{"names":["set-constant"],"scriptlet":"function setConstant(source,args){window[args[0]]=args[1]}"}]}"#,
+            r#"[{"title":"noopjs","contentType":"application/javascript;base64","content":"d2luZG93Lm5vb3BMb2FkZWQgPSB0cnVlOw=="}]"#,
+        )
+        .unwrap(),
+    };
     let (peer_root, server_config) = peer_config(&domain, true);
     let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = origin.local_addr().unwrap();
@@ -922,6 +938,7 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
     .unwrap();
     proxy_task.abort();
     origin_task.abort();
+    filter::resources::install("", "").unwrap();
     let _ = std::fs::remove_dir_all(profile);
     filter::replace("", "");
     mitm::configure("{}");
@@ -960,6 +977,19 @@ setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].
         result["early"], true,
         "BlockAds must run before head scripts"
     );
+    assert_eq!(
+        result["scriptletFirst"], "yes",
+        "scriptlet must run before page scripts"
+    );
+    if real.is_some() {
+        // AdGuard's noopjs is an empty function; check the response came from the proxy.
+        assert!(result["adlib"].as_str().unwrap().contains("ad-lib.js 200 "));
+    } else {
+        assert_eq!(
+            result["redirected"], true,
+            "$redirect must answer with the noopjs stand-in"
+        );
+    }
     assert_eq!(
         result["links"], "1,1",
         "generic CSS must load despite <base href>"

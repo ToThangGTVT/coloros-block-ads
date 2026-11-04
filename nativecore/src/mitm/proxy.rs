@@ -463,6 +463,9 @@ async fn forward(
     };
     let decision = rules.check(domain, &context, &owner.packages);
     let blocked = decision.as_ref().is_some_and(|d| d.blocked);
+    let (redirect, rewritten) = decision
+        .as_ref()
+        .map_or((None, None), |d| (d.redirect.clone(), d.rewritten.clone()));
     crate::dns::event(
         domain.into(),
         blocked,
@@ -472,8 +475,23 @@ async fn forward(
         "https",
     );
     if blocked {
-        return empty(StatusCode::NO_CONTENT);
+        // `$redirect`: a harmless stand-in (empty script, 1x1 image, ad library stub) keeps
+        // pages that depend on the blocked resource working.
+        return redirect
+            .as_deref()
+            .and_then(|data| resource_response(data, request.headers()))
+            .unwrap_or_else(|| empty(StatusCode::NO_CONTENT));
     }
+    // `$removeparam`: forward without the tracking parameters. Same origin only.
+    let origin = format!("https://{authority}");
+    let (url, path) = match rewritten.as_deref().and_then(|u| {
+        u.strip_prefix(&origin)
+            .filter(|p| p.starts_with('/'))
+            .map(|p| (u.to_owned(), p.to_owned()))
+    }) {
+        Some(rewritten) => rewritten,
+        None => (url, path),
+    };
     let page = super::html::document_request(&request)
         .then(|| rules.cosmetic_page(domain))
         .filter(|page| !page.is_empty());
@@ -525,6 +543,42 @@ async fn forward(
             empty(StatusCode::GATEWAY_TIMEOUT)
         }
     }
+}
+/// Answers a blocked request with a `data:` URL resource from adblock-rust.
+fn resource_response(data: &str, request: &hyper::HeaderMap) -> Option<Response<Body>> {
+    use base64::Engine as _;
+    let (mime, content) = data.strip_prefix("data:")?.split_once(";base64,")?;
+    let content = base64::engine::general_purpose::STANDARD
+        .decode(content)
+        .ok()?;
+    let mut response = Response::new(
+        Full::new(Bytes::from(content))
+            .map_err(|never: Infallible| match never {})
+            .boxed_unsync(),
+    );
+    let headers = response.headers_mut();
+    headers.insert(
+        hyper::header::CONTENT_TYPE,
+        hyper::header::HeaderValue::from_str(mime).ok()?,
+    );
+    headers.insert(
+        "cache-control",
+        hyper::header::HeaderValue::from_static("no-store"),
+    );
+    headers.insert(
+        "x-content-type-options",
+        hyper::header::HeaderValue::from_static("nosniff"),
+    );
+    // Stand-ins carry no data, so CORS requests (crossorigin scripts, fetch) may read them.
+    if let Some(origin) = request.get(hyper::header::ORIGIN) {
+        headers.insert("access-control-allow-origin", origin.clone());
+        headers.insert(
+            "access-control-allow-credentials",
+            hyper::header::HeaderValue::from_static("true"),
+        );
+        headers.insert("vary", hyper::header::HeaderValue::from_static("Origin"));
+    }
+    Some(response)
 }
 /// Same-origin path the content script loads generic CSS from. Random per process so it cannot
 /// collide with a site's own paths; answered here and never forwarded to the origin.

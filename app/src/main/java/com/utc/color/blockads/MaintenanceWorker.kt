@@ -21,6 +21,7 @@ class MaintenanceWorker(
             .first()
             .filter { it.enabled }
             .forEach { if (!filters.download(it.id)) successful = false }
+        if (!filters.updateResources()) successful = false
         return if (successful) Result.success() else Result.retry()
     }
 

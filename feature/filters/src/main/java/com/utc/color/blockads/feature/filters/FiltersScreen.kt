@@ -59,7 +59,10 @@ fun FiltersScreen(
             AppPreferenceGroup {
                 AppArrowPreference("Chọn danh sách chặn", "Danh sách của AdGuard Home", onCatalog)
                 AppArrowPreference("Cập nhật tất cả") {
-                    action { lists.filter { it.enabled }.forEach { filters.download(it.id) } }
+                    action {
+                        lists.filter { it.enabled }.forEach { filters.download(it.id) }
+                        filters.updateResources()
+                    }
                 }
             }
         }

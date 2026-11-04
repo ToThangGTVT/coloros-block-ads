@@ -90,8 +90,9 @@ fn css_cannot_escape_into_html_or_execute_code() {
     }
     let rules = Rules::compile("", "example.test##[title=\"</script>\"]:has-text(x)");
     assert!(!rules.cosmetic_page("example.test").procedural.contains('<'));
+    // Custom scriptlets are accepted; `trusted-*` ones stay unavailable (tests/resources.rs).
     assert!(
-        !Rules::compile("", "example.test##+js(set-constant, ads, false)")
+        Rules::compile("", "example.test##+js(set-constant, ads, false)")
             .report
             .errors
             .is_empty()

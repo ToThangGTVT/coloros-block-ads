@@ -137,22 +137,28 @@ pub(super) async fn inject(
     page: &Page,
     endpoint: &str,
 ) -> Response<Body> {
-    let script = (page.generic || !page.procedural.is_empty()).then(|| {
+    let mut scripts = Vec::new();
+    // Scriptlets first, in their own element, so they run before anything else and a failure
+    // in one set cannot stop the other.
+    if !page.scriptlets.is_empty() {
+        scripts.push(page.scriptlets.clone());
+    }
+    if page.generic || !page.procedural.is_empty() {
         let procedural = if page.procedural.is_empty() {
             "[]"
         } else {
             &page.procedural
         };
-        format!(
+        scripts.push(format!(
             "{}({endpoint:?},{},{procedural})",
             CONTENT.trim_end(),
             page.generic
-        )
-    });
-    rewrite(response, &page.css, script).await
+        ));
+    }
+    rewrite(response, &page.css, scripts).await
 }
-async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) -> Response<Body> {
-    if (css.is_empty() && script.is_none()) || !eligible(&response) {
+async fn rewrite(response: Response<Body>, css: &str, scripts: Vec<String>) -> Response<Body> {
+    if (css.is_empty() && scripts.is_empty()) || !eligible(&response) {
         return response;
     }
     let mut random = [0u8; 16];
@@ -171,7 +177,7 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
                 .skip(1)
                 .any(|p| p.trim().to_ascii_lowercase().starts_with("charset="))
         });
-    let Some(csp) = csp_headers(response.headers(), &nonce, script.is_some()) else {
+    let Some(csp) = csp_headers(response.headers(), &nonce, !scripts.is_empty()) else {
         return response;
     };
     let coding = coding(response.headers()).unwrap_or(Coding::Identity);
@@ -212,7 +218,7 @@ async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) ->
             "<style nonce=\"{nonce}\" data-blockads>\n{css}</style>"
         ));
     }
-    if let Some(script) = script {
+    for script in scripts {
         snippet.push_str(&format!(
             "<script nonce=\"{nonce}\" data-blockads>{script}</script>"
         ));
@@ -571,6 +577,7 @@ mod tests {
             css: ".ad{display:none!important}\n".into(),
             procedural: "[{\"selector\":[{\"type\":\"css-selector\",\"arg\":\".x\"}],\"action\":{\"type\":\"remove\"}}]".into(),
             generic: true,
+            scriptlets: "window.scriptletRan = 1;".into(),
             exceptions: Default::default(),
         };
         let result = inject(document, &page, "/.blockads-token/generic.css").await;
@@ -588,6 +595,10 @@ mod tests {
             .next()
             .unwrap();
         assert!(text.contains(&format!("<style nonce=\"{nonce}\" data-blockads>")));
+        // Scriptlets run first, in their own element.
+        assert!(text.contains(&format!(
+            "<script nonce=\"{nonce}\" data-blockads>window.scriptletRan = 1;</script><script nonce=\"{nonce}\" data-blockads>("
+        )));
         assert!(text.contains("(\"/.blockads-token/generic.css\",true,[{"));
         assert!(text.ends_with("</script></head><body></body></html>"));
         // 'strict-dynamic' ignores 'unsafe-inline', so the injected script needs the nonce.
@@ -623,7 +634,7 @@ mod tests {
             .header("content-length", "75")
             .body(StreamBody::new(stream::iter(frames)).boxed_unsync())
             .unwrap();
-        let response = rewrite(response, ".ad{display:none!important}\n", None).await;
+        let response = rewrite(response, ".ad{display:none!important}\n", Vec::new()).await;
         assert!(!response.headers().contains_key("content-length"));
         let collected = response.into_body().collect().await.unwrap();
         assert_eq!(collected.trailers().unwrap()["x-end"], "yes");
@@ -643,7 +654,7 @@ mod tests {
             .unwrap();
         let mut result = tokio::time::timeout(
             std::time::Duration::from_millis(100),
-            rewrite(response, ".ad{display:none!important}", None),
+            rewrite(response, ".ad{display:none!important}", Vec::new()),
         )
         .await
         .unwrap();
@@ -678,7 +689,7 @@ mod tests {
                         .boxed_unsync(),
                 )
                 .unwrap();
-            let result = rewrite(response, ".ad{display:none!important}", None).await;
+            let result = rewrite(response, ".ad{display:none!important}", Vec::new()).await;
             assert!(!result.headers().contains_key("content-length"));
             let bytes = result.into_body().collect().await.unwrap().to_bytes();
             let text = std::str::from_utf8(&bytes).unwrap();
@@ -730,7 +741,12 @@ mod tests {
         ] {
             let encoded = encode(coding, html.as_bytes()).await;
             assert!(encoded.len() < html.len() / 10);
-            let result = rewrite(chunked(encoded, name), ".ad{display:none!important}", None).await;
+            let result = rewrite(
+                chunked(encoded, name),
+                ".ad{display:none!important}",
+                Vec::new(),
+            )
+            .await;
             let headers = result.headers().clone();
             assert!(!headers.contains_key("content-encoding"), "{name}");
             assert!(!headers.contains_key("content-length"));
@@ -750,7 +766,7 @@ mod tests {
         // Two gzip members back to back are one valid gzip body.
         let mut members = encode(Coding::Gzip, b"<html><head></head>").await;
         members.extend(encode(Coding::Gzip, b"<body>tail</body></html>").await);
-        let result = rewrite(chunked(members, "gzip"), ".ad{}", None).await;
+        let result = rewrite(chunked(members, "gzip"), ".ad{}", Vec::new()).await;
         let bytes = result.into_body().collect().await.unwrap().to_bytes();
         assert!(std::str::from_utf8(&bytes)
             .unwrap()
@@ -775,7 +791,7 @@ mod tests {
                 .body(StreamBody::new(stream::iter(frames)).boxed_unsync())
                 .unwrap();
             let start = std::time::Instant::now();
-            let result = rewrite(response, ".ad{}", None).await;
+            let result = rewrite(response, ".ad{}", Vec::new()).await;
             let size = result.into_body().collect().await.unwrap().to_bytes().len();
             eprintln!(
                 "{name}: {} KiB -> {} KiB in {:?}",
@@ -790,7 +806,7 @@ mod tests {
         let mut encoded = encode(Coding::Gzip, b"<html><head></head><body>x</body></html>").await;
         let middle = encoded.len() / 2;
         encoded[middle..].iter_mut().for_each(|b| *b ^= 0x5a);
-        let result = rewrite(chunked(encoded, "gzip"), ".ad{}", None).await;
+        let result = rewrite(chunked(encoded, "gzip"), ".ad{}", Vec::new()).await;
         assert!(result.into_body().collect().await.is_err());
     }
     #[tokio::test]
@@ -809,7 +825,7 @@ mod tests {
             response
                 .headers_mut()
                 .insert(header, HeaderValue::from_static(value));
-            let result = rewrite(response, ".ad{display:none!important}", None).await;
+            let result = rewrite(response, ".ad{display:none!important}", Vec::new()).await;
             assert!(
                 !result.headers().contains_key("cache-control")
                     || result.headers()["cache-control"] != "private, no-cache"
@@ -835,7 +851,7 @@ mod tests {
             response
                 .headers_mut()
                 .insert("content-type", HeaderValue::from_static("text/html"));
-            let result = rewrite(response, ".ad{display:none!important}", None).await;
+            let result = rewrite(response, ".ad{display:none!important}", Vec::new()).await;
             assert_eq!(
                 result
                     .into_body()

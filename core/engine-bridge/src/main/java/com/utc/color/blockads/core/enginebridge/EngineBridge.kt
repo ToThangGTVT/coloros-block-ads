@@ -44,6 +44,16 @@ class EngineBridge {
 
     private external fun nativeReplaceRules(system: String, custom: String, apply: Boolean): String
 
+    /**
+     * Installs AdGuard Scriptlets `scriptlets.corelibs.json` / `redirects.json` (either may be
+     * empty). Returns `{"scriptlets":n,"redirects":n,"skipped":n}` or `{"error":"..."}`; on error
+     * the previous set stays active.
+     */
+    fun setResources(scriptlets: String, redirects: String): String =
+        nativeSetResources(scriptlets, redirects) ?: error("Không nạp được tài nguyên")
+
+    private external fun nativeSetResources(scriptlets: String, redirects: String): String?
+
     private external fun nativeConfigureDns(json: String): Boolean
 
     private external fun nativeSetDnsEventSink(sink: DnsEventSink?)

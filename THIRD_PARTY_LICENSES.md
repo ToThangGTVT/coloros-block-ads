@@ -395,3 +395,13 @@ feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
   licenses/zlib-rs-Zlib.txt.
 - Used only to decode HTML documents the proxy rewrites; zstd is not requested from origins,
   so no zstd/C dependency is needed. Output is streamed, never buffered whole.
+
+## Scriptlet and redirect resources (runtime download, not bundled)
+
+- AdGuard Scriptlets (GPL-3.0, https://github.com/AdguardTeam/Scriptlets), files
+  `dist/scriptlets.corelibs.json` and `dist/redirects.json` of npm `@adguard/scriptlets@2`,
+  fetched from cdn.jsdelivr.net by `FilterRepository` (conditional GET with ETag, 4 MB cap,
+  same daily maintenance job as the filter lists). Like the HostlistsRegistry catalog and the
+  lists themselves, they are not part of the APK; the user's device downloads them and they
+  keep their own license. Native code converts them in memory (`filter/resources.rs`).
+- `base64` 0.22.1 is now also a direct dependency (already locked, MIT OR Apache-2.0).

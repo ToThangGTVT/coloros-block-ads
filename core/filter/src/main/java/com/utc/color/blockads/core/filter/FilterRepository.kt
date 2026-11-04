@@ -26,6 +26,7 @@ class FilterRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val compileLock = Mutex()
     private val downloadLock = Mutex()
+    private val resourceLock = Mutex()
     private val ready = CompletableDeferred<Unit>()
     private val dnsReady = CompletableDeferred<Unit>()
     private var compiledSignature: String? = null
@@ -61,7 +62,81 @@ class FilterRepository(
             // Default lists, and presets added by an update, download on first start.
             lists.first().filter { it.enabled && it.updatedAt == 0L }.forEach { download(it.id) }
         }
+        scope.launch {
+            resourceLock.withLock { runCatching { installResources() } }
+            if (ResourceUrls.keys.any { !resource(it).exists() }) updateResources()
+        }
     }
+
+    // Scriptlet (`##+js`) and `$redirect` resources for HTTPS filtering: AdGuard Scriptlets
+    // (GPL-3.0), downloaded at runtime like the filter lists and never bundled in the APK.
+    private fun resource(name: String) = File(directory, "resources-$name.json")
+
+    private fun resourceTag(name: String) = File(directory, "resources-$name.etag")
+
+    private fun installResources(override: Map<String, String> = emptyMap()) {
+        val text = { name: String ->
+            override[name] ?: resource(name).takeIf { it.exists() }?.readText().orEmpty()
+        }
+        val result = JSONObject(engine.setResources(text("scriptlets"), text("redirects")))
+        check(!result.has("error")) { result.getString("error") }
+    }
+
+    private data class Fetched(val content: String, val etag: String?)
+
+    /** Null when the copy on disk is still current (HTTP 304). */
+    private fun fetchResource(name: String, url: String): Fetched? {
+        val connection = URI(url).toURL().openConnection() as HttpURLConnection
+        connection.connectTimeout = 15000
+        connection.readTimeout = 15000
+        connection.instanceFollowRedirects = false
+        if (resource(name).exists() && resourceTag(name).exists()) {
+            connection.setRequestProperty("If-None-Match", resourceTag(name).readText())
+        }
+        return try {
+            if (connection.responseCode == 304 && resource(name).exists()) return null
+            check(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
+            Fetched(
+                connection.inputStream.use {
+                    readLimited(it, 4 * 1024 * 1024, "Tài nguyên vượt quá 4 MB")
+                },
+                connection.getHeaderField("ETag"),
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Downloads changed resources, installs them, and only then replaces the copies on disk. */
+    suspend fun updateResources(): Boolean =
+        withContext(Dispatchers.IO) {
+            resourceLock.withLock {
+                runCatching {
+                        val fetched =
+                            ResourceUrls.mapNotNull { (name, url) ->
+                                fetchResource(name, url)?.let { name to it }
+                            }
+                        if (fetched.isEmpty()) return@runCatching
+                        val contents = fetched.associate { it.first to it.second.content }
+                        runCatching { installResources(contents) }
+                            .onFailure {
+                                // Keep the copies on disk active; the download is discarded.
+                                runCatching { installResources() }
+                                throw it
+                            }
+                        fetched.forEach { (name, update) ->
+                            val temporary = File(directory, "resources-$name.tmp")
+                            temporary.writeText(update.content)
+                            check(temporary.renameTo(resource(name))) {
+                                "Không lưu được tài nguyên"
+                            }
+                            update.etag?.let { resourceTag(name).writeText(it) }
+                                ?: resourceTag(name).delete()
+                        }
+                    }
+                    .isSuccess
+            }
+        }
 
     private fun applyDns(value: DnsSettings) {
         val preset = value.upstream
@@ -327,5 +402,13 @@ class FilterRepository(
 
     private companion object {
         const val CatalogUrl = "https://adguardteam.github.io/HostlistsRegistry/assets/filters.json"
+        // Major version pinned: same JSON formats, fixes arrive without an app update.
+        val ResourceUrls =
+            mapOf(
+                "scriptlets" to
+                    "https://cdn.jsdelivr.net/npm/@adguard/scriptlets@2/dist/scriptlets.corelibs.json",
+                "redirects" to
+                    "https://cdn.jsdelivr.net/npm/@adguard/scriptlets@2/dist/redirects.json",
+            )
     }
 }

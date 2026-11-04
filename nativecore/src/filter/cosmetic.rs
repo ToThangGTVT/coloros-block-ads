@@ -2,7 +2,6 @@
 //! for the in-page script, and generic `.class`/`#id` rules looked up for what the page contains.
 use adblock::{
     cosmetic_filter_cache::ProceduralOrActionFilter,
-    filters::cosmetic::CosmeticFilterMask,
     lists::{parse_filter, FilterSet, ParseOptions, ParsedLine, RuleTypes},
     Engine,
 };
@@ -21,11 +20,16 @@ pub struct Page {
     pub procedural: String,
     /// False when `$generichide` applies or no generic class/id rules exist.
     pub generic: bool,
+    /// `+js(...)` scriptlets, ready for a `<script>` element (`</` and `<!--` escaped).
+    pub scriptlets: String,
     pub(crate) exceptions: HashSet<String>,
 }
 impl Page {
     pub fn is_empty(&self) -> bool {
-        self.css.is_empty() && self.procedural.is_empty() && !self.generic
+        self.css.is_empty()
+            && self.procedural.is_empty()
+            && !self.generic
+            && self.scriptlets.is_empty()
     }
 }
 #[derive(Default)]
@@ -35,6 +39,8 @@ pub(super) struct Cosmetic {
 }
 #[derive(Default)]
 struct Cache {
+    /// Resource generation the entries were built with; scriptlets depend on it.
+    generation: u64,
     values: HashMap<String, Arc<Page>>,
     order: VecDeque<String>,
 }
@@ -71,20 +77,14 @@ pub(super) fn candidate(line: &str) -> bool {
         .position(|c| *c == b'#')
         .is_some_and(|at| bytes[at + 1..bytes.len().min(at + 5)].contains(&b'#'))
 }
-/// `custom` rejects scriptlets until scriptlet resources are loaded, so a user rule never
-/// silently does nothing. Lists may carry them; they stay inert.
-pub(super) fn accepts(line: &str, custom: bool) -> Result<(), &'static str> {
+/// Scriptlets parse without any permission, so neither lists nor custom rules can call
+/// `trusted-*` scriptlets.
+pub(super) fn accepts(line: &str) -> Result<(), &'static str> {
     if line.len() > MAX_RULE {
         return Err("Quy tắc ẩn phần tử quá dài");
     }
     match parse_filter(line, false, options()) {
-        Ok(ParsedLine::Cosmetic(filter)) => {
-            if custom && filter.mask.contains(CosmeticFilterMask::SCRIPT_INJECT) {
-                Err("Scriptlet (+js) chưa được hỗ trợ")
-            } else {
-                Ok(())
-            }
-        }
+        Ok(ParsedLine::Cosmetic(_)) => Ok(()),
         _ => Err("Quy tắc ẩn phần tử không hợp lệ hoặc chưa được hỗ trợ"),
     }
 }
@@ -98,7 +98,9 @@ impl Cosmetic {
             let mut set = FilterSet::new(false);
             // All rule types: the list only holds cosmetic lines and `switches_hiding` lines.
             set.add_filter_list(list, ParseOptions::default());
-            Engine::new_with_filter_set(set)
+            let mut engine = Engine::new_with_filter_set(set);
+            engine.use_resource_storage(super::resources::Shared);
+            engine
         });
         Self {
             engine,
@@ -110,6 +112,13 @@ impl Cosmetic {
             return Arc::default();
         };
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        let generation = super::resources::generation();
+        if cache.generation != generation {
+            *cache = Cache {
+                generation,
+                ..Cache::default()
+            };
+        }
         if let Some(page) = cache.values.get(host) {
             return page.clone();
         }
@@ -143,6 +152,12 @@ impl Cosmetic {
                 format!("[{}]", procedural.join(","))
             },
             generic: !resources.generichide,
+            // Inside <script> only `</` and `<!--` matter to the HTML parser; `<\/` and `<\!--`
+            // mean the same in JS strings, regexes and comments.
+            scriptlets: resources
+                .injected_script
+                .replace("</", "<\\/")
+                .replace("<!--", "<\\!--"),
             exceptions: resources.exceptions,
         });
         if cache.values.len() >= 128 {

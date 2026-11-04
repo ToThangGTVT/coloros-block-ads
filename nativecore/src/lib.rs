@@ -311,6 +311,30 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
         None => std::ptr::null_mut(),
     }
 }
+/// Installs AdGuard scriptlet/redirect resources. Returns `{"scriptlets":n,"redirects":n,
+/// "skipped":n}`, or `{"error":"..."}` when the input is rejected (previous set stays active).
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeSetResources(
+    mut env: JNIEnv,
+    _: JObject,
+    scriptlets: JString,
+    redirects: JString,
+) -> jstring {
+    let (Ok(scriptlets), Ok(redirects)) = (
+        env.get_string(&scriptlets).map(String::from),
+        env.get_string(&redirects).map(String::from),
+    ) else {
+        return std::ptr::null_mut();
+    };
+    let json = match filter::resources::install(&scriptlets, &redirects) {
+        Ok(loaded) => serde_json::to_string(&loaded).ok(),
+        Err(error) => serde_json::to_string(&serde_json::json!({ "error": error })).ok(),
+    };
+    match json.and_then(|json| env.new_string(json).ok()) {
+        Some(json) => json.into_raw(),
+        None => std::ptr::null_mut(),
+    }
+}
 
 struct AndroidCaSigner {
     vm: JavaVM,

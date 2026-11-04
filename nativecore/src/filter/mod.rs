@@ -2,6 +2,7 @@
 mod cosmetic;
 pub use cosmetic::Page;
 mod network;
+pub mod resources;
 pub use network::Context;
 use serde::Serialize;
 use std::{
@@ -57,7 +58,7 @@ impl Rules {
             for (index, line) in text.lines().enumerate() {
                 let line = line.trim();
                 let parsed = if cosmetic::candidate(line) {
-                    cosmetic::accepts(line, is_custom).map(|()| {
+                    cosmetic::accepts(line).map(|()| {
                         cosmetic.push_str(line);
                         cosmetic.push('\n');
                         rules.report.loaded += 1;
@@ -278,6 +279,8 @@ impl Rules {
                 d.domain,
                 if d.suffix { "^" } else { "" }
             ),
+            redirect: None,
+            rewritten: None,
         });
         let mut current = Some(domain);
         while let Some(part) = current {
@@ -306,8 +309,24 @@ impl Rules {
     /// Decrypted HTTPS request: domain/app rules plus full network syntax with request context.
     pub fn check(&self, domain: &str, context: &Context, packages: &[String]) -> Option<Matched> {
         let mut best = self.matches(domain, Some(context.url), packages);
-        if let Some((rank, rule)) = self.network.check(context) {
+        let verdict = self.network.check(context);
+        if let Some((rank, rule)) = verdict.decision {
             choose(&mut best, rank, &rule);
+        }
+        if let Some(best) = &mut best {
+            if best.blocked {
+                best.redirect = verdict.redirect;
+            } else {
+                best.rewritten = verdict.rewritten;
+            }
+        } else if let Some(rewritten) = verdict.rewritten {
+            best = Some(Matched {
+                blocked: false,
+                rank: 0,
+                rule: "$removeparam".into(),
+                redirect: None,
+                rewritten: Some(rewritten),
+            });
         }
         best
     }
@@ -381,6 +400,10 @@ pub struct Matched {
     pub blocked: bool,
     rank: u8,
     pub rule: String,
+    /// `data:` URL of a `$redirect` resource to answer a blocked request with.
+    pub redirect: Option<String>,
+    /// Request URL after `$removeparam`, for a request that is not blocked.
+    pub rewritten: Option<String>,
 }
 fn choose(best: &mut Option<Matched>, rank: u8, rule: &str) {
     if rank > best.as_ref().map_or(0, |b| b.rank) {
@@ -388,6 +411,8 @@ fn choose(best: &mut Option<Matched>, rank: u8, rule: &str) {
             blocked: rank % 2 == 1,
             rank,
             rule: rule.to_owned(),
+            redirect: None,
+            rewritten: None,
         });
     }
 }
