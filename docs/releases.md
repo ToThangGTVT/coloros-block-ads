@@ -134,3 +134,13 @@ chưa đo trên thiết bị đích.
 - MTU của tunnel tăng từ 1500 lên 9000 nên số packet qua TUN giảm; kernel vẫn chia gói theo đường mạng thật cho socket upstream.
 - Thread tunnel gắn vào ART một lần thay vì gắn và gỡ ở mỗi lần xác định app sở hữu kết nối, bảo vệ socket hoặc gửi log.
 - Đã kiểm tra 28 test Rust, Clippy, test lifecycle trên máy giả lập có CheckJNI và UDP tới 8.000 byte; chưa đo mức tiết kiệm pin trên máy thật.
+
+## 1.1.0 — Lọc quảng cáo trong trình duyệt
+
+- Proxy HTTPS dùng engine `adblock` của Brave (MPL-2.0) cho quy tắc mạng có ngữ cảnh request, ẩn phần tử (kể cả quy tắc chung theo class/id và bộ lọc procedural), scriptlet `##+js` và `$redirect` từ AdGuard Scriptlets tải lúc chạy.
+- Style/script được chèn ngay sau `<head>`; trang gzip/deflate/br được giải nén trong proxy thay vì ép `identity`.
+- DNS bỏ ECH khỏi bản ghi HTTPS/SVCB cho ứng dụng được lọc HTTPS, để proxy biết đúng tên miền.
+- Khi mạng thật không có IPv6: AAAA trả rỗng, bỏ `ipv6hint`, kết nối IPv6 bị RST để ứng dụng dùng IPv4. Trước đây Chrome bỏ qua lọc với các host Google/Cloudflare.
+- Danh sách DNS và bộ lọc trình duyệt tách riêng; bộ lọc trình duyệt không chặn DNS. Thêm danh mục bộ lọc của tiện ích AdGuard (7 nhóm).
+- Tải danh sách không còn bị hủy khi rời màn hình.
+- Đã kiểm tra test Rust (tuần tự), Clippy, build/lint debug và release; 16 danh sách AdGuard thật biên dịch được. Chưa chạy test instrumentation trên máy thật.
