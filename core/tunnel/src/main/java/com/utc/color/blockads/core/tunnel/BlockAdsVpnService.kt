@@ -193,7 +193,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             val builder =
                 Builder()
                     .setSession("BlockAds")
-                    .setMtu(1500)
+                    .setMtu(9000) // Must match MTU in nativecore/src/tun/mod.rs.
                     .setBlocking(false)
                     .addAddress("172.19.0.1", 30)
                     .addAddress("fdfe:dcba:9876::1", 126)

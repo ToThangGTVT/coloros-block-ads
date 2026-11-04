@@ -24,6 +24,20 @@ use tun::{Engine, NetworkConfig};
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-phase5");
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
+/// Calls Java from the tunnel worker, which needs this for every new flow. Attaching once avoids
+/// an ART attach/detach per call; jni detaches the worker when its thread exits.
+///
+/// Nothing else cleans up on a permanently attached thread, so each call gets its own local
+/// frame, and a pending exception is cleared here instead of leaking into the next callback.
+fn callback<T>(vm: &JavaVM, call: impl FnOnce(&mut JNIEnv) -> jni::errors::Result<T>) -> Option<T> {
+    let mut env = vm.attach_current_thread_permanently().ok()?;
+    let result = env.with_local_frame(8, call);
+    if result.is_err() {
+        let _ = env.exception_clear();
+    }
+    result.ok()
+}
+
 struct AndroidProtector {
     vm: JavaVM,
     callback: GlobalRef,
@@ -35,11 +49,10 @@ impl Protector for AndroidProtector {
         source: std::net::SocketAddr,
         destination: std::net::SocketAddr,
     ) -> Option<u32> {
-        let mut env = self.vm.attach_current_thread().ok()?;
-        let local = JObject::from(env.new_string(source.ip().to_string()).ok()?);
-        let remote = JObject::from(env.new_string(destination.ip().to_string()).ok()?);
-        let result = env
-            .call_method(
+        callback(&self.vm, |env| {
+            let local = JObject::from(env.new_string(source.ip().to_string())?);
+            let remote = JObject::from(env.new_string(destination.ip().to_string())?);
+            env.call_method(
                 self.callback.as_obj(),
                 "connectionOwner",
                 "(ILjava/lang/String;ILjava/lang/String;I)I",
@@ -51,33 +64,28 @@ impl Protector for AndroidProtector {
                     JValue::Int(destination.port() as i32),
                 ],
             )
-            .and_then(|v| v.i());
-        match result {
-            Ok(uid) if uid >= 0 => Some(uid as u32),
-            _ => {
-                let _ = env.exception_clear();
-                None
-            }
-        }
+            .and_then(|value| value.i())
+        })
+        .and_then(|uid| u32::try_from(uid).ok())
     }
     fn protect(&self, fd: i32) -> io::Result<()> {
-        let mut env = self.vm.attach_current_thread().map_err(io::Error::other)?;
-        let result = env.call_method(
-            self.callback.as_obj(),
-            "protect",
-            "(I)Z",
-            &[JValue::Int(fd)],
-        );
-        match result.and_then(|value| value.z()) {
-            Ok(true) => Ok(()),
-            _ => {
-                // Never permit a failed callback or pending Java exception to bypass protection.
-                let _ = env.exception_clear();
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "socket protection failed",
-                ))
-            }
+        let allowed = callback(&self.vm, |env| {
+            env.call_method(
+                self.callback.as_obj(),
+                "protect",
+                "(I)Z",
+                &[JValue::Int(fd)],
+            )
+            .and_then(|value| value.z())
+        });
+        // Never permit a failed callback or pending Java exception to bypass protection.
+        if allowed == Some(true) {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "socket protection failed",
+            ))
         }
     }
 }
@@ -235,22 +243,16 @@ struct AndroidDnsSink {
 }
 impl dns::EventSink for AndroidDnsSink {
     fn batch(&self, json: &str) {
-        if let Ok(mut env) = self.vm.attach_current_thread() {
-            if let Ok(text) = env.new_string(json) {
-                let text = JObject::from(text);
-                if env
-                    .call_method(
-                        self.callback.as_obj(),
-                        "onDnsEvents",
-                        "(Ljava/lang/String;)V",
-                        &[JValue::Object(&text)],
-                    )
-                    .is_err()
-                {
-                    let _ = env.exception_clear();
-                }
-            }
-        }
+        callback(&self.vm, |env| {
+            let text = JObject::from(env.new_string(json)?);
+            env.call_method(
+                self.callback.as_obj(),
+                "onDnsEvents",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&text)],
+            )
+            .map(|_| ())
+        });
     }
 }
 #[no_mangle]

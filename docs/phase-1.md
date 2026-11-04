@@ -32,7 +32,7 @@ kiểm tra/commit Phase 1.
 
 ## Cấu hình tunnel
 
-MTU 1500; địa chỉ 172.19.0.1/30 và fdfe:dcba:9876::1/126; route 0.0.0.0/0 và ::/0;
+MTU 9000; địa chỉ 172.19.0.1/30 và fdfe:dcba:9876::1/126; route 0.0.0.0/0 và ::/0;
 DNS ảo 172.19.0.2 và fdfe:dcba:9876::2. DNS ảo được chuyển tới DNS do mạng nền cấp,
 giữ nguyên endpoint ảo trên reply. DNS tới đích khác vẫn relay nguyên trạng.
 Không có block QUIC ở Phase 1.

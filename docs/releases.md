@@ -128,3 +128,9 @@ chưa đo trên thiết bị đích.
 - Tắt VPN bình thường đẩy dữ liệu còn chờ; lọc/chặn lưu lượng vẫn diễn ra ngay.
 - Thư viện netstack-smoltcp được lưu trong repo để bản sửa có mặt ở mọi bản build.
 - Đã kiểm tra 27 test Rust, Clippy và build debug; chưa đo mức tiết kiệm pin trên máy thật.
+
+## 1.0.4 — Giảm chi phí đường đi của packet
+
+- MTU của tunnel tăng từ 1500 lên 9000 nên số packet qua TUN giảm; kernel vẫn chia gói theo đường mạng thật cho socket upstream.
+- Thread tunnel gắn vào ART một lần thay vì gắn và gỡ ở mỗi lần xác định app sở hữu kết nối, bảo vệ socket hoặc gửi log.
+- Đã kiểm tra 28 test Rust, Clippy, test lifecycle trên máy giả lập có CheckJNI và UDP tới 8.000 byte; chưa đo mức tiết kiệm pin trên máy thật.

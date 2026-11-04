@@ -318,3 +318,77 @@ fn raw_tun_tcp_handshake_data_and_response() {
     server.join().unwrap();
     engine.shutdown();
 }
+
+#[test]
+fn raw_tun_tcp_segments_use_the_large_tun_mtu() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket.write_all(&[7; 20_000]).unwrap();
+    });
+    let mss = (blockads_core::tun::MTU - 40) as u16;
+    let packet = |seq, ack: Option<u32>, syn, payload: &[u8]| {
+        let mut builder = etherparse::PacketBuilder::ipv4([172, 19, 0, 1], [127, 0, 0, 1], 64)
+            .tcp(32003, port, seq, 65535);
+        if syn {
+            builder = builder
+                .syn()
+                .options(&[etherparse::TcpOptionElement::MaximumSegmentSize(mss)])
+                .unwrap();
+        }
+        if let Some(ack) = ack {
+            builder = builder.ack(ack);
+        }
+        let mut bytes = Vec::new();
+        builder.write(&mut bytes, payload).unwrap();
+        bytes
+    };
+    let (device, peer) = UnixDatagram::pair().unwrap();
+    // macOS limits datagrams to 2 KiB unless the socket buffers are raised.
+    for socket in [&device, &peer] {
+        let size: libc::c_int = 1 << 20;
+        for option in [libc::SO_SNDBUF, libc::SO_RCVBUF] {
+            let result = unsafe {
+                libc::setsockopt(
+                    socket.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    option,
+                    (&size as *const libc::c_int).cast(),
+                    std::mem::size_of_val(&size) as libc::socklen_t,
+                )
+            };
+            assert_eq!(result, 0);
+        }
+    }
+    peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    let mut engine =
+        Engine::start(OwnedFd::from(device), guard(true), NetworkConfig::default()).unwrap();
+    peer.send(&packet(1000, None, true, &[])).unwrap();
+    let mut bytes = vec![0; 65535];
+    let len = peer.recv(&mut bytes).unwrap();
+    let parsed = etherparse::SlicedPacket::from_ip(&bytes[..len]).unwrap();
+    let Some(etherparse::TransportSlice::Tcp(tcp)) = parsed.transport else {
+        panic!("not TCP")
+    };
+    assert!(tcp.syn() && tcp.ack());
+    let ack = tcp.sequence_number().wrapping_add(1);
+    peer.send(&packet(1001, Some(ack), false, &[])).unwrap();
+    // Lowercase first byte: not HTTP or TLS, so the relay connects without waiting for more.
+    peer.send(&packet(1001, Some(ack), false, b"x")).unwrap();
+    let mut largest = 0;
+    while largest <= 1500 {
+        let len = peer.recv(&mut bytes).unwrap();
+        let parsed = etherparse::SlicedPacket::from_ip(&bytes[..len]).unwrap();
+        if let Some(etherparse::TransportSlice::Tcp(tcp)) = parsed.transport {
+            largest = largest.max(tcp.payload().len());
+        }
+    }
+    assert!(
+        largest <= mss as usize,
+        "segment exceeded the advertised MSS"
+    );
+    server.join().unwrap();
+    engine.shutdown();
+}

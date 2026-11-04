@@ -17,6 +17,10 @@ use tokio::{
     task::JoinSet,
 };
 
+/// Must match `setMtu` in BlockAdsVpnService. This only sizes packets between apps and the engine;
+/// the kernel segments protected upstream sockets for the real path, so it never reaches the radio.
+pub const MTU: usize = 9000;
+
 #[derive(Clone, Default)]
 pub struct NetworkConfig {
     pub dns: Option<IpAddr>,
@@ -131,7 +135,7 @@ impl Engine {
                             .enable_tcp(true)
                             .enable_udp(true)
                             .enable_icmp(false)
-                            .mtu(1500)
+                            .mtu(MTU)
                             .stack_buffer_size(512)
                             .tcp_buffer_size(256)
                             .udp_buffer_size(512)
