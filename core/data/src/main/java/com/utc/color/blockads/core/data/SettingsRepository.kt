@@ -83,12 +83,17 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     val autoStart = preferences.map { it[AutoStart] ?: false }.distinctUntilChanged()
+    val liveUpdates = preferences.map { it[LiveUpdates] ?: true }.distinctUntilChanged()
     val ipv6 = preferences.map { it[Ipv6] ?: true }.distinctUntilChanged()
     val logRetentionDays =
         preferences.map { (it[Retention] ?: 7).coerceIn(1, 30) }.distinctUntilChanged()
 
     suspend fun setAutoStart(enabled: Boolean) {
         store.edit { it[AutoStart] = enabled }
+    }
+
+    suspend fun setLiveUpdates(enabled: Boolean) {
+        store.edit { it[LiveUpdates] = enabled }
     }
 
     suspend fun setIpv6(enabled: Boolean) {
@@ -370,6 +375,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ),
             )
         val AutoStart = booleanPreferencesKey("auto_start")
+        val LiveUpdates = booleanPreferencesKey("live_updates")
         val Ipv6 = booleanPreferencesKey("ipv6")
         val Retention = intPreferencesKey("retention_days")
         val CustomDnsUrl = stringPreferencesKey("custom_dns_url")
@@ -395,6 +401,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 CustomDnsUrl,
                 CustomDnsIp,
             )
-        val boolKeys = listOf(AutoStart, Ipv6, Logging, BlockQuic)
+        val boolKeys = listOf(AutoStart, Ipv6, Logging, BlockQuic, LiveUpdates)
     }
 }

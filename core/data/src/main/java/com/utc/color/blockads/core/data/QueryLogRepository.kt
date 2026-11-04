@@ -104,6 +104,22 @@ class QueryLogRepository(
 
     suspend fun clearLogs() = database.queries().clearLogs()
 
+    @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun appStatistics(hours: Int): Flow<AppQueryHistory> {
+        require(hours == 24 || hours == 168)
+        return flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(60_000)
+            }
+        }.flatMapLatest { now ->
+            val since = now - hours * 3_600_000L
+            database.queries().observeAppHours(since).map { buckets ->
+                AppQueryHistory(since, System.currentTimeMillis() / 3_600_000L, buckets)
+            }
+        }.distinctUntilChanged().sample(1000)
+    }
+
     private val batches = Channel<String>(32)
 
     private data class SearchKey(val search: String, val status: Int, val uid: Int)

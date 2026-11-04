@@ -58,13 +58,9 @@ fun HomeScreen(
         AppCard { AppTrafficChart(week) }
         AppSectionTitle("Bị chặn nhiều nhất")
         if (top.isEmpty()) AppCard { AppHint("Chưa có") }
-        else
-            AppPreferenceGroup {
-                top.forEach { item ->
-                    androidx.compose.runtime.key(item.domain) {
-                        AppValueRow(item.domain, number.format(item.count))
-                    }
-                }
-            }
+        else AppDomainBreakdown(
+            domains = top.map { it.domain to it.count },
+            otherCount = (top.first().totalBlocked - top.sumOf { it.count }).coerceAtLeast(0),
+        )
     }
 }

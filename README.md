@@ -1,8 +1,8 @@
 # BlockAds
 
-Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN. **1.0.0** thêm tab
-tường lửa bật/tắt Internet theo app, tùy chọn ưu tiên chạy ngầm và cập nhật APK
-qua GitHub Releases, trên nền lọc DNS/SNI/HTTP và HTTPS tùy chọn.
+Ứng dụng Android chặn quảng cáo/tracker bằng full-tunnel VPN. **1.0.1** thêm thống kê
+request/lượt chặn theo ứng dụng, biểu đồ theo giờ và Live Updates trên Android 16+,
+trên nền lọc DNS/SNI/HTTP, tường lửa theo app và HTTPS tùy chọn.
 
 - Android-only: Kotlin, Compose, Hilt, Coroutines/Flow, Room, DataStore, WorkManager.
 - UI: COUI **1.1.0**, không dùng component hiển thị Material 3.
@@ -21,6 +21,9 @@ export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 scripts/build-native.sh
 ./gradlew :app:assembleDebug
 ```
+
+Bản debug dùng application ID `com.utc.color.blockads.dev` để cài song song với
+bản phát hành. Bản release (kể cả GitHub Actions) giữ `com.utc.color.blockads`.
 
 Gradle tự chạy script native khi nguồn hoặc binary chưa khớp. Script tạo
 `libblockads_core.so` cho arm64-v8a, armeabi-v7a, x86_64 và x86, link cho

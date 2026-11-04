@@ -11,7 +11,11 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import android.os.Process
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import com.utc.color.blockads.core.common.TunnelState
 import com.utc.color.blockads.core.common.TunnelStatus
 import com.utc.color.blockads.core.enginebridge.EngineBridge
@@ -26,6 +30,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.roundToInt
 
 @dagger.hilt.android.AndroidEntryPoint
 class BlockAdsVpnService : VpnService(), SocketProtector {
@@ -47,6 +52,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     @Volatile private var lastStartId = 0
     private var snapshot: UnderlyingNetwork? = null
     private var excludedPackages: Set<String>? = null
+    @Volatile private var liveUpdatesEnabled = false
+    @Volatile private var lastNotificationText = "Đang kết nối VPN…"
 
     override fun onCreate() {
         super.onCreate()
@@ -57,6 +64,18 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             .createNotificationChannel(
                 NotificationChannel(ChannelId, "Tunnel VPN", NotificationManager.IMPORTANCE_LOW)
             )
+        scope.launch {
+            settings.liveUpdates.collect { enabled ->
+                liveUpdatesEnabled = enabled
+                // Serialize with stop/restart so a setting change cannot resurrect a stopped VPN notification.
+                gate.withLock {
+                    if (engine.isRunning()) {
+                        getSystemService(NotificationManager::class.java)
+                            .notify(NotificationId, notification(lastNotificationText))
+                    }
+                }
+            }
+        }
         scope.launch {
             filters.status.collect { status ->
                 if (TunnelRuntime.state.value.status == TunnelStatus.Connected) {
@@ -73,13 +92,14 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         }
         scope.launch {
             @OptIn(kotlinx.coroutines.FlowPreview::class)
-            queries.today.sample(5000).collect { stats ->
+            queries.today.sample(5000).collect {
                 if (TunnelRuntime.state.value.status == TunnelStatus.Connected)
                     getSystemService(NotificationManager::class.java)
                         .notify(
                             NotificationId,
                             notification(
-                                "Đang bảo vệ · Chặn ${stats.blocked}/${stats.total} hôm nay"
+                                if (filters.status.value.loaded > 0) "VPN đang bảo vệ"
+                                else "VPN đang bật · Chưa có rule"
                             ),
                         )
             }
@@ -125,6 +145,10 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
+        if (intent?.action == HideLiveUpdate) {
+            scope.launch { settings.setLiveUpdates(false) }
+            return START_STICKY
+        }
         if (intent?.action == Stop) {
             commands.trySend {
                 shutdown(TunnelState())
@@ -356,21 +380,95 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     }
 
     private fun notification(text: String): Notification {
+        lastNotificationText = text
+        val stats = queries.today.value
+        val total = stats.total.coerceAtLeast(0)
+        val blocked = stats.blocked.coerceIn(0, total)
+        val allowed = total - blocked
+        val blockedRatio = if (total > 0) blocked.toDouble() / total else 0.0
+        val allowedRatio = if (total > 0) allowed.toDouble() / total else 0.0
+        val numbers = java.text.NumberFormat.getIntegerInstance()
+        val percent = java.text.NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 }
+        val blockedPercent = percent.format(blockedRatio)
+        val counters = SpannableStringBuilder("Hôm nay · ")
+        fun appendCount(value: Long, ratio: Double, label: String, color: Int) {
+            val start = counters.length
+            counters.append(numbers.format(value)).append(" ").append(label)
+                .append(" (").append(percent.format(ratio)).append(")")
+            counters.setSpan(ForegroundColorSpan(color), start, counters.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        appendCount(allowed, allowedRatio, "cho qua", 0xFF34865D.toInt())
+        counters.append(" / ")
+        appendCount(blocked, blockedRatio, "đã chặn", 0xFFB95E57.toInt())
+        val compact = android.icu.text.CompactDecimalFormat.getInstance(
+            java.util.Locale.US, android.icu.text.CompactDecimalFormat.CompactStyle.SHORT,
+        ).apply { maximumFractionDigits = 0 }
         val launch = packageManager.getLaunchIntentForPackage(packageName)
-        val stop =
-            PendingIntent.getService(
-                this,
-                1,
-                Intent(this, BlockAdsVpnService::class.java).setAction(Stop),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        val hide = PendingIntent.getService(
+            this, 2, Intent(this, BlockAdsVpnService::class.java).setAction(HideLiveUpdate),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         return Notification.Builder(this, ChannelId)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle("BlockAds")
-            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_notification_shield)
+            .setContentTitle(
+                if (Build.VERSION.SDK_INT >= 36 && liveUpdatesEnabled)
+                    if (total > 0) "BlockAds · Chặn $blockedPercent" else "BlockAds · Chưa có request"
+                else "BlockAds"
+            )
+            .setContentText(counters)
+            .apply {
+                if (Build.VERSION.SDK_INT >= 36 && liveUpdatesEnabled) {
+                    // Green at the left, red at the right, using one common 10,000-unit scale.
+                    // Do not pass zero-length segments to the framework.
+                    val blockedUnits = (blockedRatio * 10_000).roundToInt().coerceIn(0, 10_000)
+                    val allowedUnits = 10_000 - blockedUnits
+                    val segments = buildList {
+                        if (total == 0L) {
+                            add(Notification.ProgressStyle.Segment(10_000).setColor(0xFF888888.toInt()))
+                        } else {
+                            if (allowedUnits > 0) add(
+                                Notification.ProgressStyle.Segment(allowedUnits).setColor(0xFF34865D.toInt())
+                            )
+                            if (blockedUnits > 0) add(
+                                Notification.ProgressStyle.Segment(blockedUnits).setColor(0xFFB95E57.toInt())
+                            )
+                        }
+                    }
+                    setStyle(Notification.ProgressStyle()
+                        .setProgressSegments(segments)
+                        .setStyledByProgress(false)
+                        .setProgressTrackerIcon(android.graphics.drawable.Icon.createWithResource(
+                            this@BlockAdsVpnService, R.drawable.ic_progress_shield,
+                        ))
+                        .setProgress(if (total > 0) allowedUnits else 0))
+                } else {
+                    setStyle(Notification.BigTextStyle().bigText(
+                        SpannableStringBuilder(text).append('\n').append(counters)
+                    ))
+                }
+            }
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
             .setCategory(Notification.CATEGORY_SERVICE)
             .apply {
+                if (Build.VERSION.SDK_INT >= 36) {
+                    // The extras mechanism works on Android 16. The equivalent builder setter
+                    // only became public in SDK 36.1, so do not call it on base Android 16.
+                    addExtras(Bundle().apply {
+                        putBoolean("android.requestPromotedOngoing", liveUpdatesEnabled)
+                    })
+                    if (liveUpdatesEnabled) {
+                        setShortCriticalText(
+                            when (TunnelRuntime.state.value.status) {
+                                TunnelStatus.Connected -> "${compact.format(allowed)}/${compact.format(blocked)}"
+                                TunnelStatus.Reconnecting -> "Chờ mạng"
+                                else -> "Kết nối"
+                            }
+                        )
+                        setDeleteIntent(hide)
+                    }
+                }
                 if (launch != null)
                     setContentIntent(
                         PendingIntent.getActivity(
@@ -381,13 +479,13 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                         )
                     )
             }
-            .addAction(Notification.Action.Builder(null, "Tắt VPN", stop).build())
             .build()
     }
 
     companion object {
         const val Start = "com.utc.color.blockads.START"
         const val Stop = "com.utc.color.blockads.STOP"
+        private const val HideLiveUpdate = "com.utc.color.blockads.HIDE_LIVE_UPDATE"
         private const val ChannelId = "tunnel"
         private const val NotificationId = 1
     }

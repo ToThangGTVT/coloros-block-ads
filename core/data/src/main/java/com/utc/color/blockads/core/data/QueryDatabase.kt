@@ -14,7 +14,13 @@ import kotlinx.coroutines.flow.Flow
 @Entity(tableName = "daily_stats")
 data class DailyStats(@PrimaryKey val day: Long, val total: Long = 0, val blocked: Long = 0)
 
-data class TopDomain(val domain: String, val count: Long)
+data class TopDomain(val domain: String, val count: Long, val totalBlocked: Long = count)
+
+data class AppQueryStats(val uid: Int?, val total: Long, val blocked: Long)
+
+data class AppQueryHour(val uid: Int?, val hour: Long, val total: Long, val blocked: Long)
+
+data class AppQueryHistory(val since: Long, val throughHour: Long, val buckets: List<AppQueryHour>)
 
 // Persist metadata only. Never store packet payloads or HTTP bodies.
 @Entity(tableName = "queries", indices = [Index(value = ["timestamp", "id"])])
@@ -42,9 +48,20 @@ interface QueryDao {
     suspend fun addStats(day: Long, total: Long, blocked: Long)
 
     @Query(
-        "SELECT domain, COUNT(*) AS count FROM queries WHERE timestamp >= :since AND blocked = 1 GROUP BY domain ORDER BY count DESC LIMIT 5"
+        """SELECT domain, COUNT(*) AS count,
+            (SELECT COUNT(*) FROM queries WHERE timestamp >= :since AND blocked = 1) AS totalBlocked
+            FROM queries WHERE timestamp >= :since AND blocked = 1
+            GROUP BY domain ORDER BY count DESC LIMIT 5"""
     )
     fun topDomains(since: Long): Flow<List<TopDomain>>
+
+    @Query(
+        """SELECT uid, timestamp / 3600000 AS hour, COUNT(*) AS total,
+            SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) AS blocked
+            FROM queries WHERE timestamp >= :since
+            GROUP BY uid, timestamp / 3600000 ORDER BY hour ASC, uid ASC"""
+    )
+    fun observeAppHours(since: Long): Flow<List<AppQueryHour>>
 
     @Query("DELETE FROM queries") suspend fun clearLogs()
 

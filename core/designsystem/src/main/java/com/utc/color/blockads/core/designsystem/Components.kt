@@ -1,6 +1,10 @@
 package com.utc.color.blockads.core.designsystem
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -25,9 +29,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
@@ -192,10 +203,39 @@ fun AppChoicePreference(
     title: String,
     entries: List<String>,
     selected: Int,
+    compact: Boolean = false,
+    showSelectedValue: Boolean = false,
+    modifier: Modifier = Modifier,
     onSelected: (Int) -> Unit,
 ) {
     var shown by remember { mutableStateOf(false) }
-    BasicComponent(
+    if (compact) {
+        val palette = COUITheme.colorScheme
+        val active = selected > 0
+        Row(
+            modifier = modifier.clip(RoundedCornerShape(12.dp))
+                .background(if (active) palette.primary.copy(alpha = 0.1f) else palette.onSurface.copy(alpha = 0.05f))
+                .clickable(enabled = entries.isNotEmpty(), role = Role.DropdownList) { shown = true }
+                .semantics {
+                    contentDescription = title
+                    stateDescription = entries.getOrNull(selected).orEmpty()
+                }
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        ) {
+            Text(
+                text = if (active || showSelectedValue) entries.getOrNull(selected) ?: title else title,
+                modifier = Modifier.weight(1f),
+                style = COUITheme.textStyles.body1,
+                color = if (active) palette.primary else palette.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            DropdownArrowEndAction(actionColor = palette.onSurfaceVariantActions)
+        }
+    } else BasicComponent(
         title = title,
         endActions = {
             entries.getOrNull(selected)?.let { AppHint(it) }
@@ -398,9 +438,18 @@ fun AppItemHeader(title: String, summary: String? = null, bitmap: android.graphi
 
 /** Read-only row with a trailing value, aligned with preference rows. */
 @Composable
-fun AppValueRow(title: String, value: String) {
+fun AppValueRow(title: String, value: String, markerColor: Color? = null) {
     BasicComponent(
         title = title,
+        startAction = markerColor?.let { color ->
+            {
+                Box(
+                    Modifier.padding(end = AppSpacing.gap)
+                        .size(10.dp)
+                        .background(color, CircleShape)
+                )
+            }
+        },
         endActions = {
             Text(
                 text = value,

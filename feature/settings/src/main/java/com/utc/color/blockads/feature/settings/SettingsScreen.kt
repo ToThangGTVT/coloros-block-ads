@@ -1,12 +1,21 @@
 package com.utc.color.blockads.feature.settings
 
 import android.content.Intent
+import android.Manifest
+import android.app.NotificationManager
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -40,10 +49,16 @@ fun SettingsScreen(
     val dns by settings.dns.collectAsStateWithLifecycle(initialValue = DnsSettings())
     val blockQuic by settings.blockQuic.collectAsStateWithLifecycle(initialValue = true)
     val autoStart by settings.autoStart.collectAsStateWithLifecycle(initialValue = false)
+    val liveUpdates by settings.liveUpdates.collectAsStateWithLifecycle(initialValue = true)
     val ipv6 by settings.ipv6.collectAsStateWithLifecycle(initialValue = true)
     val retention by settings.logRetentionDays.collectAsStateWithLifecycle(initialValue = 7)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val notificationManager = remember(context) { context.getSystemService(NotificationManager::class.java) }
+    var notificationsAllowed by remember { mutableStateOf(notificationManager.areNotificationsEnabled()) }
+    var promotionAllowed by remember {
+        mutableStateOf(Build.VERSION.SDK_INT >= 36 && notificationManager.canPostPromotedNotifications())
+    }
     val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
     var backgroundAllowed by remember {
         mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName))
@@ -53,12 +68,18 @@ fun SettingsScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 backgroundAllowed = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                notificationsAllowed = notificationManager.areNotificationsEnabled()
+                promotionAllowed = Build.VERSION.SDK_INT >= 36 && notificationManager.canPostPromotedNotifications()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var feedback by remember { mutableStateOf<String?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsAllowed = notificationManager.areNotificationsEnabled()
+        promotionAllowed = Build.VERSION.SDK_INT >= 36 && notificationManager.canPostPromotedNotifications()
+    }
     var customUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var bootstrap by rememberSaveable { mutableStateOf<String?>(null) }
     val batteryPermission =
@@ -170,6 +191,43 @@ fun SettingsScreen(
                         )
                     }
                         .onFailure { feedback = "Không mở được cài đặt VPN" }
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 36) item(key = "settings-notifications", contentType = "settings-section") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { AppSectionTitle("Thông báo") }
+                AppHelpTooltip(
+                    text = "Hiển thị trạng thái VPN dạng viên thuốc (Live Updates) trên Android 16 trở lên. " +
+                        "Vị trí và khả năng hiển thị phụ thuộc Android và hãng máy. " +
+                        "Tắt tùy chọn này chỉ ẩn viên thuốc; thông báo dịch vụ VPN vẫn được giữ để chạy nền.",
+                    label = "Hướng dẫn thông báo dạng viên thuốc",
+                )
+            }
+            AppPreferenceGroup {
+                AppSwitchPreference(
+                    "Thông báo dạng viên thuốc",
+                    when {
+                        liveUpdates && !notificationsAllowed -> "Android chưa cho phép thông báo"
+                        liveUpdates && !promotionAllowed -> "Live Updates đang tắt trong Android"
+                        else -> null
+                    },
+                    liveUpdates,
+                ) { enabled ->
+                    action { settings.setLiveUpdates(enabled) }
+                    if (enabled && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+                if (liveUpdates && (!notificationsAllowed || !promotionAllowed)) {
+                    AppArrowPreference("Cài đặt thông báo Android") {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }.onFailure { feedback = "Không mở được cài đặt thông báo" }
+                    }
                 }
             }
         }

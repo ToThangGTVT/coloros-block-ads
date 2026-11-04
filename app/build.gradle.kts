@@ -16,8 +16,8 @@ android {
         applicationId = "com.utc.color.blockads"
         minSdk = 33
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.0.0"
+        versionCode = 11
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -41,6 +41,9 @@ android {
         }
     }
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+        }
         release {
             if (!splitReleaseApks) ndk.abiFilters += setOf("armeabi-v7a", "arm64-v8a")
             if (releaseStore.isPresent) signingConfig = signingConfigs.getByName("githubRelease")

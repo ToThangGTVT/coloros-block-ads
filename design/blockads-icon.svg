@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">BlockAds</title>
+  <desc id="desc">Blue outline shield and blocking symbol on a light blue rounded tile.</desc>
+  <rect width="512" height="512" rx="116" fill="#E5F1FF"/>
+  <path d="M256 116C220 139 181 152 148 158V241C148 304 185 351 248 383C253 386 259 386 264 383C327 351 364 304 364 241V158C331 152 292 139 256 116Z" stroke="#3482FF" stroke-width="18" stroke-linejoin="round"/>
+  <circle cx="256" cy="247" r="55" stroke="#3482FF" stroke-width="16"/>
+  <path d="M226 247H286" stroke="#3482FF" stroke-width="16" stroke-linecap="round"/>
+</svg>

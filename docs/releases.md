@@ -40,11 +40,34 @@ trước khi mở trình cài đặt. Chỉ chấp nhận asset HTTPS thuộc re
 chỉ theo redirect HTTPS của GitHub. File tải dở bị xóa khi lỗi hoặc hủy. API 404
 được hiểu là chưa có release; lỗi mạng/rate limit được hiển thị và có thể thử lại.
 
-Bản debug ký bằng debug key không thể cập nhật trực tiếp sang bản release ký bằng
-release key. Khi chuyển lần đầu, xuất cấu hình trong Cài đặt rồi cài bản release
-phù hợp; các lần cập nhật release tiếp theo dùng cùng khóa và giữ dữ liệu app.
+Bản debug dùng package `com.utc.color.blockads.dev`, cài song song và lưu dữ liệu
+riêng với bản release `com.utc.color.blockads`. Bản debug không thể cập nhật trực
+tiếp bằng APK release từ GitHub. Để chuyển cấu hình, xuất trong Cài đặt rồi nhập
+vào bản release; các lần cập nhật release tiếp theo dùng cùng khóa và giữ dữ liệu app.
 
 ## Chạy nền, tường lửa và sheet
+
+Android 16 trở lên có **Cài đặt → Thông báo → Thông báo dạng viên thuốc**.
+Khi bật, thông báo VPN yêu cầu Live Updates và hiển thị trạng thái ngắn cùng icon
+khiên trên status chip nếu Android/hãng máy cho phép. Công tắc áp dụng ngay khi VPN
+đang chạy và được lưu trong cấu hình xuất/nhập. Thông báo không hiển thị các nút
+thao tác lớn; bật/tắt viên thuốc trong Cài đặt, bật/tắt VPN trong Trang chủ.
+Vuốt bỏ Live Updates sẽ tắt viên thuốc, không tắt VPN. Thông báo dịch vụ VPN
+thông thường vẫn tồn tại. Hướng dẫn và giới hạn hiển thị nằm trong tooltip cạnh
+tiêu đề Thông báo; khi quyền thông báo/Live Updates bị tắt, app có liên kết mở
+cài đặt thông báo Android.
+
+Khi đã kết nối, chip hiển thị `cho qua/đã chặn` trong hôm nay (cho qua = tổng
+request trừ đã chặn), rút gọn K/M khi số lớn. Số liệu cập nhật theo thống kê VPN.
+Android chỉ nhận chuỗi `String` cho nội dung chip và quyết định màu chữ; hai số
+trong thẻ thông báo mở rộng dùng xanh lá/đỏ đất qua text spans của template chuẩn.
+Live Updates mở rộng dùng `Notification.ProgressStyle`: thanh tỷ lệ cho qua ở
+trái (xanh lá), đã chặn ở phải (đỏ đất), kèm phần trăm chặn và số liệu hai nhóm.
+Chưa có request thì thanh xám trung tính; tỷ lệ được tính từ thống kê hôm nay.
+
+Tích hợp theo [Android Live Updates](https://developer.android.com/develop/ui/views/notifications/live-update).
+Android quyết định vị trí và việc nâng thông báo thành chip; app không ép vị trí
+ở giữa màn hình và không tạo overlay giả lập.
 
 **Cài đặt → Ưu tiên chạy ngầm** mở yêu cầu miễn tối ưu hóa pin của Android. Công tắc
 hiển thị trạng thái thực từ PowerManager và được cập nhật khi quay lại ứng dụng.

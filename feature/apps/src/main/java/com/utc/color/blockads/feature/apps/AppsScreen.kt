@@ -44,11 +44,19 @@ fun AppsScreen(
         Modifier.fillMaxSize().padding(horizontal = AppSpacing.page),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
     ) {
-        AppTextInput(search, "Tìm ứng dụng", onChange = { search = it })
-        if (firewallOnly)
-            AppHint(
-                "Tường lửa chỉ có hiệu lực khi VPN BlockAds đang bật. Áp dụng cho Wi-Fi và dữ liệu di động."
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
+        ) {
+            Box(Modifier.weight(1f)) {
+                AppTextInput(search, "Tìm ứng dụng", onChange = { search = it })
+            }
+            if (firewallOnly) AppHelpTooltip(
+                text = "Tường lửa chỉ có hiệu lực khi VPN BlockAds đang bật. Áp dụng cho Wi-Fi và dữ liệu di động.",
+                label = "Hướng dẫn tường lửa",
             )
+        }
         AppPreferenceGroup {
             AppSwitchPreference("Hiện app hệ thống", "Chỉ app có dùng mạng", system) {
                 system = it
