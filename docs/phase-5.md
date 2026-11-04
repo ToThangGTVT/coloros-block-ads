@@ -27,11 +27,17 @@ lịch sử Phase 5; hướng dẫn mới và phạm vi cosmetic nằm trong tà
 - `mitm/proxy.rs`: upstream TLS verify WebPKI + hostname, socket protect trước
   connect. Proxy streaming HTTP/1.1 ↔ HTTP/2 theo cả 4 tổ hợp, chuẩn hóa version,
   bỏ hop-by-hop header, HTTP/2 upstream multiplex trên một socket. URL policy xét
-  từng request bằng rule hiện hành (hot reload). Chỉ log hostname, không log
+  từng request bằng rule hiện hành (hot reload), gồm cú pháp mạng đầy đủ qua
+  adblock-rust với loại request/bên thứ ba lấy từ Fetch Metadata
+  ([chi tiết](https-wip.md#bộ-lọc-url-đầy-đủ-qua-adblock-rust)). Chỉ log hostname, không log
   path/query/body. Client ngắt kết nối (EOF/reset/broken pipe khi shutdown) được
   coi là kết thúc bình thường; lỗi giao thức khác vẫn trả về.
 - `tcp/mod.rs`: chỉ intercept TLS port 443/8443 khi `eligible`; upstream không
   verify được → log `tls-bypass` và relay TLS nguyên trạng cho app.
+- Upstream đóng keep-alive/HTTP/2 GOAWAY: mở lại kết nối đã protect và xác minh
+  TLS; chuẩn hóa URI/version theo ALPN của kết nối mới. Chỉ thử gửi lại khi Hyper
+  trả lại request chưa từng serialize, không phát lại request đã tới máy chủ.
+  Giữ driver cũ để stream HTTP/2 đang chạy có thể hoàn tất.
 - Thay đổi cấu hình HTTPS hoặc CA đóng các proxy đang mở (watch revision).
 - `EngineBridge.supportsHttps()` dùng `nativeHttpsApiVersion`; `.so` cũ thiếu API
   không làm app crash, màn Chứng chỉ báo cần build lại native.
@@ -56,6 +62,14 @@ lịch sử Phase 5; hướng dẫn mới và phạm vi cosmetic nằm trong tà
 - Android 11+ bắt buộc người dùng tự cài CA trong Settings; gỡ app không tự gỡ CA.
 
 ## Kiểm tra
+
+Kết quả tiếp tục ngày 04/11/2026: xem [nhật ký sửa lỗi HTTPS](https-wip.md).
+Đã sửa 502 do dùng lại upstream đã đóng, rồi chuyển chèn HTML sang tokenizer
+streaming (buffer một thẻ 8 KiB, không giới hạn tổng head). HTTP/2 upstream bỏ
+Host dư, dùng :authority; H1 dựng lại Host đúng cả khi reconnect đổi ALPN.
+Chrome trên CPH2825 đã kiểm tra GenK, bài Tinhte có head >125 KiB, script Google
+và bật/tắt HTTPS trên các kết nối đang mở. Các số liệu và giới hạn dưới
+đây là biên bản Phase 5 ban đầu, trước lần kiểm tra này.
 
 ```sh
 cargo fmt --manifest-path nativecore/Cargo.toml --check

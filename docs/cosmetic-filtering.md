@@ -1,8 +1,9 @@
 # Ẩn phần tử quảng cáo trong Chrome
 
-BlockAds có thể chèn CSS vào trang HTML qua bộ lọc HTTPS cục bộ. CSS ẩn phần tử
-và thường thu gọn chỗ của phần tử đó; không xóa node khỏi DOM. Tính năng không
-cần extension hoặc root, nhưng cần trình duyệt tin chứng chỉ CA của BlockAds.
+BlockAds có thể chèn CSS và một script nhỏ vào trang HTML qua bộ lọc HTTPS cục
+bộ, theo cách Brave/uBlock Origin làm: quy tắc được xử lý bằng engine adblock-rust
+của Brave. CSS ẩn phần tử và thường thu gọn chỗ của nó; chỉ quy tắc `:remove()`
+mới xóa node. Không cần extension hoặc root, nhưng trình duyệt phải tin CA của BlockAds.
 
 ## Bật và sử dụng
 
@@ -19,6 +20,9 @@ cần extension hoặc root, nhưng cần trình duyệt tin chứng chỉ CA c�
    example.com###sponsored-box
    example.com##div > .advertisement
    example.com##[id^="ad-slot-"]
+   example.com##div:has(> .sponsor)
+   example.com##.box:has-text(Quảng cáo)
+   example.com##.popup:remove()
    ```
 
    `example.com` là ví dụ; thay bằng website của bạn. Có thể thêm URL HTTPS của
@@ -37,46 +41,68 @@ news.example.com#@#.banner-ad
 
 Dòng đầu áp dụng cho example.com và tên miền con, trừ account.example.com cùng
 các tên miền con của nó. Dòng thứ hai bỏ quy tắc có selector `.banner-ad` cho
-news.example.com và tên miền con. Ngoại lệ thắng quy tắc ẩn có selector trùng
-khớp; đây không phải bộ phân tích đầy đủ mọi biến thể cú pháp Adblock Plus.
+news.example.com và tên miền con. Ngoại lệ chỉ bỏ quy tắc có selector trùng
+khớp. Ngoại lệ chung không gắn tên miền (`#@#.ad`) không được hỗ trợ; dùng
+`@@||example.com^$generichide` để tắt mọi quy tắc chung trên một website.
+
+## Cách hoạt động
+
+- **Quy tắc riêng của website** và quy tắc chung không dựa trên class/id (ví dụ
+  `##[id^="div-gpt-ad"]`) được gộp thành `<style nonce>` chèn trước `</head>`.
+  Mỗi selector một rule, nên selector trình duyệt không hiểu chỉ mất rule của nó.
+  Không còn giới hạn 64 KiB; với EasyList + ABPVN, trang thường nhận khoảng 26 KB
+  (~435 rule), tính trong ~0,1 ms và được cache cho 128 host gần nhất.
+- **Quy tắc chung theo class/id** (`##.ad-banner`, `###sponsor`; EasyList có gần
+  9.000 quy tắc loại này) không bị nhét hết vào mọi trang. Script chèn kèm theo
+  dõi class/id xuất hiện (cả phần tử thêm sau bằng JavaScript), rồi nạp
+  `<link rel=stylesheet nonce>` tới một đường dẫn ngẫu nhiên trên chính website.
+  Proxy trả CSS tại chỗ, **không bao giờ gửi request này tới máy chủ website**.
+  Dùng `<link>` thay cho `fetch` để chỉ phụ thuộc `style-src` (đã có nonce).
+- **Procedural/action** chạy trong script: `:has-text`, `:upward`, `:xpath`,
+  `:matches-attr`, `:matches-css(-before/-after)`, `:matches-path`,
+  `:min-text-length`, và `:remove()`, `:remove-attr()`, `:remove-class()`,
+  `:style()`. Chạy lại tối đa 5 lần/giây khi DOM thay đổi. `#?#` và
+  `:-abp-has()` được đổi sang `:has()` của CSS.
+- Selector và `:style()` được kiểm tra bằng bộ phân tích CSS của Servo; bỏ quy tắc
+  có `url(`, `image-set(`, escape hoặc comment trong `:style()`. Ký tự `<` trong
+  CSS/JSON được escape nên không thể đóng thẻ `<style>`/`<script>`.
 
 ## Phạm vi và giới hạn
 
-- Hỗ trợ CSS ASCII đơn giản: tag, class, ID, thuộc tính, danh sách selector và
-  tổ hợp descendant/`>`/`+`/`~`. Không hỗ trợ pseudo-class, CSS escape,
-  procedural filtering hoặc scriptlet. Có hỗ trợ quy tắc generic `##.ad`
-  và ngoại lệ như `~cafef.vn##[id^="adm-slot"]`; CSS vẫn được cache theo host.
-  Quy tắc không hỗ trợ trong danh sách tải về được tính vào số bỏ qua; trong
-  quy tắc riêng sẽ hiện lỗi và giữ nguyên bộ lọc cũ.
+- Scriptlet (`##+js(...)`) chưa chạy: chưa nạp tài nguyên scriptlet. Trong quy tắc
+  riêng sẽ báo lỗi; trong danh sách tải về thì được nạp nhưng không có tác dụng.
 - Chỉ GET HTML document/frame có khai báo Accept text/html, HTTP 200, không có
   Range hoặc Cache-Control: no-transform. Không sửa ảnh, video, JSON hay download.
-- Proxy yêu cầu `Accept-Encoding: identity` khi có CSS phù hợp, tránh giải nén/nén
-  lại. Nếu máy chủ vẫn gửi dữ liệu nén thì giữ nguyên. HTML có thể tốn nhiều dữ
-  liệu mạng hơn; chưa benchmark CPU/pin trên thiết bị thật.
-- Chỉ xem tối đa 32 KiB đầu HTML, 256 frame hoặc 2 giây để tìm cuối `<head>`.
-  Thiếu head rõ ràng, head quá dài, UTF-16, charset không hỗ trợ, template trong
-  head, script kiểu legacy escaped hoặc meta CSP thì bỏ qua. Các meta
-  Content-Type UTF-8 và x-dns-prefetch-control thông thường được giữ nguyên. Phần còn lại
-  truyền theo luồng, không gom toàn bộ body.
-- Với CSP trong HTTP header, chỉ cho phép riêng thẻ style được chèn bằng nonce
-  ngẫu nhiên; giữ nguyên các nguồn CSS cũ và chính sách script/thuộc tính style.
-  Không thêm nonce vào chính sách vốn cho phép inline để tránh làm mất hiệu lực
-  của các style inline đang dùng. Không sửa CSP trong meta HTML.
-- Trang đã sửa bỏ Content-Length và các validator/digest cũ, đặt no-store để
-  tránh lưu CSS cũ qua lần cập nhật bộ lọc. Asset ảnh/video/script vẫn đi theo
-  đường truyền và cache thông thường.
-- Cache CSS theo tên miền nằm trong từng bản bộ lọc, tự mất hiệu lực khi reload.
-  Tối đa 128 domain trong cache, 64 KiB CSS/domain, 50.000 mục cosmetic và
-  2.048 byte/selector. Không chạy JavaScript/MutationObserver/timer quét DOM;
-  phần tử mới khớp selector được CSS của trình duyệt áp dụng tự nhiên.
+- Proxy yêu cầu `Accept-Encoding: identity` khi trang có gì để chèn, tránh giải
+  nén/nén lại. Nếu máy chủ vẫn gửi dữ liệu nén thì giữ nguyên. Chưa benchmark
+  CPU/pin trên thiết bị thật.
+- Phân tích HTML theo luồng, chỉ giữ một thẻ chưa hoàn chỉnh tối đa 8 KiB. Gặp
+  `</head>` hợp lệ mới chèn, rồi truyền phần còn lại trực tiếp. Thiếu head rõ ràng,
+  UTF-16, charset không hỗ trợ, template trong head, script kiểu legacy escaped,
+  meta CSP hoặc một thẻ đơn lẻ quá dài thì truyền nguyên nội dung.
+- CSP trong HTTP header: thêm nonce riêng cho thẻ style và script được chèn
+  (`style-src-elem`, `script-src-elem`), giữ nguyên các nguồn cũ. Không thêm nonce
+  vào chính sách vốn cho phép inline (trừ khi có `'strict-dynamic'`, vốn làm
+  `'unsafe-inline'` mất hiệu lực). Không sửa CSP trong meta HTML.
+- HTML được chèn bỏ Content-Length và validator/digest cũ, đặt no-store. Asset
+  ảnh/video/script giữ cache thông thường.
+- Trang lấy từ cache/service worker mà không qua mạng sẽ không có phần chèn.
 
 ## Kiểm tra
 
-`nativecore/tests/cosmetic.rs` kiểm tra domain/subdomain, loại trừ, ngoại lệ,
-cache, giới hạn và từ chối nội dung CSS/HTML không được hỗ trợ.
-Unit test trong `mitm/html.rs` kiểm tra phân mảnh head, CSP, trailer, body lớn và
-giữ nguyên các phản hồi không tương thích. `nativecore/tests/https.rs` kiểm tra
-CSS qua cả bốn tổ hợp HTTP/1.1 và HTTP/2 cùng xác minh nonce/CSP.
+- `nativecore/tests/cosmetic.rs`: phạm vi/ngoại lệ domain, `:has`, `#?#`,
+  procedural, `:style()` an toàn, `$generichide`, 6.000 quy tắc không bị cắt.
+- `mitm/html.rs`: nonce/CSP cho script (kể cả `'strict-dynamic'`), script không thể
+  tự đóng thẻ, tokenizer theo luồng. `tests/https.rs`: endpoint CSS chung qua bốn
+  tổ hợp HTTP/1.1↔HTTP/2, không tới upstream.
+- Chrome desktop headless, không cần mạng, CSP chặt (`default-src 'none'`):
 
-Các test proxy chạy trên host với TLS thật; không thay thế kiểm thử hiển thị và
-đo CPU/pin trực tiếp trong Chrome Android sau khi cài CA.
+  ```sh
+  BLOCKADS_CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+    cargo test --manifest-path nativecore/Cargo.toml --locked --test https \
+    content_script -- --ignored --nocapture --test-threads=1
+  ```
+
+  Chrome 156: 20/20 lần đạt — class chung, phần tử thêm sau 300 ms, `:has-text`,
+  `:remove()` và id riêng đều bị ẩn/xóa; phần tử thường không bị ảnh hưởng.
+  Chưa kiểm tra Chrome Android trên điện thoại.

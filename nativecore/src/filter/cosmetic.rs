@@ -1,160 +1,170 @@
-//! Cached declarative CSS with domain scopes and exclusions. No procedural selectors or scripts.
+//! Element hiding with Brave's adblock-rust cosmetic engine: host-specific CSS, procedural rules
+//! for the in-page script, and generic `.class`/`#id` rules looked up for what the page contains.
+use adblock::{
+    cosmetic_filter_cache::ProceduralOrActionFilter,
+    filters::cosmetic::CosmeticFilterMask,
+    lists::{parse_filter, FilterSet, ParseOptions, ParsedLine, RuleTypes},
+    Engine,
+};
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
-    sync::{Arc, Mutex, OnceLock},
+    collections::{HashMap, HashSet, VecDeque},
+    sync::{Arc, Mutex},
 };
 
-const MAX_CSS: usize = 64 * 1024;
+const MAX_RULE: usize = 4096;
+/// What one document needs. Cached per host inside an immutable rule snapshot.
+#[derive(Default)]
+pub struct Page {
+    /// `selector{declarations}` lines; `<` is escaped so the text cannot leave a `<style>`.
+    pub css: String,
+    /// JSON array of procedural/action filters run by the in-page script; `<` is escaped.
+    pub procedural: String,
+    /// False when `$generichide` applies or no generic class/id rules exist.
+    pub generic: bool,
+    pub(crate) exceptions: HashSet<String>,
+}
+impl Page {
+    pub fn is_empty(&self) -> bool {
+        self.css.is_empty() && self.procedural.is_empty() && !self.generic
+    }
+}
 #[derive(Default)]
 pub(super) struct Cosmetic {
-    domains: HashMap<String, Vec<Entry>>,
-    generic: Vec<Entry>,
-    count: usize,
+    engine: Option<Engine>,
     cache: Mutex<Cache>,
 }
 #[derive(Default)]
 struct Cache {
-    values: HashMap<String, Arc<str>>,
+    values: HashMap<String, Arc<Page>>,
     order: VecDeque<String>,
 }
-struct Entry {
-    selector: String,
-    excluded: Vec<String>,
-    exception: bool,
+fn options() -> ParseOptions {
+    ParseOptions {
+        rule_types: RuleTypes::CosmeticOnly,
+        ..ParseOptions::default()
+    }
+}
+/// Network rules that switch element hiding off (`$generichide`, `$elemhide`); the cosmetic
+/// engine evaluates them itself when building a page.
+pub(super) fn switches_hiding(line: &str) -> bool {
+    line.starts_with("@@")
+        && line.rsplit_once('$').is_some_and(|(_, options)| {
+            options
+                .split(',')
+                .any(|o| matches!(o, "generichide" | "ghide" | "elemhide" | "ehide"))
+        })
+}
+/// Same split as adblock-rust: a `#` followed by another `#` within four bytes. Hosts-file
+/// comments (`# text`, `## text`) stay comments.
+pub(super) fn candidate(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    if line.starts_with(['!', '['])
+        || (bytes.first() == Some(&b'#')
+            && line
+                .trim_start_matches('#')
+                .starts_with(char::is_whitespace))
+    {
+        return false;
+    }
+    bytes
+        .iter()
+        .position(|c| *c == b'#')
+        .is_some_and(|at| bytes[at + 1..bytes.len().min(at + 5)].contains(&b'#'))
+}
+/// `custom` rejects scriptlets until scriptlet resources are loaded, so a user rule never
+/// silently does nothing. Lists may carry them; they stay inert.
+pub(super) fn accepts(line: &str, custom: bool) -> Result<(), &'static str> {
+    if line.len() > MAX_RULE {
+        return Err("Quy tắc ẩn phần tử quá dài");
+    }
+    match parse_filter(line, false, options()) {
+        Ok(ParsedLine::Cosmetic(filter)) => {
+            if custom && filter.mask.contains(CosmeticFilterMask::SCRIPT_INJECT) {
+                Err("Scriptlet (+js) chưa được hỗ trợ")
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err("Quy tắc ẩn phần tử không hợp lệ hoặc chưa được hỗ trợ"),
+    }
+}
+fn escape(text: &str) -> String {
+    // `<` only occurs inside CSS strings/attribute values, where `\3c ` is the same character.
+    text.replace('<', "\\3c ")
 }
 impl Cosmetic {
-    pub fn parse(&mut self, line: &str) -> Option<Result<(), &'static str>> {
-        if line.starts_with('!') || line.starts_with('[') {
-            return None;
+    pub fn build(list: String) -> Self {
+        let engine = (!list.is_empty()).then(|| {
+            let mut set = FilterSet::new(false);
+            // All rule types: the list only holds cosmetic lines and `switches_hiding` lines.
+            set.add_filter_list(list, ParseOptions::default());
+            Engine::new_with_filter_set(set)
+        });
+        Self {
+            engine,
+            cache: Mutex::default(),
         }
-        let (scope, selector, exception) = if let Some((scope, selector)) = line.split_once("#@#") {
-            (scope, selector, true)
-        } else if let Some((scope, selector)) = line.split_once("##") {
-            (scope, selector, false)
-        } else {
-            return None;
+    }
+    pub fn page(&self, host: &str) -> Arc<Page> {
+        let Some(engine) = &self.engine else {
+            return Arc::default();
         };
-        Some(self.insert(scope, selector.trim(), exception))
-    }
-    fn insert(&mut self, scope: &str, selector: &str, exception: bool) -> Result<(), &'static str> {
-        if self.count >= 50_000 || selector.len() > 2048 {
-            return Err("Vượt giới hạn quy tắc ẩn phần tử");
-        }
-        if !selector_regex().is_match(selector) {
-            return Err("Chỉ hỗ trợ CSS đơn giản: tag, .class, #id, thuộc tính và tổ hợp; không hỗ trợ scriptlet/pseudo-class");
-        }
-        let mut included = Vec::new();
-        let mut excluded = Vec::new();
-        for domain in scope.split(',').filter(|d| !d.is_empty()) {
-            let domain = domain.trim().to_ascii_lowercase();
-            let (name, negative) = domain
-                .strip_prefix('~')
-                .map_or((domain.as_str(), false), |d| (d, true));
-            if !super::valid_domain(name)
-                || !name.contains('.')
-                || included.len() + excluded.len() >= 100
-            {
-                return Err("Quy tắc ẩn phần tử cần tên miền cụ thể, tối đa 100 tên miền");
-            }
-            if negative {
-                excluded.push(name.to_owned());
-            } else {
-                included.push(name.to_owned());
-            }
-        }
-        if self.count + included.len().max(1) > 50_000 {
-            return Err("Vượt giới hạn quy tắc ẩn phần tử");
-        }
-        self.count += included.len().max(1);
-        if included.is_empty() {
-            self.generic.push(Entry {
-                selector: selector.to_owned(),
-                excluded,
-                exception,
-            });
-            return Ok(());
-        }
-        for domain in included {
-            self.domains.entry(domain).or_default().push(Entry {
-                selector: selector.to_owned(),
-                excluded: excluded.clone(),
-                exception,
-            });
-        }
-        Ok(())
-    }
-    pub fn css(&self, domain: &str) -> Arc<str> {
-        if self.domains.is_empty() && self.generic.is_empty() {
-            return Arc::from("");
-        }
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(css) = cache.values.get(domain) {
-            return css.clone();
+        if let Some(page) = cache.values.get(host) {
+            return page.clone();
         }
-        let mut hidden = BTreeSet::new();
-        let mut exceptions = BTreeSet::new();
-        for entry in &self.generic {
-            if entry
-                .excluded
-                .iter()
-                .any(|d| domain == d || domain.strip_suffix(d).is_some_and(|p| p.ends_with('.')))
-            {
+        let resources = engine.url_cosmetic_resources(&format!("https://{host}/"));
+        let mut rules = resources
+            .hide_selectors
+            .iter()
+            .map(|selector| format!("{}{{display:none!important}}\n", escape(selector)))
+            .collect::<Vec<_>>();
+        let mut procedural = Vec::new();
+        for json in &resources.procedural_actions {
+            let Ok(filter) = serde_json::from_str::<ProceduralOrActionFilter>(json) else {
                 continue;
-            }
-            if entry.exception {
-                exceptions.insert(entry.selector.as_str());
-            } else {
-                hidden.insert(entry.selector.as_str());
-            }
-        }
-        let mut current = Some(domain);
-        while let Some(part) = current {
-            if let Some(entries) = self.domains.get(part) {
-                for entry in entries {
-                    if entry.excluded.iter().any(|d| {
-                        domain == d || domain.strip_suffix(d).is_some_and(|p| p.ends_with('.'))
-                    }) {
-                        continue;
-                    }
-                    if entry.exception {
-                        exceptions.insert(entry.selector.as_str());
-                    } else {
-                        hidden.insert(entry.selector.as_str());
-                    }
+            };
+            match filter.as_css() {
+                // Style arguments were validated by the parser (no url(), escapes or comments).
+                Some((selector, style)) => {
+                    rules.push(format!("{}{{{}}}\n", escape(&selector), escape(&style)))
                 }
+                None => procedural.push(json.replace('<', "\\u003c")),
             }
-            current = part.split_once('.').map(|(_, rest)| rest);
         }
-        let mut css = String::new();
-        for selector in hidden.difference(&exceptions) {
-            let declaration = "{display:none!important}\n";
-            if css.len() + selector.len() + declaration.len() > MAX_CSS {
-                break;
-            }
-            css.push_str(selector);
-            css.push_str(declaration);
-        }
-        let css: Arc<str> = css.into();
+        // One rule per selector: an unsupported selector only drops its own rule.
+        rules.sort_unstable();
+        let page = Arc::new(Page {
+            css: rules.concat(),
+            procedural: if procedural.is_empty() {
+                String::new()
+            } else {
+                procedural.sort_unstable();
+                format!("[{}]", procedural.join(","))
+            },
+            generic: !resources.generichide,
+            exceptions: resources.exceptions,
+        });
         if cache.values.len() >= 128 {
             if let Some(oldest) = cache.order.pop_front() {
                 cache.values.remove(&oldest);
             }
         }
-        cache.order.push_back(domain.to_owned());
-        cache.values.insert(domain.to_owned(), css.clone());
-        css
+        cache.order.push_back(host.to_owned());
+        cache.values.insert(host.to_owned(), page.clone());
+        page
     }
-}
-fn selector_regex() -> &'static regex::Regex {
-    static REGEX: OnceLock<regex::Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        // Conservative ASCII subset. In particular no HTML delimiters, CSS escapes, URLs,
-        // declaration delimiters or pseudo selectors can reach the injected style element.
-        let ident = r"[a-zA-Z_][a-zA-Z0-9_-]*|-+[a-zA-Z_][a-zA-Z0-9_-]*";
-        let ident = format!("(?:{ident})");
-        let attr = format!(r#"\[\s*{ident}(?:\s*[*^$|~]?=\s*(?:{ident}|"[a-zA-Z0-9_ .:/-]*"|'[a-zA-Z0-9_ .:/-]*'))?\s*\]"#);
-        let component = format!(r"(?:{ident}|\*|[.#]{ident}|{attr})(?:[.#]{ident}|{attr})*");
-        let pattern = format!(r"^{component}(?:(?:\s*[>+~,]\s*|\s+){component})*$").replace(r"\s", r"[ \t\r\n\x0c]");
-        regex::Regex::new(&pattern).unwrap()
-    })
+    /// Generic rules keyed by classes/ids seen in the page, minus this page's exceptions.
+    pub fn generic(&self, page: &Page, classes: &[&str], ids: &[&str]) -> String {
+        let Some(engine) = self.engine.as_ref().filter(|_| page.generic) else {
+            return String::new();
+        };
+        let mut selectors = engine.hidden_class_id_selectors(classes, ids, &page.exceptions);
+        selectors.sort_unstable();
+        selectors.dedup();
+        selectors
+            .iter()
+            .map(|selector| format!("{}{{display:none!important}}\n", escape(selector)))
+            .collect()
+    }
 }

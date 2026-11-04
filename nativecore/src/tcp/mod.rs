@@ -86,7 +86,7 @@ pub async fn serve(
                                 match crate::mitm::proxy::upstream(destination, &domain, protector.as_ref(), &stats).await {
                                     Ok(upstream) => {
                                         let idle = idle_timeout(activity.clone());
-                                        tokio::select! { _ = crate::mitm::proxy::serve(client, config, initial, upstream, domain, destination, owner) => {}, _ = idle => {} }
+                                        tokio::select! { _ = crate::mitm::proxy::serve(client, config, initial, crate::mitm::proxy::VerifiedUpstream::new(upstream, crate::mitm::proxy::connector(destination, domain.clone(), protector.clone(), stats.clone())), domain, destination, owner) => {}, _ = idle => {} }
                                         return;
                                     }
                                     Err(_) => crate::dns::event(domain.clone(), false, Some("Bỏ qua HTTPS · upstream TLS không xác minh được; chuyển relay TLS cho app".into()), false, owner.uid, "tls-bypass"),

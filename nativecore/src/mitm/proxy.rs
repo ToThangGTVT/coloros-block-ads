@@ -5,7 +5,8 @@ use crate::{
     sockets::{self, Protector, Stats},
 };
 use bytes::Bytes;
-use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Empty};
+use futures_util::future::BoxFuture;
+use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Empty, Full};
 use hyper::{body::Incoming, Request, Response, StatusCode, Uri};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::{
@@ -14,7 +15,7 @@ use std::{
     io,
     net::SocketAddr,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::Duration,
 };
@@ -29,6 +30,26 @@ pub(super) type Body = UnsyncBoxBody<Bytes, BoxError>;
 enum Sender {
     H1(hyper::client::conn::http1::SendRequest<Body>),
     H2(hyper::client::conn::http2::SendRequest<Body>),
+}
+pub type Connector =
+    Arc<dyn Fn() -> BoxFuture<'static, io::Result<TlsStream<tokio::net::TcpStream>>> + Send + Sync>;
+pub struct VerifiedUpstream {
+    tls: TlsStream<tokio::net::TcpStream>,
+    reconnect: Connector,
+}
+impl VerifiedUpstream {
+    pub fn new(tls: TlsStream<tokio::net::TcpStream>, reconnect: Connector) -> Self {
+        Self { tls, reconnect }
+    }
+}
+struct UpstreamState {
+    sender: Sender,
+    // Keep draining HTTP/2 GOAWAY connections alive for their existing streams.
+    drivers: Vec<Driver>,
+}
+struct Upstream {
+    state: Mutex<UpstreamState>,
+    reconnect: Connector,
 }
 struct Driver(JoinHandle<()>);
 impl Drop for Driver {
@@ -98,6 +119,124 @@ pub async fn upstream(
     )
     .await?
 }
+pub fn connector(
+    destination: SocketAddr,
+    domain: String,
+    protector: Arc<dyn Protector>,
+    stats: Arc<Stats>,
+) -> Connector {
+    Arc::new(move || {
+        let (domain, protector, stats) = (domain.clone(), protector.clone(), stats.clone());
+        Box::pin(async move { upstream(destination, &domain, protector.as_ref(), &stats).await })
+    })
+}
+async fn connection(
+    upstream: TlsStream<tokio::net::TcpStream>,
+    domain: String,
+    uid: Option<u32>,
+) -> io::Result<(Sender, Driver)> {
+    if upstream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice()) {
+        let (sender, connection) =
+            hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(upstream))
+                .await
+                .map_err(io::Error::other)?;
+        Ok((
+            Sender::H2(sender),
+            Driver(tokio::spawn(async move {
+                if let Err(error) = connection.await {
+                    report_error(&domain, uid, "upstream HTTP/2", &error);
+                }
+            })),
+        ))
+    } else {
+        let (sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(upstream))
+            .await
+            .map_err(io::Error::other)?;
+        Ok((
+            Sender::H1(sender),
+            Driver(tokio::spawn(async move {
+                if let Err(error) = connection.with_upgrades().await {
+                    report_error(&domain, uid, "upstream HTTP/1.1", &error);
+                }
+            })),
+        ))
+    }
+}
+async fn send_upstream(
+    mut request: Request<Body>,
+    upstream: &Upstream,
+    domain: &str,
+    uid: Option<u32>,
+    url: &str,
+    path: &str,
+) -> Result<Response<Incoming>, BoxError> {
+    let absolute = url.parse::<Uri>()?;
+    let host = hyper::header::HeaderValue::from_str(
+        absolute
+            .authority()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?
+            .as_str(),
+    )?;
+    let mut reconnect = false;
+    for attempt in 0..2 {
+        let mut state = upstream.state.lock().await;
+        let ready = match &mut state.sender {
+            Sender::H1(sender) => sender.ready().await,
+            Sender::H2(sender) => sender.ready().await,
+        };
+        if reconnect || ready.is_err() {
+            let tls = (upstream.reconnect)().await?;
+            let (sender, driver) = connection(tls, domain.to_owned(), uid).await?;
+            state.drivers.retain(|driver| !driver.0.is_finished());
+            state.drivers.push(driver);
+            state.sender = sender;
+        }
+        let h2 = matches!(state.sender, Sender::H2(_));
+        *request.uri_mut() = if h2 {
+            absolute.clone()
+        } else {
+            path.parse::<Uri>()?
+        };
+        if h2 {
+            // HTTP/2 carries the origin in :authority, derived from the absolute URI.
+            request.headers_mut().remove(hyper::header::HOST);
+        } else {
+            // Rebuild this on every attempt: reconnecting can negotiate a different ALPN.
+            request
+                .headers_mut()
+                .insert(hyper::header::HOST, host.clone());
+        }
+        *request.version_mut() = if h2 {
+            hyper::Version::HTTP_2
+        } else {
+            hyper::Version::HTTP_11
+        };
+        let result = match &mut state.sender {
+            Sender::H1(sender) => sender.try_send_request(request).await,
+            Sender::H2(sender) => {
+                let mut sender = sender.clone();
+                drop(state);
+                sender.try_send_request(request).await
+            }
+        };
+        match result {
+            Ok(response) => return Ok(response),
+            Err(mut error) => {
+                // Hyper returns the request only if it was never serialized. Never replay a
+                // request whose headers/body may have reached the origin (including POST).
+                if attempt == 0 {
+                    if let Some(unsent) = error.take_message() {
+                        request = unsent;
+                        reconnect = true;
+                        continue;
+                    }
+                }
+                return Err(Box::new(error.into_error()));
+            }
+        }
+    }
+    unreachable!()
+}
 fn empty(status: StatusCode) -> Response<Body> {
     let mut response = Response::new(
         Empty::<Bytes>::new()
@@ -106,6 +245,23 @@ fn empty(status: StatusCode) -> Response<Body> {
     );
     *response.status_mut() = status;
     response
+}
+fn report_error(domain: &str, uid: Option<u32>, stage: &str, error: &dyn Error) {
+    let mut reason = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        reason.push_str(": ");
+        reason.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    crate::dns::event(
+        domain.into(),
+        false,
+        Some(format!("Lỗi proxy HTTPS · {stage} · {reason}")),
+        false,
+        uid,
+        "https-error",
+    );
 }
 fn clean_headers(headers: &mut hyper::HeaderMap) {
     let named = headers
@@ -131,6 +287,31 @@ fn clean_headers(headers: &mut hyper::HeaderMap) {
     ] {
         headers.remove(name);
     }
+}
+/// Only a certificate alert from the client means it does not trust our CA (pinning or no user
+/// CA trust). Browsers routinely abandon preconnected sockets mid-handshake; treating that EOF,
+/// reset or timeout as a rejection would switch filtering off for the host for hours.
+fn rejects_certificate(error: &io::Error) -> bool {
+    use rustls::AlertDescription as Alert;
+    error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<rustls::Error>())
+        .is_some_and(|error| {
+            matches!(
+                error,
+                rustls::Error::AlertReceived(
+                    Alert::BadCertificate
+                        | Alert::UnsupportedCertificate
+                        | Alert::CertificateRevoked
+                        | Alert::CertificateExpired
+                        | Alert::CertificateUnknown
+                        | Alert::UnknownCA
+                        | Alert::AccessDenied
+                        // A stale root with the same name but another key (CA re-created).
+                        | Alert::DecryptError
+                )
+            )
+        })
 }
 /// Client hang-ups (EOF, reset, broken pipe during shutdown) end a session normally; only real
 /// protocol/IO failures are surfaced.
@@ -167,7 +348,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     client: S,
     config: Arc<rustls::ServerConfig>,
     initial: Vec<u8>,
-    upstream: TlsStream<tokio::net::TcpStream>,
+    upstream: VerifiedUpstream,
     domain: String,
     destination: SocketAddr,
     owner: Owner,
@@ -187,44 +368,29 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let client = match tokio::select! { result = handshake => result, _ = revision.changed() => return Err(io::ErrorKind::Interrupted.into()) }
     {
         Ok(Ok(client)) => client,
-        _ => {
-            reject_client(&domain, &owner);
+        Ok(Err(error)) => {
+            if rejects_certificate(&error) {
+                reject_client(&domain, &owner);
+            }
             return Err(io::ErrorKind::ConnectionAborted.into());
         }
+        Err(_) => return Err(io::ErrorKind::TimedOut.into()),
     };
     let client_h2 = client.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
-    let upstream_h2 = upstream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
-    let (sender, driver) = if upstream_h2 {
-        let (sender, connection) =
-            hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(upstream))
-                .await
-                .map_err(io::Error::other)?;
-        (
-            Sender::H2(sender),
-            Driver(tokio::spawn(async move {
-                let _ = connection.await;
-            })),
-        )
-    } else {
-        let (sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(upstream))
-            .await
-            .map_err(io::Error::other)?;
-        (
-            Sender::H1(sender),
-            Driver(tokio::spawn(async move {
-                let _ = connection.with_upgrades().await;
-            })),
-        )
-    };
-    let sender = Arc::new(Mutex::new(sender));
+    let (sender, driver) = connection(upstream.tls, domain.clone(), owner.uid).await?;
+    let upstream = Arc::new(Upstream {
+        state: Mutex::new(UpstreamState {
+            sender,
+            drivers: vec![driver],
+        }),
+        reconnect: upstream.reconnect,
+    });
     let service = hyper::service::service_fn(move |request: Request<Incoming>| {
-        let sender = sender.clone();
+        let upstream = upstream.clone();
         let domain = domain.clone();
         let owner = owner.clone();
         async move {
-            Ok::<_, Infallible>(
-                forward(request, sender, &domain, destination, &owner, upstream_h2).await,
-            )
+            Ok::<_, Infallible>(forward(request, upstream, &domain, destination, &owner).await)
         }
     });
     if client_h2 {
@@ -239,16 +405,14 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         builder.max_buf_size(16384).max_headers(100);
         tokio::select! {result=builder.serve_connection(TokioIo::new(client),service)=>finish(result)?,_=revision.changed()=>{}}
     }
-    drop(driver);
     Ok(())
 }
 async fn forward(
     mut request: Request<Incoming>,
-    sender: Arc<Mutex<Sender>>,
+    upstream: Arc<Upstream>,
     domain: &str,
     destination: SocketAddr,
     owner: &Owner,
-    upstream_h2: bool,
 ) -> Response<Body> {
     let client_version = request.version();
     let authority = request
@@ -282,9 +446,22 @@ async fn forward(
     } else {
         format!("{domain}:{}", destination.port())
     };
+    if let Some(query) = path.strip_prefix(endpoint()).and_then(|rest| {
+        rest.strip_prefix('?')
+            .or_else(|| rest.is_empty().then_some(""))
+    }) {
+        return generic_css(domain, query);
+    }
     let url = format!("https://{authority}{path}");
     let rules = crate::filter::current();
-    let decision = rules.matches(domain, Some(&url), &owner.packages);
+    let (kind, source) = request_context(request.headers(), &url);
+    let context = crate::filter::Context {
+        url: &url,
+        source: &source,
+        kind,
+        method: request.method().as_str(),
+    };
+    let decision = rules.check(domain, &context, &owner.packages);
     let blocked = decision.as_ref().is_some_and(|d| d.blocked);
     crate::dns::event(
         domain.into(),
@@ -297,12 +474,10 @@ async fn forward(
     if blocked {
         return empty(StatusCode::NO_CONTENT);
     }
-    let css = if super::html::document_request(&request) {
-        rules.cosmetic_css(domain)
-    } else {
-        Arc::from("")
-    };
-    if !css.is_empty() {
+    let page = super::html::document_request(&request)
+        .then(|| rules.cosmetic_page(domain))
+        .filter(|page| !page.is_empty());
+    if page.is_some() {
         // Avoid decompression/recompression work. Noncompliant compressed responses pass through.
         request.headers_mut().insert(
             hyper::header::ACCEPT_ENCODING,
@@ -312,69 +487,30 @@ async fn forward(
             request.headers_mut().remove(name);
         }
     }
-    let uri = if upstream_h2 {
-        url.parse::<Uri>()
-    } else {
-        path.parse::<Uri>()
-    };
-    let Ok(uri) = uri else {
-        return empty(StatusCode::BAD_REQUEST);
-    };
-    *request.uri_mut() = uri;
-    *request.version_mut() = if upstream_h2 {
-        hyper::Version::HTTP_2
-    } else {
-        hyper::Version::HTTP_11
-    };
     clean_headers(request.headers_mut());
     let Ok(host) = hyper::header::HeaderValue::from_str(&authority) else {
         return empty(StatusCode::BAD_REQUEST);
     };
     request.headers_mut().insert(hyper::header::HOST, host);
     let request = request.map(|body| body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync());
-    let mut guard = sender.lock().await;
-    let response = match &mut *guard {
-        Sender::H1(sender) => {
-            tokio::time::timeout(Duration::from_secs(30), async {
-                sender.ready().await?;
-                sender.send_request(request).await
-            })
-            .await
-        }
-        Sender::H2(sender) => {
-            let mut sender = sender.clone();
-            drop(guard);
-            tokio::time::timeout(Duration::from_secs(30), async {
-                sender.ready().await?;
-                sender.send_request(request).await
-            })
-            .await
-        }
-    };
+    let response = tokio::time::timeout(
+        Duration::from_secs(30),
+        send_upstream(request, &upstream, domain, owner.uid, &url, &path),
+    )
+    .await;
     match response {
         Ok(Ok(mut response)) => {
             *response.version_mut() = client_version;
             clean_headers(response.headers_mut());
             let response =
                 response.map(|body| body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync());
-            super::html::inject(response, css).await
+            match page {
+                Some(page) => super::html::inject(response, &page, endpoint()).await,
+                None => response,
+            }
         }
         Ok(Err(error)) => {
-            let mut reason = error.to_string();
-            let mut source = error.source();
-            while let Some(cause) = source {
-                reason.push_str(": ");
-                reason.push_str(&cause.to_string());
-                source = cause.source();
-            }
-            crate::dns::event(
-                domain.into(),
-                false,
-                Some(format!("Lỗi proxy HTTPS · {reason}")),
-                false,
-                owner.uid,
-                "https-error",
-            );
+            report_error(domain, owner.uid, "request", error.as_ref());
             empty(StatusCode::BAD_GATEWAY)
         }
         Err(_) => {
@@ -389,6 +525,131 @@ async fn forward(
             empty(StatusCode::GATEWAY_TIMEOUT)
         }
     }
+}
+/// Same-origin path the content script loads generic CSS from. Random per process so it cannot
+/// collide with a site's own paths; answered here and never forwarded to the origin.
+fn endpoint() -> &'static str {
+    static PATH: OnceLock<String> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut random = [0u8; 16];
+        let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random);
+        let token: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        format!("/.blockads-{token}/generic.css")
+    })
+}
+fn decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        match bytes[at] {
+            b'%' if at + 2 < bytes.len() => match (hex(bytes[at + 1]), hex(bytes[at + 2])) {
+                (Some(high), Some(low)) => {
+                    output.push((high * 16 + low) as u8);
+                    at += 3;
+                    continue;
+                }
+                _ => output.push(b'%'),
+            },
+            b'+' => output.push(b' '),
+            byte => output.push(byte),
+        }
+        at += 1;
+    }
+    String::from_utf8_lossy(&output).into_owned()
+}
+/// `?c=<classes>&i=<ids>`, space separated. Bounded so a page cannot make the proxy do much work.
+fn generic_css(domain: &str, query: &str) -> Response<Body> {
+    let (mut classes, mut ids) = (String::new(), String::new());
+    for pair in query.split('&') {
+        match pair.split_once('=') {
+            Some(("c", value)) => classes = decode(value),
+            Some(("i", value)) => ids = decode(value),
+            _ => {}
+        }
+    }
+    let tokens = |text: &str| -> Vec<String> {
+        text.split(' ')
+            .filter(|t| !t.is_empty() && t.len() <= 256)
+            .take(4096)
+            .map(str::to_owned)
+            .collect()
+    };
+    let (classes, ids) = (tokens(&classes), tokens(&ids));
+    let rules = crate::filter::current();
+    let page = rules.cosmetic_page(domain);
+    let css = rules.generic_css(
+        &page,
+        &classes.iter().map(String::as_str).collect::<Vec<_>>(),
+        &ids.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    let mut response = Response::new(
+        Full::new(Bytes::from(css))
+            .map_err(|never: Infallible| match never {})
+            .boxed_unsync(),
+    );
+    let headers = response.headers_mut();
+    for (name, value) in [
+        ("content-type", "text/css; charset=utf-8"),
+        ("cache-control", "no-store"),
+        ("x-content-type-options", "nosniff"),
+    ] {
+        headers.insert(name, hyper::header::HeaderValue::from_static(value));
+    }
+    response
+}
+/// Request type and initiator for network rules, from Fetch Metadata (Chrome sends it on every
+/// HTTPS request) with an Accept fallback. Chrome's default referrer policy still exposes the
+/// initiating origin cross-site, which is enough for `$third-party` and `$domain=`.
+fn request_context(headers: &hyper::HeaderMap, url: &str) -> (&'static str, String) {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let kind = match header("sec-fetch-dest") {
+        Some("document") => "document",
+        Some("iframe" | "frame" | "fencedframe") => "subdocument",
+        Some(
+            "script" | "worker" | "sharedworker" | "serviceworker" | "audioworklet"
+            | "paintworklet",
+        ) => "script",
+        Some("style") => "stylesheet",
+        Some("image") => "image",
+        Some("font") => "font",
+        Some("audio" | "video" | "track") => "media",
+        Some("object" | "embed") => "object",
+        Some("report") => "csp_report",
+        Some("empty") if header("sec-fetch-mode") == Some("websocket") => "websocket",
+        Some("empty") => "xmlhttprequest",
+        Some(_) => "other",
+        None => {
+            let accept = header("accept").unwrap_or("");
+            if accept.starts_with("text/html") {
+                "document"
+            } else if accept.starts_with("image/") {
+                "image"
+            } else if accept.starts_with("text/css") {
+                "stylesheet"
+            } else {
+                "other"
+            }
+        }
+    };
+    let source = if kind == "document" {
+        // A top-level navigation is its own first party.
+        url.to_owned()
+    } else if let Some(referer) = header("referer") {
+        referer.to_owned()
+    } else if let Some(origin) = header("origin").filter(|o| *o != "null") {
+        format!("{origin}/")
+    } else if matches!(
+        header("sec-fetch-site"),
+        Some("same-origin" | "same-site" | "none")
+    ) {
+        url.to_owned()
+    } else {
+        // Unknown initiator: treated as third-party; `$domain=` rules cannot match.
+        String::new()
+    };
+    (kind, source)
 }
 
 pub async fn prepare(domain: &str) -> io::Result<Arc<rustls::ServerConfig>> {

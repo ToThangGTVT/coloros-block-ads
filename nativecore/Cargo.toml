@@ -38,6 +38,7 @@ hyper-util = { version = "=0.1.21", features = ["tokio"] }
 http-body-util = "=0.1.5"
 bytes = "=1.12.1"
 ring = "=0.17.14"
+adblock = { version = "=0.13.5", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "css-validation"] }
 
 [[bench]]
 name = "matcher"

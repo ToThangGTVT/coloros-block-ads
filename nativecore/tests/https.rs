@@ -61,6 +61,24 @@ fn client_config(root: &[u8], h2: bool) -> Arc<rustls::ClientConfig> {
     }];
     Arc::new(config)
 }
+fn test_connector(
+    address: std::net::SocketAddr,
+    domain: String,
+    config: Arc<rustls::ClientConfig>,
+    guard: Arc<Guard>,
+    stats: Arc<Stats>,
+) -> proxy::Connector {
+    Arc::new(move || {
+        let (domain, config, guard, stats) =
+            (domain.clone(), config.clone(), guard.clone(), stats.clone());
+        Box::pin(async move {
+            let raw = sockets::connect_tcp(address, guard.as_ref(), &stats).await?;
+            TlsConnector::from(config)
+                .connect(ServerName::try_from(domain).map_err(io::Error::other)?, raw)
+                .await
+        })
+    })
+}
 fn peer_config(domain: &str, h2: bool) -> (Vec<u8>, Arc<rustls::ServerConfig>) {
     let rcgen::CertifiedKey { cert, signing_key } =
         rcgen::generate_simple_self_signed(vec![domain.into()]).unwrap();
@@ -124,6 +142,73 @@ fn default_off_scope_sensitive_domains_cache_and_rejected_client_bypass() {
     ca::set(None, vec![]);
 }
 #[tokio::test]
+async fn only_certificate_alerts_bypass_an_abandoned_handshake_does_not() {
+    use tokio::io::AsyncWriteExt;
+    let (key, der) = root();
+    ca::set(Some(key), der);
+    enable();
+    for (domain, client_alerts, stale_root) in [
+        ("abandoned.test", false, false),
+        ("pinned.test", true, false),
+        ("stale-root.test", true, true),
+    ] {
+        let (peer_root, server_config) = peer_config(domain, false);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let origin = tokio::spawn(async move {
+            let (raw, _) = listener.accept().await.unwrap();
+            let _ = TlsAcceptor::from(server_config).accept(raw).await;
+        });
+        let connector = test_connector(
+            address,
+            domain.into(),
+            client_config(&peer_root, false),
+            Arc::new(Guard(AtomicUsize::new(0))),
+            Arc::new(Stats::default()),
+        );
+        let upstream = connector().await.unwrap();
+        let (mut front, back) = tokio::io::duplex(65536);
+        let proxy = tokio::spawn(proxy::serve(
+            back,
+            proxy::prepare(domain).await.unwrap(),
+            vec![],
+            proxy::VerifiedUpstream::new(upstream, connector),
+            domain.into(),
+            address,
+            owner(),
+        ));
+        if client_alerts {
+            // A client that does not trust the local CA answers with a certificate alert: an
+            // unrelated issuer (unknown CA) or a stale root of the same name (bad signature).
+            let trusted = if stale_root {
+                root().1
+            } else {
+                peer_root.clone()
+            };
+            assert!(TlsConnector::from(client_config(&trusted, false))
+                .connect(ServerName::try_from(domain).unwrap(), front)
+                .await
+                .is_err());
+        } else {
+            // Start a TLS record, then give up the socket like an unused browser preconnect.
+            front
+                .write_all(&[0x16, 0x03, 0x01, 0x00, 0x40, 0x01])
+                .await
+                .unwrap();
+            drop(front);
+        }
+        assert!(tokio::time::timeout(Duration::from_secs(3), proxy)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err());
+        assert_eq!(mitm::eligible(domain, &owner()), !client_alerts, "{domain}");
+        origin.abort();
+    }
+    mitm::configure("{}");
+    ca::set(None, vec![]);
+}
+#[tokio::test]
 async fn upstream_verification_rejects_untrusted_peer_after_socket_protection() {
     let (_, server_config) = peer_config("untrusted.test", false);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -132,11 +217,11 @@ async fn upstream_verification_rejects_untrusted_peer_after_socket_protection() 
         let (raw, _) = listener.accept().await.unwrap();
         assert!(TlsAcceptor::from(server_config).accept(raw).await.is_err());
     });
-    let guard = Guard(AtomicUsize::new(0));
+    let guard = Arc::new(Guard(AtomicUsize::new(0)));
     assert!(proxy::upstream(
         address,
         "untrusted.test",
-        &guard,
+        guard.as_ref(),
         &Arc::new(Stats::default())
     )
     .await
@@ -149,19 +234,31 @@ enum Client {
     H2(hyper::client::conn::http2::SendRequest<Empty<Bytes>>),
 }
 async fn request(client: &mut Client, domain: &str, path: &str) -> Response<hyper::body::Incoming> {
+    send(
+        client,
+        domain,
+        path,
+        &[("Accept", "text/html"), ("Sec-Fetch-Dest", "document")],
+    )
+    .await
+}
+async fn send(
+    client: &mut Client,
+    domain: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> Response<hyper::body::Incoming> {
     let h2 = matches!(client, Client::H2(_));
     let uri = if h2 {
         format!("https://{domain}{path}")
     } else {
         path.to_owned()
     };
-    let request = Request::builder()
-        .uri(uri)
-        .header("Host", domain)
-        .header("Accept", "text/html")
-        .header("Sec-Fetch-Dest", "document")
-        .body(Empty::<Bytes>::new())
-        .unwrap();
+    let mut request = Request::builder().uri(uri).header("Host", domain);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let request = request.body(Empty::<Bytes>::new()).unwrap();
     match client {
         Client::H1(sender) => {
             sender.ready().await.unwrap();
@@ -185,18 +282,40 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
             let (key, root) = root();
             ca::set(Some(key), root.clone());
             enable();
-            assert!(filter::replace("", &format!("||{domain}/ads/*\n{domain}##.banner")).applied);
+            assert!(
+                filter::replace(
+                    "",
+                    &format!(
+                        "||{domain}/ads/*\n{domain}##.banner\n||{domain}^*/sdk.js$script,third-party\n##.generic-ad\n{domain}#@#.allowed-ad\n##.allowed-ad"
+                    )
+                )
+                .applied
+            );
+            let own_page = format!("https://{domain}/article");
             let (peer_root, server_config) = peer_config(&domain, upstream_h2);
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
             let count = Arc::new(AtomicUsize::new(0));
             let requests = count.clone();
+            let expected_authority = format!("{domain}:{}", address.port());
             let server = tokio::spawn(async move {
                 let (raw, _) = listener.accept().await.unwrap();
                 let tls = TlsAcceptor::from(server_config).accept(raw).await.unwrap();
                 let service = hyper::service::service_fn(
                     move |request: Request<hyper::body::Incoming>| {
                         requests.fetch_add(1, Ordering::Relaxed);
+                        if upstream_h2 {
+                            assert_eq!(
+                                request.uri().authority().unwrap().as_str(),
+                                expected_authority
+                            );
+                            assert!(
+                                !request.headers().contains_key("host"),
+                                "H2 must use :authority without a duplicate Host"
+                            );
+                        } else {
+                            assert_eq!(request.headers()["host"], expected_authority);
+                        }
                         async move {
                             if request.uri().path() == "/html" {
                                 assert_eq!(request.headers()["accept-encoding"], "identity");
@@ -223,8 +342,10 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                 }
             });
             let stats = Arc::new(Stats::default());
-            let guard = Guard(AtomicUsize::new(0));
-            let raw = sockets::connect_tcp(address, &guard, &stats).await.unwrap();
+            let guard = Arc::new(Guard(AtomicUsize::new(0)));
+            let raw = sockets::connect_tcp(address, guard.as_ref(), &stats)
+                .await
+                .unwrap();
             let verified = TlsConnector::from(client_config(&peer_root, upstream_h2))
                 .connect(ServerName::try_from(domain.clone()).unwrap(), raw)
                 .await
@@ -235,7 +356,16 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                 back,
                 config,
                 vec![],
-                verified,
+                proxy::VerifiedUpstream::new(
+                    verified,
+                    test_connector(
+                        address,
+                        domain.clone(),
+                        client_config(&peer_root, upstream_h2),
+                        guard.clone(),
+                        stats.clone(),
+                    ),
+                ),
                 domain.clone(),
                 address,
                 owner(),
@@ -266,14 +396,33 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                     }),
                 )
             };
-            for path in [
-                "/allowed",
-                "/ads/banner?private=query-not-logged",
-                "/next",
-                "/html",
+            let document: &[(&str, &str)] =
+                &[("Accept", "text/html"), ("Sec-Fetch-Dest", "document")];
+            let cross_site_script: &[(&str, &str)] = &[
+                ("Sec-Fetch-Dest", "script"),
+                ("Sec-Fetch-Site", "cross-site"),
+                ("Referer", "https://news.example/"),
+            ];
+            let own_script: &[(&str, &str)] = &[
+                ("Sec-Fetch-Dest", "script"),
+                ("Sec-Fetch-Site", "same-origin"),
+                ("Referer", &own_page),
+            ];
+            let cross_site_image: &[(&str, &str)] = &[
+                ("Sec-Fetch-Dest", "image"),
+                ("Referer", "https://news.example/"),
+            ];
+            let mut endpoint = None;
+            for (path, headers, blocked) in [
+                ("/allowed", document, false),
+                ("/ads/banner?private=query-not-logged", document, true),
+                ("/sdk.js", cross_site_script, true),
+                ("/sdk.js", own_script, false),
+                ("/sdk.js", cross_site_image, false),
+                ("/next", document, false),
+                ("/html", document, false),
             ] {
-                let response = request(&mut client, &domain, path).await;
-                let blocked = path.starts_with("/ads/");
+                let response = send(&mut client, &domain, path, headers).await;
                 assert_eq!(
                     response.status(),
                     if blocked {
@@ -307,15 +456,37 @@ async fn http1_http2_translation_filters_paths_preserves_keepalive_and_streams_b
                     let csp = csp.to_str().unwrap();
                     assert!(csp.contains(&format!("style-src-elem 'self' 'nonce-{nonce}'")));
                     assert!(csp.contains("script-src 'self'"));
+                    assert!(csp.contains(&format!("script-src-elem 'self' 'nonce-{nonce}'")));
+                    assert!(text.contains(&format!("<script nonce=\"{nonce}\" data-blockads>")));
+                    endpoint = text
+                        .split("(\"/.blockads-")
+                        .nth(1)
+                        .map(|rest| format!("/.blockads-{}", rest.split('"').next().unwrap()));
                 } else {
                     assert_eq!(body.len(), 256 * 1024);
                     assert!(body.iter().all(|v| *v == 7));
                 }
             }
+            // Generic class/id CSS is answered by the proxy itself, never by the origin.
+            let endpoint = endpoint.expect("content script endpoint");
+            let response = send(
+                &mut client,
+                &domain,
+                &format!("{endpoint}?c=generic-ad%20allowed-ad%20plain&i=none"),
+                &[("Sec-Fetch-Dest", "style")],
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()["content-type"],
+                "text/css; charset=utf-8"
+            );
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(body.as_ref(), b".generic-ad{display:none!important}\n");
             assert_eq!(
                 count.load(Ordering::Relaxed),
-                3,
-                "blocked path reached upstream"
+                5,
+                "blocked or local request reached upstream"
             );
             assert_eq!(guard.0.load(Ordering::Relaxed), 1);
             drop(client);
@@ -363,8 +534,10 @@ async fn http2_concurrent_streams_multiplex_over_one_upstream_connection() {
             .await;
     });
     let stats = Arc::new(Stats::default());
-    let guard = Guard(AtomicUsize::new(0));
-    let raw = sockets::connect_tcp(address, &guard, &stats).await.unwrap();
+    let guard = Arc::new(Guard(AtomicUsize::new(0)));
+    let raw = sockets::connect_tcp(address, guard.as_ref(), &stats)
+        .await
+        .unwrap();
     let verified = TlsConnector::from(client_config(&peer_root, true))
         .connect(ServerName::try_from(domain.clone()).unwrap(), raw)
         .await
@@ -375,7 +548,16 @@ async fn http2_concurrent_streams_multiplex_over_one_upstream_connection() {
         back,
         config,
         vec![],
-        verified,
+        proxy::VerifiedUpstream::new(
+            verified,
+            test_connector(
+                address,
+                domain.clone(),
+                client_config(&peer_root, true),
+                guard.clone(),
+                stats.clone(),
+            ),
+        ),
         domain.clone(),
         address,
         owner(),
@@ -423,6 +605,563 @@ async fn http2_concurrent_streams_multiplex_over_one_upstream_connection() {
         .unwrap();
     server.abort();
     let _ = server.await;
+    mitm::configure("{}");
+    ca::set(None, vec![]);
+}
+
+// Manual live-network diagnostic; excluded from normal test runs.
+
+#[tokio::test]
+#[ignore = "Requires explicit live-network access to m.genk.vn"]
+async fn live_genk_html_through_https_proxy() {
+    use std::net::ToSocketAddrs;
+    struct Capture;
+    impl blockads_core::dns::EventSink for Capture {
+        fn batch(&self, json: &str) {
+            eprintln!("{json}");
+        }
+    }
+    blockads_core::dns::set_sink(Some(Arc::new(Capture)));
+    let domain = "m.genk.vn".to_owned();
+    let address = (domain.as_str(), 443)
+        .to_socket_addrs()
+        .unwrap()
+        .find(|a| a.is_ipv4())
+        .unwrap();
+    let (key, der) = root();
+    ca::set(Some(key), der.clone());
+    enable();
+    filter::replace("~cafef.vn##[id^=\"adm-slot\"]", "");
+    let stats = Arc::new(Stats::default());
+    let guard = Arc::new(Guard(AtomicUsize::new(0)));
+    let upstream = proxy::upstream(address, &domain, guard.as_ref(), &stats)
+        .await
+        .unwrap();
+    let (front, back) = tokio::io::duplex(65536);
+    let config = proxy::prepare(&domain).await.unwrap();
+    let proxy_task = tokio::spawn(proxy::serve(
+        back,
+        config,
+        vec![],
+        proxy::VerifiedUpstream::new(
+            upstream,
+            proxy::connector(address, domain.clone(), guard.clone(), stats.clone()),
+        ),
+        domain.clone(),
+        address,
+        owner(),
+    ));
+    let tls = TlsConnector::from(client_config(&der, true))
+        .connect(ServerName::try_from(domain.clone()).unwrap(), front)
+        .await
+        .unwrap();
+    let (sender, connection) =
+        hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(tls))
+            .await
+            .unwrap();
+    let driver = tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let mut sender = sender;
+    sender.ready().await.unwrap();
+    let response = sender.send_request(Request::builder().uri(format!("https://{domain}/may-tinh-anh-em-dinh-mua-se-dat-them-bao-nhieu-trong-nam-toi-3-kich-ban-cho-3-tam-gia-165261104151528916.chn"))
+        .header("host", &domain).header("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+        .header("sec-fetch-dest", "document")
+        .header("user-agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Mobile Safari/537.36")
+        .body(Empty::<Bytes>::new()).unwrap()).await.unwrap();
+    let status = response.status();
+    eprintln!("status: {status}, headers: {:?}", response.headers());
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    eprintln!(
+        "body len: {}, CSS present: {}",
+        body.len(),
+        String::from_utf8_lossy(&body).contains("data-blockads")
+    );
+    blockads_core::dns::flush();
+    proxy_task.abort();
+    driver.abort();
+    assert_eq!(status, StatusCode::OK);
+    assert!(String::from_utf8_lossy(&body).contains("data-blockads"));
+    filter::replace("", "");
+    mitm::configure("{}");
+    ca::set(None, vec![]);
+}
+
+// Isolated desktop Chrome probe; upstream certificates are still verified by the proxy.
+// The generated test CA is accepted only by this disposable browser process/profile.
+#[tokio::test]
+#[ignore = "Requires BLOCKADS_CHROME and explicit live-network access to m.genk.vn"]
+async fn live_genk_in_desktop_chrome() {
+    use std::{net::ToSocketAddrs, process::Command};
+    struct Capture;
+    impl blockads_core::dns::EventSink for Capture {
+        fn batch(&self, json: &str) {
+            eprintln!("{json}");
+        }
+    }
+    blockads_core::dns::set_sink(Some(Arc::new(Capture)));
+    let domain = "m.genk.vn".to_owned();
+    let address = (domain.as_str(), 443)
+        .to_socket_addrs()
+        .unwrap()
+        .find(|a| a.is_ipv4())
+        .unwrap();
+    let (key, der) = root();
+    ca::set(Some(key), der);
+    enable();
+    filter::replace("~cafef.vn##[id^=\"adm-slot\"]", "");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let config = proxy::prepare(&domain).await.unwrap();
+    let server = tokio::spawn(async move {
+        let mut tasks = tokio::task::JoinSet::new();
+        loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let (client, _) = accepted.unwrap();
+                    let domain = domain.clone();
+                    let config = config.clone();
+                    tasks.spawn(async move {
+                        let upstream = proxy::upstream(address, &domain, &Guard(AtomicUsize::new(0)), &Arc::new(Stats::default())).await.unwrap();
+                        let reconnect = proxy::connector(address, domain.clone(), Arc::new(Guard(AtomicUsize::new(0))), Arc::new(Stats::default()));
+                        let _ = proxy::serve(client, config, vec![], proxy::VerifiedUpstream::new(upstream, reconnect), domain, address, owner()).await;
+                    });
+                }
+                _ = tasks.join_next(), if !tasks.is_empty() => {}
+            }
+        }
+    });
+    let chrome =
+        std::env::var("BLOCKADS_CHROME").expect("Set BLOCKADS_CHROME to a Chrome executable");
+    let profile =
+        std::env::temp_dir().join(format!("blockads-chrome-probe-{}", std::process::id()));
+    let profile_arg = format!("--user-data-dir={}", profile.display());
+    let result = tokio::task::spawn_blocking(move || Command::new(chrome).args([
+        "--headless", "--disable-gpu", "--no-first-run", "--disable-extensions", "--disable-quic",
+        "--disable-background-networking", "--ignore-certificate-errors", "--dump-dom", "--timeout=20000",
+        "--user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Mobile Safari/537.36",
+        &profile_arg,
+        &format!("--host-resolver-rules=MAP m.genk.vn 127.0.0.1:{port}"),
+        "https://m.genk.vn/may-tinh-anh-em-dinh-mua-se-dat-them-bao-nhieu-trong-nam-toi-3-kich-ban-cho-3-tam-gia-165261104151528916.chn"
+    ]).output().unwrap()).await.unwrap();
+    blockads_core::dns::flush();
+    server.abort();
+    let _ = server.await;
+    let _ = std::fs::remove_dir_all(profile);
+    let html = String::from_utf8_lossy(&result.stdout);
+    eprintln!(
+        "Chrome success: {}, DOM bytes: {}, CSS: {}",
+        result.status.success(),
+        html.len(),
+        html.contains("data-blockads")
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        html.contains("data-blockads"),
+        "No cosmetic CSS in Chrome DOM"
+    );
+    assert!(
+        html.contains("Chip nhớ còn khan"),
+        "Article content was lost"
+    );
+}
+
+// Local-only desktop Chrome check of the injected content script under a strict CSP:
+// generic class rules (including elements added later), procedural `:has-text`/`:remove()`.
+#[tokio::test]
+#[ignore = "Requires BLOCKADS_CHROME (a Chrome executable); no network access"]
+async fn content_script_hides_generic_and_procedural_targets_in_desktop_chrome() {
+    use std::process::Command;
+    const PAGE: &str = r#"<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body>
+<div class="generic-ad" id="g">generic</div><div class="keep" id="k">keep</div>
+<div class="box" id="t">Quảng cáo ở đây</div><div class="box" id="t2">Nội dung</div>
+<div class="popup" id="p">popup</div><div id="sponsor-x">specific</div><div id="holder"></div>
+<script nonce="page">
+setTimeout(function () { var d = document.createElement('div'); d.className = 'late-ad'; d.id = 'late';
+  d.textContent = 'late'; document.getElementById('holder').appendChild(d); }, 300);
+setTimeout(function () { var r = {}; ['g', 'k', 't', 't2', 'sponsor-x', 'late'].forEach(function (id) {
+  var e = document.getElementById(id); r[id] = e ? getComputedStyle(e).display : 'missing'; });
+  r.p = document.getElementById('p') ? 'present' : 'removed';
+  r.links = Array.prototype.map.call(document.querySelectorAll('link[data-blockads]'), function (l) {
+    return l.sheet ? l.sheet.cssRules.length : -1; }).join(',');
+  var pre = document.createElement('pre'); pre.id = 'result'; pre.textContent = JSON.stringify(r);
+  document.body.appendChild(pre); }, 2000);
+</script></body></html>"#;
+    let domain = "content.test".to_owned();
+    let (key, der) = root();
+    ca::set(Some(key), der);
+    enable();
+    assert!(filter::replace(
+        "##.generic-ad\n##.late-ad\ncontent.test###sponsor-x\ncontent.test##.box:has-text(Quảng cáo)\ncontent.test##.popup:remove()",
+        ""
+    )
+    .applied);
+    let (peer_root, server_config) = peer_config(&domain, true);
+    let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = origin.local_addr().unwrap();
+    let origin_task = tokio::spawn(async move {
+        loop {
+            let (raw, _) = origin.accept().await.unwrap();
+            let server_config = server_config.clone();
+            tokio::spawn(async move {
+                let Ok(tls) = TlsAcceptor::from(server_config).accept(raw).await else {
+                    return;
+                };
+                let service =
+                    hyper::service::service_fn(|_: Request<hyper::body::Incoming>| async {
+                        Ok::<_, Infallible>(
+                            Response::builder()
+                                .header("content-type", "text/html; charset=utf-8")
+                                .header(
+                                    "content-security-policy",
+                                    "default-src 'none'; script-src 'nonce-page'; style-src 'self'",
+                                )
+                                .body(Full::new(Bytes::from_static(PAGE.as_bytes())))
+                                .unwrap(),
+                        )
+                    });
+                let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
+                    .serve_connection(TokioIo::new(tls), service)
+                    .await;
+            });
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let config = proxy::prepare(&domain).await.unwrap();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let accepted_count = accepted.clone();
+    let proxy_task = tokio::spawn(async move {
+        loop {
+            let (client, _) = listener.accept().await.unwrap();
+            accepted_count.fetch_add(1, Ordering::Relaxed);
+            let connector = test_connector(
+                address,
+                domain.clone(),
+                client_config(&peer_root, true),
+                Arc::new(Guard(AtomicUsize::new(0))),
+                Arc::new(Stats::default()),
+            );
+            let (domain, config) = (domain.clone(), config.clone());
+            tokio::spawn(async move {
+                let upstream = connector().await.unwrap();
+                let _ = proxy::serve(
+                    client,
+                    config,
+                    vec![],
+                    proxy::VerifiedUpstream::new(upstream, connector),
+                    domain,
+                    address,
+                    owner(),
+                )
+                .await;
+            });
+        }
+    });
+    let chrome =
+        std::env::var("BLOCKADS_CHROME").expect("Set BLOCKADS_CHROME to a Chrome executable");
+    let profile =
+        std::env::temp_dir().join(format!("blockads-chrome-content-{}", std::process::id()));
+    let profile_arg = format!("--user-data-dir={}", profile.display());
+    let result = tokio::task::spawn_blocking(move || {
+        Command::new(chrome)
+            .args([
+                "--headless",
+                "--disable-gpu",
+                "--no-first-run",
+                "--disable-extensions",
+                "--disable-quic",
+                "--disable-background-networking",
+                "--ignore-certificate-errors",
+                "--dump-dom",
+                "--virtual-time-budget=5000",
+                "--timeout=20000",
+                &profile_arg,
+                &format!("--host-resolver-rules=MAP content.test 127.0.0.1:{port}"),
+                "https://content.test/article",
+            ])
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    proxy_task.abort();
+    origin_task.abort();
+    let _ = std::fs::remove_dir_all(profile);
+    filter::replace("", "");
+    mitm::configure("{}");
+    ca::set(None, vec![]);
+    let html = String::from_utf8_lossy(&result.stdout);
+    let json = html
+        .split("<pre id=\"result\">")
+        .nth(1)
+        .and_then(|rest| rest.split("</pre>").next())
+        .unwrap_or_else(|| {
+            panic!(
+                "no result in DOM ({} proxy connections, {:?}): {html}\n{}",
+                accepted.load(Ordering::Relaxed),
+                result.status,
+                String::from_utf8_lossy(&result.stderr)
+            )
+        })
+        .replace("&quot;", "\"");
+    eprintln!(
+        "chrome result: {json} ({} proxy connections)",
+        accepted.load(Ordering::Relaxed)
+    );
+    let result: serde_json::Value = serde_json::from_str(&json).unwrap();
+    for (id, display) in [
+        ("g", "none"),
+        ("late", "none"),
+        ("sponsor-x", "none"),
+        ("t", "none"),
+        ("k", "block"),
+        ("t2", "block"),
+        ("p", "removed"),
+    ] {
+        assert_eq!(result[id], display, "{id}: {json}");
+    }
+}
+
+#[tokio::test]
+async fn closed_upstream_is_reopened_while_browser_keeps_its_tls_connection() {
+    for upstream_h2 in [false, true] {
+        let domain = "reconnect.test".to_owned();
+        let (key, root) = root();
+        ca::set(Some(key), root.clone());
+        enable();
+        filter::replace("", "");
+        let (peer_root, server_config) = peer_config(&domain, upstream_h2);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let closed = Arc::new(tokio::sync::Notify::new());
+        let closed_server = closed.clone();
+        let posts = Arc::new(AtomicUsize::new(0));
+        let server_posts = posts.clone();
+        let server = tokio::spawn(async move {
+            for index in 0..3 {
+                let (raw, _) = listener.accept().await.unwrap();
+                let tls = TlsAcceptor::from(server_config.clone())
+                    .accept(raw)
+                    .await
+                    .unwrap();
+                let answered = Arc::new(tokio::sync::Notify::new());
+                let signal = answered.clone();
+                let server_posts = server_posts.clone();
+                let service =
+                    hyper::service::service_fn(move |request: Request<hyper::body::Incoming>| {
+                        signal.notify_one();
+                        if request.method() == hyper::Method::POST {
+                            server_posts.fetch_add(1, Ordering::Relaxed);
+                        }
+                        async move {
+                            if request.method() == hyper::Method::POST {
+                                return Err(io::Error::other("origin failed after accepting POST"));
+                            }
+                            let mut response =
+                                Response::new(Full::new(Bytes::from_static(b"page content")));
+                            if !upstream_h2 {
+                                response.headers_mut().insert(
+                                    "connection",
+                                    hyper::header::HeaderValue::from_static("close"),
+                                );
+                            }
+                            Ok::<_, io::Error>(response)
+                        }
+                    });
+                let result = if upstream_h2 {
+                    let builder = hyper::server::conn::http2::Builder::new(TokioExecutor::new());
+                    let connection = builder.serve_connection(TokioIo::new(tls), service);
+                    tokio::pin!(connection);
+                    tokio::select! {
+                        result = &mut connection => result,
+                        _ = answered.notified() => {
+                            connection.as_mut().graceful_shutdown();
+                            connection.await
+                        }
+                    }
+                } else {
+                    hyper::server::conn::http1::Builder::new()
+                        .serve_connection(TokioIo::new(tls), service)
+                        .await
+                };
+                if index != 2 {
+                    result.unwrap();
+                }
+                closed_server.notify_one();
+            }
+        });
+        let stats = Arc::new(Stats::default());
+        let guard = Arc::new(Guard(AtomicUsize::new(0)));
+        let raw = sockets::connect_tcp(address, guard.as_ref(), &stats)
+            .await
+            .unwrap();
+        let verified = TlsConnector::from(client_config(&peer_root, upstream_h2))
+            .connect(ServerName::try_from(domain.clone()).unwrap(), raw)
+            .await
+            .unwrap();
+        let (front, back) = tokio::io::duplex(65536);
+        let config = proxy::prepare(&domain).await.unwrap();
+        let proxy = tokio::spawn(proxy::serve(
+            back,
+            config,
+            vec![],
+            proxy::VerifiedUpstream::new(
+                verified,
+                test_connector(
+                    address,
+                    domain.clone(),
+                    client_config(&peer_root, upstream_h2),
+                    guard.clone(),
+                    stats.clone(),
+                ),
+            ),
+            domain.clone(),
+            address,
+            owner(),
+        ));
+        let tls = TlsConnector::from(client_config(&root, true))
+            .connect(ServerName::try_from(domain.clone()).unwrap(), front)
+            .await
+            .unwrap();
+        let (sender, connection) =
+            hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(tls))
+                .await
+                .unwrap();
+        let driver = tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let mut client = Client::H2(sender);
+        for path in ["/first", "/second"] {
+            let response = request(&mut client, &domain, path).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "stale upstream (HTTP/2={upstream_h2})"
+            );
+            assert_eq!(
+                response.into_body().collect().await.unwrap().to_bytes(),
+                "page content"
+            );
+            tokio::time::timeout(Duration::from_secs(3), closed.notified())
+                .await
+                .unwrap();
+        }
+        // The origin accepts this POST and disconnects without sending response headers.
+        // Retrying it could repeat a side effect; Hyper must not return it as unsent.
+        let Client::H2(sender) = &mut client else {
+            unreachable!()
+        };
+        let response = sender
+            .send_request(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("https://{domain}/side-effect"))
+                    .header("host", &domain)
+                    .body(Empty::<Bytes>::new())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        response.into_body().collect().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(posts.load(Ordering::Relaxed), 1, "POST was replayed");
+        assert_eq!(
+            guard.0.load(Ordering::Relaxed),
+            3,
+            "protect every reopened socket and never retry a POST accepted by the origin"
+        );
+        drop(client);
+        driver.abort();
+        proxy.abort();
+        filter::replace("", "");
+        mitm::configure("{}");
+        ca::set(None, vec![]);
+    }
+}
+
+// Manual live-network diagnostic; excluded from normal test runs.
+
+#[tokio::test]
+#[ignore = "Requires explicit live-network access to ajax.googleapis.com"]
+async fn live_public_script_through_https_proxy() {
+    use std::net::ToSocketAddrs;
+    struct Capture;
+    impl blockads_core::dns::EventSink for Capture {
+        fn batch(&self, json: &str) {
+            eprintln!("{json}");
+        }
+    }
+    blockads_core::dns::set_sink(Some(Arc::new(Capture)));
+    let domain = "ajax.googleapis.com".to_owned();
+    let address = (domain.as_str(), 443)
+        .to_socket_addrs()
+        .unwrap()
+        .find(|a| a.is_ipv4())
+        .unwrap();
+    let (key, der) = root();
+    ca::set(Some(key), der.clone());
+    enable();
+    filter::replace("", "");
+    let stats = Arc::new(Stats::default());
+    let guard = Arc::new(Guard(AtomicUsize::new(0)));
+    let upstream = proxy::upstream(address, &domain, guard.as_ref(), &stats)
+        .await
+        .unwrap();
+    let (front, back) = tokio::io::duplex(65536);
+    let config = proxy::prepare(&domain).await.unwrap();
+    let proxy_task = tokio::spawn(proxy::serve(
+        back,
+        config,
+        vec![],
+        proxy::VerifiedUpstream::new(
+            upstream,
+            proxy::connector(address, domain.clone(), guard.clone(), stats.clone()),
+        ),
+        domain.clone(),
+        address,
+        owner(),
+    ));
+    let tls = TlsConnector::from(client_config(&der, true))
+        .connect(ServerName::try_from(domain.clone()).unwrap(), front)
+        .await
+        .unwrap();
+    let (sender, connection) =
+        hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(tls))
+            .await
+            .unwrap();
+    let driver = tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let mut sender = sender;
+    sender.ready().await.unwrap();
+    let response = sender.send_request(Request::builder().uri(format!("https://{domain}/ajax/libs/jquery/1.11.0/jquery.min.js"))
+        .header("host", &domain).header("accept", "*/*")
+        .header("sec-fetch-dest", "script")
+        .header("user-agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Mobile Safari/537.36")
+        .body(Empty::<Bytes>::new()).unwrap()).await.unwrap();
+    let status = response.status();
+    eprintln!("status: {status}, headers: {:?}", response.headers());
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    eprintln!(
+        "body len: {}, CSS present: {}",
+        body.len(),
+        String::from_utf8_lossy(&body).contains("data-blockads")
+    );
+    blockads_core::dns::flush();
+    proxy_task.abort();
+    driver.abort();
+    assert_eq!(status, StatusCode::OK);
+    assert!(String::from_utf8_lossy(&body).contains("jQuery"));
+    filter::replace("", "");
     mitm::configure("{}");
     ca::set(None, vec![]);
 }

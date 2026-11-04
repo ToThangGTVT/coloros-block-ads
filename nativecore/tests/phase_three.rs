@@ -115,10 +115,13 @@ fn app_scope_url_regex_and_precedence_do_not_overblock_other_apps_or_sni_paths()
         .report
         .errors
         .is_empty());
-    assert!(!Rules::compile("", "||a.test^$script")
-        .report
-        .errors
-        .is_empty());
+    assert!(
+        Rules::compile("", "||a.test^$script")
+            .report
+            .errors
+            .is_empty(),
+        "context rules are enforced by the HTTPS proxy"
+    );
 }
 #[test]
 fn blocked_sni_on_hardcoded_ip_sends_rst_without_opening_an_outbound_socket() {

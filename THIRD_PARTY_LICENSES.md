@@ -33,6 +33,8 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 
 | Crate | Version | License | Source |
 | --- | --- | --- | --- |
+| adblock | 0.13.5 | MPL-2.0 | https://github.com/brave/adblock-rust |
+| addr | 0.15.6 | MIT/Apache-2.0 | https://github.com/addr-rs/addr |
 | aho-corasick | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | asn1-rs | 0.7.2 | MIT OR Apache-2.0 | https://github.com/rusticata/asn1-rs.git |
@@ -41,6 +43,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | async-trait | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
+| base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | bit-vec | 0.9.1 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
 | bitflags | 1.3.2 | MIT/Apache-2.0 | https://github.com/bitflags/bitflags |
 | bitflags | 2.13.2 | MIT OR Apache-2.0 | https://github.com/bitflags/bitflags |
@@ -58,6 +61,8 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-epoch | 0.9.21 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
+| cssparser | 0.35.0 | MPL-2.0 | https://github.com/servo/rust-cssparser |
+| cssparser-macros | 0.6.1 | MPL-2.0 | https://github.com/servo/rust-cssparser |
 | data-encoding | 2.11.1 | MIT | https://github.com/ia0/data-encoding |
 | defmt | 0.3.101 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | defmt | 1.2.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
@@ -65,11 +70,16 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | defmt-parser | 1.1.0 | MIT OR Apache-2.0 | https://github.com/knurling-rs/defmt |
 | der-parser | 10.0.0 | MIT OR Apache-2.0 | https://github.com/rusticata/der-parser.git |
 | deranged | 0.5.9 | MIT OR Apache-2.0 | https://github.com/jhpratt/deranged |
+| derive_more | 2.1.1 | MIT | https://github.com/JelteF/derive_more |
+| derive_more-impl | 2.1.1 | MIT | https://github.com/JelteF/derive_more |
 | displaydoc | 0.2.7 | MIT OR Apache-2.0 | https://github.com/yaahc/displaydoc |
+| dtoa | 1.0.11 | MIT OR Apache-2.0 | https://github.com/dtolnay/dtoa |
+| dtoa-short | 0.3.5 | MPL-2.0 | https://github.com/upsuper/dtoa-short |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
 | equivalent | 1.0.3 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | etherparse | 0.16.0 | MIT OR Apache-2.0 | https://github.com/JulianSchmid/etherparse |
 | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
+| flatbuffers | 25.12.19 | Apache-2.0 | https://github.com/google/flatbuffers |
 | fnv | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | futures | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
@@ -108,6 +118,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | idna_adapter | 1.2.2 | Apache-2.0 OR MIT | https://github.com/hsivonen/idna_adapter |
 | indexmap | 2.14.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/indexmap |
 | ipnet | 2.12.2 | MIT OR Apache-2.0 | https://github.com/krisprice/ipnet |
+| itertools | 0.14.0 | MIT OR Apache-2.0 | https://github.com/rust-itertools/itertools |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
 | jni | 0.21.1 | MIT/Apache-2.0 | https://github.com/jni-rs/jni-rs |
 | jni | 0.22.4 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-rs |
@@ -128,6 +139,7 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | mio | 1.2.4 | MIT | https://github.com/tokio-rs/mio |
 | moka | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 | https://github.com/moka-rs/moka |
 | netstack-smoltcp | 0.2.4 | MIT OR Apache-2.0 | https://github.com/cavivie/netstack-smoltcp |
+| new_debug_unreachable | 1.0.6 | MIT | https://github.com/mbrubeck/rust-debug-unreachable |
 | nom | 7.1.3 | MIT | https://github.com/Geal/nom |
 | num-bigint | 0.4.8 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
 | num-conv | 0.2.2 | MIT OR Apache-2.0 | https://github.com/jhpratt/num-conv |
@@ -138,13 +150,21 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
+| phf | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
+| phf_codegen | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
+| phf_generator | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
+| phf_macros | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
+| phf_shared | 0.11.3 | MIT | https://github.com/rust-phf/rust-phf |
 | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
 | portable-atomic | 1.15.0 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic |
 | potential_utf | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | powerfmt | 0.2.1 | MIT OR Apache-2.0 | https://github.com/jhpratt/powerfmt |
 | ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
+| precomputed-hash | 0.1.1 | MIT | https://github.com/emilio/precomputed-hash |
 | prefix-trie | 0.8.4 | MIT OR Apache-2.0 | https://github.com/tiborschneider/prefix-trie |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
+| psl | 2.1.246 | MIT/Apache-2.0 (embeds Public Suffix List data, MPL-2.0) | https://github.com/addr-rs/psl |
+| psl-types | 2.0.11 | MIT/Apache-2.0 | https://github.com/addr-rs/psl-types |
 | quinn | 0.11.12 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
 | quinn-proto | 0.11.19 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
 | quinn-udp | 0.5.16 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
@@ -171,14 +191,18 @@ Reviewed from Cargo.lock manifests, including host/target-specific crates.
 | rustversion | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | same-file | 1.0.6 | Unlicense/MIT | https://github.com/BurntSushi/same-file |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 | https://github.com/bluss/scopeguard |
+| seahash | 4.1.0 | MIT | https://gitlab.redox-os.org/redox-os/seahash |
+| selectors | 0.32.0 | MPL-2.0 | https://github.com/servo/stylo |
 | semver | 1.0.28 | MIT OR Apache-2.0 | https://github.com/dtolnay/semver |
 | serde | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_derive | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_json | 1.0.154 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
+| servo_arc | 0.4.3 | MIT OR Apache-2.0 | https://github.com/servo/stylo |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
 | simd_cesu8 | 1.2.0 | Apache-2.0 OR MIT | https://github.com/seancroach/simd_cesu8 |
 | simdutf8 | 0.1.5 | MIT OR Apache-2.0 | https://github.com/rusticstuff/simdutf8 |
+| siphasher | 1.0.4 | MIT OR Apache-2.0 | https://github.com/jedisct1/rust-siphash |
 | slab | 0.4.12 | MIT | https://github.com/tokio-rs/slab |
 | smallvec | 1.16.4 | MIT OR Apache-2.0 | https://github.com/servo/rust-smallvec |
 | smoltcp | 0.12.0 | 0BSD | https://github.com/smoltcp-rs/smoltcp.git |
@@ -323,3 +347,24 @@ feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
 - Root CA signing uses Android Keystore through a narrowly scoped JNI signer;
   private key bytes are never serialized or returned to Rust. User-created root
   certificates are public, local, excluded from configuration export.
+
+## HTTPS network rule engine (review before integration)
+
+- adblock (Brave adblock-rust) **0.13.5**: MPL-2.0, https://github.com/brave/adblock-rust.
+  Used unmodified from crates.io; MPL-2.0 is file-level copyleft, so changes to its files
+  would have to be published under MPL-2.0. License text: licenses/adblock-rust-MPL-2.0.txt.
+  Features: `embedded-domain-resolver`, `full-regex-handling`; `single-thread` disabled so
+  the engine is `Send + Sync` behind the immutable rule snapshot.
+- Transitive: addr 0.15.6, psl 2.1.246, psl-types 2.0.11 (MIT/Apache-2.0; psl embeds
+  Mozilla's Public Suffix List data, MPL-2.0, https://publicsuffix.org), flatbuffers
+  25.12.19 (Apache-2.0), base64 0.22.1, itertools 0.14.0 (MIT OR Apache-2.0),
+  seahash 4.1.0 (MIT).
+- Feature `css-validation` (element hiding, HTTPS proxy only): cssparser 0.35.0 and
+  selectors 0.32.0 (Servo, MPL-2.0, https://github.com/servo/rust-cssparser,
+  https://github.com/servo/stylo), dtoa-short 0.3.5 (MPL-2.0), servo_arc 0.4.3, dtoa 1.0.11,
+  siphasher 1.0.4 (MIT OR Apache-2.0), derive_more 2.1.1, phf 0.11.3, precomputed-hash 0.1.1,
+  new_debug_unreachable 1.0.6 (MIT). All unmodified; MPL-2.0 text is in
+  licenses/adblock-rust-MPL-2.0.txt (same license). Selectors and `:style()` declarations are
+  parsed and rejected when they contain `url(`, `image-set(`, escapes or comments.
+- Only the HTTPS proxy queries it, in memory. Regex rules keep the Phase 3 compile limits;
+  query log stores host and rule text, not path/query/body.

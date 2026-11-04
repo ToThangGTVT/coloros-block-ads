@@ -1,13 +1,14 @@
-//! Bounded HTML-head rewrite; the remainder streams unchanged. No DOM watcher or script execution.
+//! Streaming HTML-head rewrite with bounded token memory. Inserts the page's CSS and, when generic
+//! or procedural rules apply, the small content script in `html/content.js`.
+mod scanner;
 use super::proxy::Body;
+use crate::filter::Page;
 use bytes::Bytes;
 use futures_util::{stream, StreamExt};
 use http_body_util::{BodyExt, BodyStream, StreamBody};
 use hyper::{body::Frame, header::HeaderValue, HeaderMap, Request, Response};
 use ring::rand::{SecureRandom, SystemRandom};
-use std::{sync::Arc, time::Duration};
 
-const MAX_HEAD: usize = 32 * 1024;
 fn no_transform(headers: &HeaderMap) -> bool {
     headers.get_all("cache-control").iter().any(|v| {
         v.to_str().map_or(true, |v| {
@@ -71,126 +72,173 @@ fn eligible(response: &Response<Body>) -> bool {
             })
 }
 
-pub(super) async fn inject(mut response: Response<Body>, css: Arc<str>) -> Response<Body> {
-    if css.is_empty() || !eligible(&response) {
+const CONTENT: &str = include_str!("html/content.js");
+/// `endpoint` is the same-origin path the proxy answers locally with generic class/id CSS.
+pub(super) async fn inject(
+    response: Response<Body>,
+    page: &Page,
+    endpoint: &str,
+) -> Response<Body> {
+    let script = (page.generic || !page.procedural.is_empty()).then(|| {
+        let procedural = if page.procedural.is_empty() {
+            "[]"
+        } else {
+            &page.procedural
+        };
+        format!(
+            "{}({endpoint:?},{},{procedural})",
+            CONTENT.trim_end(),
+            page.generic
+        )
+    });
+    rewrite(response, &page.css, script).await
+}
+async fn rewrite(response: Response<Body>, css: &str, script: Option<String>) -> Response<Body> {
+    if (css.is_empty() && script.is_none()) || !eligible(&response) {
         return response;
     }
     let mut random = [0u8; 16];
     if SystemRandom::new().fill(&mut random).is_err() {
         return response;
     }
-    // Hex uses only base64-alphabet characters and is a valid CSP nonce value.
     let nonce: String = random.iter().map(|b| format!("{b:02x}")).collect();
-    let Some(csp) = csp_headers(response.headers(), &nonce) else {
+    let Some(csp) = csp_headers(response.headers(), &nonce, script.is_some()) else {
         return response;
     };
-    let mut frames = Vec::new();
-    let mut prefix = Vec::with_capacity(MAX_HEAD);
-    let read = async {
-        loop {
-            let frame = response.body_mut().frame().await?;
-            let frame = match frame {
-                Ok(frame) => frame,
-                Err(error) => {
-                    frames.push(Err(error));
-                    return None;
-                }
-            };
-            let data = frame.data_ref();
-            if let Some(data) = data {
-                let n = data.len().min(MAX_HEAD - prefix.len());
-                prefix.extend_from_slice(&data[..n]);
-            }
-            frames.push(Ok(frame));
-            if frames.len() >= 256 {
-                return None;
-            }
-            match head_end(&prefix) {
-                Head::End(at) => return Some(at),
-                Head::Skip => return None,
-                Head::More if prefix.len() == MAX_HEAD => return None,
-                Head::More => {}
-            }
-        }
-    };
-    // Slow/streaming documents must not be held indefinitely waiting for a head terminator.
-    let position = tokio::time::timeout(Duration::from_secs(2), read)
-        .await
-        .ok()
-        .flatten();
     let (mut parts, body) = response.into_parts();
-    if let Some(at) = position {
-        let style = format!("<style nonce=\"{nonce}\" data-blockads>\n{css}</style>");
-        // Replay original frames without copying their remaining data (including frames > MAX_HEAD).
-        let mut offset = 0;
-        let mut inserted = false;
-        let mut rewritten = Vec::with_capacity(frames.len() + 2);
-        for frame in frames {
-            if let Ok(ref frame) = frame {
-                if let Some(data) = frame.data_ref() {
-                    if !inserted && at >= offset && at <= offset + data.len() {
-                        let split = at - offset;
-                        rewritten.push(Ok(Frame::data(data.slice(..split))));
-                        rewritten.push(Ok(Frame::data(Bytes::from(style.clone()))));
-                        rewritten.push(Ok(Frame::data(data.slice(split..))));
-                        inserted = true;
-                        offset += data.len();
-                        continue;
-                    }
-                    offset += data.len();
-                }
-            }
-            rewritten.push(frame);
-        }
-        frames = rewritten;
-        for name in [
-            "content-length",
-            "etag",
-            "last-modified",
-            "content-md5",
-            "digest",
-            "content-digest",
-            "repr-digest",
-            "accept-ranges",
-        ] {
-            parts.headers.remove(name);
-        }
-        // Do not persist rule-dependent HTML across reloads of the filter lists.
-        parts
-            .headers
-            .insert("cache-control", HeaderValue::from_static("no-store"));
-        for (name, values) in csp {
-            parts.headers.remove(name);
-            for value in values {
-                parts.headers.append(name, value);
-            }
+    // Headers are sent before the head finishes streaming. All rewrite candidates must
+    // therefore discard byte-dependent metadata, even if malformed markup later passes through.
+    for name in [
+        "content-length",
+        "etag",
+        "last-modified",
+        "content-md5",
+        "digest",
+        "content-digest",
+        "repr-digest",
+        "accept-ranges",
+    ] {
+        parts.headers.remove(name);
+    }
+    parts
+        .headers
+        .insert("cache-control", HeaderValue::from_static("no-store"));
+    for (name, values) in csp {
+        parts.headers.remove(name);
+        for value in values {
+            parts.headers.append(name, value);
         }
     }
-    let stream = stream::iter(frames)
-        .chain(BodyStream::new(body))
-        .map(move |frame| {
-            frame.map(|mut frame| {
-                if position.is_some() {
-                    if let Some(trailers) = frame.trailers_mut() {
-                        for name in [
-                            "content-md5",
-                            "digest",
-                            "content-digest",
-                            "repr-digest",
-                            "etag",
-                        ] {
-                            trailers.remove(name);
+    let mut snippet = String::new();
+    if !css.is_empty() {
+        snippet.push_str(&format!(
+            "<style nonce=\"{nonce}\" data-blockads>\n{css}</style>"
+        ));
+    }
+    if let Some(script) = script {
+        snippet.push_str(&format!(
+            "<script nonce=\"{nonce}\" data-blockads>{script}</script>"
+        ));
+    }
+    let mut scanner = scanner::Scanner::new(Bytes::from(snippet));
+    let frames = BodyStream::new(body)
+        .map(Some)
+        .chain(stream::once(async { None }))
+        .flat_map(move |frame| {
+            let mut output = [None, None];
+            let mut push = |frame| {
+                if output[0].is_none() {
+                    output[0] = Some(frame);
+                } else {
+                    output[1] = Some(frame);
+                }
+            };
+            match frame {
+                Some(Ok(frame)) => match frame.into_data() {
+                    Ok(data) => {
+                        let data = scanner.write(data);
+                        if !data.is_empty() {
+                            push(Ok(Frame::data(data)));
                         }
                     }
+                    Err(mut frame) => {
+                        let pending = scanner.finish();
+                        if !pending.is_empty() {
+                            push(Ok(Frame::data(pending)));
+                        }
+                        if let Some(trailers) = frame.trailers_mut() {
+                            for name in [
+                                "content-md5",
+                                "digest",
+                                "content-digest",
+                                "repr-digest",
+                                "etag",
+                            ] {
+                                trailers.remove(name);
+                            }
+                        }
+                        push(Ok(frame));
+                    }
+                },
+                terminal => {
+                    let pending = scanner.finish();
+                    if !pending.is_empty() {
+                        push(Ok(Frame::data(pending)));
+                    }
+                    if let Some(Err(error)) = terminal {
+                        push(Err(error));
+                    }
                 }
-                frame
-            })
+            }
+            stream::iter(output.into_iter().flatten())
         });
-    Response::from_parts(parts, StreamBody::new(stream).boxed_unsync())
+    Response::from_parts(parts, StreamBody::new(frames).boxed_unsync())
 }
 
 type CspHeaders = Vec<(&'static str, Vec<HeaderValue>)>;
-fn csp_headers(headers: &HeaderMap, nonce: &str) -> Option<CspHeaders> {
+/// Lets the injected element through one policy: copies the sources governing `elem` (falling
+/// back like the browser does) into `elem` plus our nonce. A policy which already permits inline
+/// elements is left alone, since adding a nonce would disable the page's other inline elements.
+fn allow_nonce(directives: &mut Vec<String>, chain: [&str; 3], nonce: &str) {
+    let Some(sources) = chain.iter().find_map(|name| {
+        directives.iter().find_map(|d| {
+            let mut words = d.split_whitespace();
+            words
+                .next()
+                .filter(|key| key.eq_ignore_ascii_case(name))
+                .map(|_| words.map(str::to_owned).collect::<Vec<_>>())
+        })
+    }) else {
+        return;
+    };
+    if sources
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case("'unsafe-inline'"))
+        && !sources.iter().any(|s| {
+            s.get(..7)
+                .is_some_and(|s| s.eq_ignore_ascii_case("'nonce-"))
+                || s.get(..4).is_some_and(|s| s.eq_ignore_ascii_case("'sha"))
+                || s.eq_ignore_ascii_case("'strict-dynamic'")
+        })
+    {
+        return;
+    }
+    directives.retain(|d| {
+        !d.split_whitespace()
+            .next()
+            .is_some_and(|k| k.eq_ignore_ascii_case(chain[0]))
+    });
+    let mut directive = chain[0].to_owned();
+    for source in sources {
+        if !source.eq_ignore_ascii_case("'none'") {
+            directive.push(' ');
+            directive.push_str(&source);
+        }
+    }
+    directive.push_str(&format!(" 'nonce-{nonce}'"));
+    directives.push(directive);
+}
+fn csp_headers(headers: &HeaderMap, nonce: &str, script: bool) -> Option<CspHeaders> {
     let mut result = Vec::new();
     for name in [
         "content-security-policy",
@@ -203,56 +251,30 @@ fn csp_headers(headers: &HeaderMap, nonce: &str) -> Option<CspHeaders> {
                 .ok()?
                 .split(',')
                 .map(|policy| {
-                    let directives: Vec<_> = policy
+                    let mut directives: Vec<String> = policy
                         .split(';')
                         .map(str::trim)
                         .filter(|d| !d.is_empty())
+                        .map(str::to_owned)
                         .collect();
-                    let sources = ["style-src-elem", "style-src", "default-src"]
-                        .iter()
-                        .find_map(|name| {
-                            directives.iter().find_map(|d| {
-                                let mut words = d.split_whitespace();
-                                words
-                                    .next()
-                                    .filter(|key| key.eq_ignore_ascii_case(name))
-                                    .map(|_| words.collect::<Vec<_>>())
-                            })
-                        });
-                    let Some(sources) = sources else {
-                        return policy.to_owned();
-                    };
-                    // Adding a nonce to an unsafe-inline policy would disable the page's other
-                    // inline styles. Leave policies which already permit inline styles alone.
-                    if sources
-                        .iter()
-                        .any(|s| s.eq_ignore_ascii_case("'unsafe-inline'"))
-                        && !sources.iter().any(|s| {
-                            s.get(..7)
-                                .is_some_and(|s| s.eq_ignore_ascii_case("'nonce-"))
-                                || s.get(..4).is_some_and(|s| s.eq_ignore_ascii_case("'sha"))
-                        })
-                    {
-                        return policy.to_owned();
+                    let original = directives.clone();
+                    allow_nonce(
+                        &mut directives,
+                        ["style-src-elem", "style-src", "default-src"],
+                        nonce,
+                    );
+                    if script {
+                        allow_nonce(
+                            &mut directives,
+                            ["script-src-elem", "script-src", "default-src"],
+                            nonce,
+                        );
                     }
-                    let mut output = directives
-                        .into_iter()
-                        .filter(|d| {
-                            !d.split_whitespace()
-                                .next()
-                                .is_some_and(|k| k.eq_ignore_ascii_case("style-src-elem"))
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    output.push_str("; style-src-elem");
-                    for source in sources {
-                        if !source.eq_ignore_ascii_case("'none'") {
-                            output.push(' ');
-                            output.push_str(source);
-                        }
+                    if directives == original {
+                        policy.to_owned()
+                    } else {
+                        directives.join("; ")
                     }
-                    output.push_str(&format!(" 'nonce-{nonce}'"));
-                    output
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -265,133 +287,24 @@ fn csp_headers(headers: &HeaderMap, nonce: &str) -> Option<CspHeaders> {
     Some(result)
 }
 
+#[cfg(test)]
 #[derive(Debug, PartialEq)]
 enum Head {
     More,
     End(usize),
     Skip,
 }
+#[cfg(test)]
 fn head_end(input: &[u8]) -> Head {
-    // Small bounded tokenizer: ignore tag-like strings inside comments and raw-text elements.
-    // Require an explicit head; unusual or incomplete documents pass through unchanged.
-    if input.starts_with(&[0xff, 0xfe]) || input.starts_with(&[0xfe, 0xff]) || input.contains(&0) {
-        return Head::Skip;
+    let mut scanner = scanner::Scanner::new(Bytes::from_static(b"INJECT"));
+    let output = scanner.write(Bytes::copy_from_slice(input));
+    if scanner.inserted {
+        Head::End(output.windows(6).position(|v| v == b"INJECT").unwrap())
+    } else if scanner.stopped {
+        Head::Skip
+    } else {
+        Head::More
     }
-    let mut at = 0;
-    let mut head = false;
-    let mut raw: Option<Vec<u8>> = None;
-    while at < input.len() {
-        if input[at] != b'<' {
-            at += 1;
-            continue;
-        }
-        if let Some(ref tag) = raw {
-            // Legacy escaped/double-escaped script parsing has different closing-tag rules.
-            // Leave those documents untouched rather than risk placing CSS inside script text.
-            if tag == b"script" && input[at..].starts_with(b"<!--") {
-                return Head::Skip;
-            }
-            let closing = [b"</".as_slice(), tag].concat();
-            if input.len() - at < closing.len() {
-                return Head::More;
-            }
-            if !input[at..at + closing.len()].eq_ignore_ascii_case(&closing)
-                || !input
-                    .get(at + closing.len())
-                    .is_some_and(|c| c.is_ascii_whitespace() || *c == b'>')
-            {
-                at += 1;
-                continue;
-            }
-            raw = None;
-        }
-        if input[at..].starts_with(b"<!--") {
-            let Some(end) = input[at + 4..].windows(3).position(|v| v == b"-->") else {
-                return Head::More;
-            };
-            at += 4 + end + 3;
-            continue;
-        }
-        let start = at;
-        let mut quote = 0;
-        at += 1;
-        while at < input.len() {
-            let c = input[at];
-            if quote != 0 {
-                if c == quote {
-                    quote = 0;
-                }
-            } else if matches!(c, b'\'' | b'"') {
-                quote = c;
-            } else if c == b'>' {
-                break;
-            }
-            at += 1;
-        }
-        if at == input.len() {
-            return Head::More;
-        }
-        let content = &input[start + 1..at];
-        let name = content
-            .split(|c| c.is_ascii_whitespace() || *c == b'/')
-            .next()
-            .unwrap_or_default();
-        if content
-            .strip_prefix(b"/")
-            .is_some_and(|n| n.trim_ascii_end().eq_ignore_ascii_case(b"head"))
-        {
-            return if head { Head::End(start) } else { Head::Skip };
-        }
-        if name.eq_ignore_ascii_case(b"head") {
-            head = true;
-        }
-        if name.eq_ignore_ascii_case(b"body") {
-            return Head::Skip;
-        }
-        if name.eq_ignore_ascii_case(b"template") {
-            return Head::Skip;
-        }
-        if head
-            && !name.is_empty()
-            && ![
-                b"head".as_slice(),
-                b"html",
-                b"base",
-                b"basefont",
-                b"bgsound",
-                b"link",
-                b"meta",
-                b"title",
-                b"script",
-                b"style",
-                b"noscript",
-                b"noframes",
-            ]
-            .iter()
-            .any(|n| name.eq_ignore_ascii_case(n))
-        {
-            return Head::Skip;
-        }
-        // Ordinary content-type and DNS-prefetch meta tags do not prevent CSS injection.
-        if name.eq_ignore_ascii_case(b"meta") && !safe_meta(content) {
-            return Head::Skip;
-        }
-        if [
-            b"script".as_slice(),
-            b"style",
-            b"title",
-            b"textarea",
-            b"noscript",
-            b"noframes",
-        ]
-        .iter()
-        .any(|n| name.eq_ignore_ascii_case(n))
-        {
-            raw = Some(name.to_ascii_lowercase());
-        }
-        at += 1;
-    }
-    Head::More
 }
 
 fn safe_meta(content: &[u8]) -> bool {
@@ -542,7 +455,7 @@ mod tests {
             "content-security-policy-report-only",
             HeaderValue::from_static("style-src-elem 'none'; style-src-attr 'none'"),
         );
-        let result = csp_headers(&headers, "newnonce").unwrap();
+        let result = csp_headers(&headers, "newnonce", false).unwrap();
         assert_eq!(result[0].1.len(), 2);
         assert_eq!(
             result[0].1[0],
@@ -560,6 +473,56 @@ mod tests {
             .to_str()
             .unwrap()
             .contains("style-src-attr 'none'; style-src-elem 'nonce-newnonce'"));
+    }
+    #[test]
+    fn content_script_cannot_close_its_element() {
+        assert!(!CONTENT.contains("</"));
+        assert!(!CONTENT.contains("<!--"));
+    }
+    #[tokio::test]
+    async fn script_gets_its_own_nonce_and_csp_source() {
+        let mut document = response(b"<html><head></head><body></body></html>");
+        document.headers_mut().insert(
+            "content-security-policy",
+            HeaderValue::from_static(
+                "default-src 'none'; script-src 'strict-dynamic' 'unsafe-inline' 'nonce-site'",
+            ),
+        );
+        let page = Page {
+            css: ".ad{display:none!important}\n".into(),
+            procedural: "[{\"selector\":[{\"type\":\"css-selector\",\"arg\":\".x\"}],\"action\":{\"type\":\"remove\"}}]".into(),
+            generic: true,
+            exceptions: Default::default(),
+        };
+        let result = inject(document, &page, "/.blockads-token/generic.css").await;
+        let csp = result.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let bytes = result.into_body().collect().await.unwrap().to_bytes();
+        let text = std::str::from_utf8(&bytes).unwrap();
+        let nonce = text
+            .split("<script nonce=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        assert!(text.contains(&format!("<style nonce=\"{nonce}\" data-blockads>")));
+        assert!(text.contains("(\"/.blockads-token/generic.css\",true,[{"));
+        assert!(text.ends_with("</script></head><body></body></html>"));
+        // 'strict-dynamic' ignores 'unsafe-inline', so the injected script needs the nonce.
+        assert!(csp.contains(&format!(
+            "script-src-elem 'strict-dynamic' 'unsafe-inline' 'nonce-site' 'nonce-{nonce}'"
+        )));
+        assert!(csp.contains(&format!("style-src-elem 'nonce-{nonce}'")));
+        let plain = Page {
+            css: ".ad{}".into(),
+            ..Default::default()
+        };
+        let result = inject(response(b"<head></head>"), &plain, "/x").await;
+        let bytes = result.into_body().collect().await.unwrap().to_bytes();
+        assert!(!std::str::from_utf8(&bytes).unwrap().contains("<script"));
     }
     #[tokio::test]
     async fn chunk_boundaries_and_trailers_are_preserved() {
@@ -581,7 +544,7 @@ mod tests {
             .header("content-length", "75")
             .body(StreamBody::new(stream::iter(frames)).boxed_unsync())
             .unwrap();
-        let response = inject(response, Arc::from(".ad{display:none!important}\n")).await;
+        let response = rewrite(response, ".ad{display:none!important}\n", None).await;
         assert!(!response.headers().contains_key("content-length"));
         let collected = response.into_body().collect().await.unwrap();
         assert_eq!(collected.trailers().unwrap()["x-end"], "yes");
@@ -589,6 +552,56 @@ mod tests {
         let text = String::from_utf8(collected.to_bytes().to_vec()).unwrap();
         assert!(text.starts_with("<html><head><meta charset=utf-8><style nonce="));
         assert!(text.ends_with("</style></head><body>content</body></html>"));
+    }
+    #[tokio::test]
+    async fn head_is_delivered_before_the_origin_finishes_sending_it() {
+        let frames = stream::iter([Ok(Frame::data(Bytes::from_static(b"<head><style>")))]).chain(
+            stream::pending::<Result<Frame<Bytes>, super::super::proxy::BoxError>>(),
+        );
+        let response = Response::builder()
+            .header("content-type", "text/html")
+            .body(StreamBody::new(frames).boxed_unsync())
+            .unwrap();
+        let mut result = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            rewrite(response, ".ad{display:none!important}", None),
+        )
+        .await
+        .unwrap();
+        let frame = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            result.body_mut().frame(),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(frame.into_data().unwrap(), "<head><style>");
+    }
+    #[tokio::test]
+    async fn multi_megabyte_head_is_rewritten_without_changing_content() {
+        let original = format!(
+            "<!doctype html><html><head><meta charset=utf-8><script>{}</script></head><body><p>article</p></body></html>",
+            " ".repeat(2 * 1024 * 1024)
+        );
+        let response = Response::builder()
+            .header("content-type", "text/html; charset=utf-8")
+            .header("content-length", original.len())
+            .body(
+                Full::new(Bytes::from(original.clone()))
+                    .map_err(|never: Infallible| match never {})
+                    .boxed_unsync(),
+            )
+            .unwrap();
+        let result = rewrite(response, ".ad{display:none!important}", None).await;
+        assert!(!result.headers().contains_key("content-length"));
+        let bytes = result.into_body().collect().await.unwrap().to_bytes();
+        let text = std::str::from_utf8(&bytes).unwrap();
+        let start = text.find("<style nonce=").unwrap();
+        let end = text[start..].find("</style>").unwrap() + start + "</style>".len();
+        assert_eq!(format!("{}{}", &text[..start], &text[end..]), original);
+        assert!(text.contains("</script><style nonce="));
+        assert!(text.contains(".ad{display:none!important}"));
     }
     #[tokio::test]
     async fn incompatible_documents_are_passed_through_byte_for_byte() {
@@ -605,7 +618,7 @@ mod tests {
             response
                 .headers_mut()
                 .insert(header, HeaderValue::from_static(value));
-            let result = inject(response, Arc::from(".ad{display:none!important}")).await;
+            let result = rewrite(response, ".ad{display:none!important}", None).await;
             assert!(
                 !result.headers().contains_key("cache-control")
                     || result.headers()["cache-control"] != "no-store"
@@ -626,7 +639,7 @@ mod tests {
             b"<head><meta http-equiv='Content-Security-Policy'></head>",
             b"<head><script>unfinished",
         ] {
-            let result = inject(response(data), Arc::from(".ad{display:none!important}")).await;
+            let result = rewrite(response(data), ".ad{display:none!important}", None).await;
             assert_eq!(
                 result
                     .into_body()
@@ -638,26 +651,6 @@ mod tests {
                 data
             );
         }
-        let data = format!("<head>{}</head><body>large</body>", " ".repeat(MAX_HEAD));
-        let response = Response::builder()
-            .header("content-type", "text/html")
-            .body(
-                Full::new(Bytes::from(data.clone()))
-                    .map_err(|never: Infallible| match never {})
-                    .boxed_unsync(),
-            )
-            .unwrap();
-        let result = inject(response, Arc::from(".ad{display:none!important}")).await;
-        assert_eq!(
-            result
-                .into_body()
-                .collect()
-                .await
-                .unwrap()
-                .to_bytes()
-                .as_ref(),
-            data.as_bytes()
-        );
     }
     #[test]
     fn only_html_get_documents_are_candidates() {

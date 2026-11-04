@@ -13,7 +13,7 @@ def source_files(root):
              "core/engine-bridge/src/main/java/com/utc/color/blockads/core/enginebridge/EngineBridge.kt"]
     vendored = [p for p in (root / "nativecore/vendor").rglob("*")
                 if p.is_file() and (p.suffix == ".rs" or p.name == "Cargo.toml")]
-    return sorted([root / name for name in fixed] + list((root / "nativecore/src").rglob("*.rs")) + vendored, key=lambda p: p.relative_to(root).as_posix())
+    return sorted([root / name for name in fixed] + list((root / "nativecore/src").rglob("*.rs")) + list((root / "nativecore/src").rglob("*.js")) + vendored, key=lambda p: p.relative_to(root).as_posix())
 
 
 def fingerprint(root):

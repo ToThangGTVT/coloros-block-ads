@@ -48,7 +48,8 @@ fn hosts_suffix_and_priority_are_deterministic() {
     );
     assert_eq!(rules.report.ignored, 0);
     assert!(rules
-        .cosmetic_css("example.test")
+        .cosmetic_page("example.test")
+        .css
         .contains(".banner{display:none!important}"));
     assert!(Rules::compile("", "! ok\n||bad..domain^\n||good.test^")
         .report

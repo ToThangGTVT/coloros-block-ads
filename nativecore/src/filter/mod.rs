@@ -1,5 +1,8 @@
 //! Immutable exact/suffix domain matcher. Compiles off the tunnel worker and swaps atomically.
 mod cosmetic;
+pub use cosmetic::Page;
+mod network;
+pub use network::Context;
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -31,6 +34,7 @@ pub struct Rules {
     scoped: HashMap<Box<str>, Vec<Scoped>>,
     patterns: Vec<Pattern>,
     cosmetic: cosmetic::Cosmetic,
+    network: network::Network,
 }
 #[derive(Debug, PartialEq)]
 pub struct Decision<'a> {
@@ -47,9 +51,35 @@ impl Rules {
             entries: HashMap::with_capacity(capacity),
             ..Self::default()
         };
+        let mut network = network::Builder::default();
+        let mut cosmetic = String::new();
         for (text, is_custom) in [(system, false), (custom, true)] {
             for (index, line) in text.lines().enumerate() {
-                if let Err(message) = rules.parse(line, is_custom) {
+                let line = line.trim();
+                let parsed = if cosmetic::candidate(line) {
+                    cosmetic::accepts(line, is_custom).map(|()| {
+                        cosmetic.push_str(line);
+                        cosmetic.push('\n');
+                        rules.report.loaded += 1;
+                    })
+                } else {
+                    let candidate = network::candidate(line);
+                    let parsed = rules.parse(line, is_custom);
+                    if candidate && (parsed.is_ok() || network::accepts(line)) {
+                        network.push(line, is_custom);
+                        if cosmetic::switches_hiding(line) {
+                            cosmetic.push_str(line);
+                            cosmetic.push('\n');
+                        }
+                        if parsed.is_err() {
+                            // Context-dependent rule: enforced only by the HTTPS proxy.
+                            rules.report.loaded += 1;
+                            continue;
+                        }
+                    }
+                    parsed
+                };
+                if let Err(message) = parsed {
                     rules.report.ignored += 1;
                     if is_custom && rules.report.errors.len() < 100 {
                         rules.report.errors.push(LineError {
@@ -60,24 +90,17 @@ impl Rules {
                 }
             }
         }
+        rules.network = network.build();
+        rules.cosmetic = cosmetic::Cosmetic::build(cosmetic);
         rules
     }
     fn parse(&mut self, line: &str, custom: bool) -> Result<(), &'static str> {
         let line = line.trim();
-        if let Some(result) = self.cosmetic.parse(line) {
-            result?;
-            self.report.loaded += 1;
-            return Ok(());
-        }
         if line.is_empty()
             || line.starts_with('!')
             || line.starts_with('#')
             || line.starts_with('[')
         {
-            return Ok(());
-        }
-        if line.contains("##") || line.contains("#@#") || line.contains("#$#") {
-            self.report.ignored += 1;
             return Ok(());
         }
         let original = line;
@@ -179,13 +202,7 @@ impl Rules {
             } else {
                 network_regex(pattern)?
             };
-            let regex = regex::RegexBuilder::new(&regex)
-                .case_insensitive(true)
-                .size_limit(128 * 1024)
-                .dfa_size_limit(32 * 1024)
-                .nest_limit(32)
-                .build()
-                .map_err(|_| "Regex không hợp lệ hoặc vượt giới hạn bộ nhớ")?;
+            let regex = bounded_regex(&regex)?;
             self.patterns.push(Pattern {
                 regex,
                 domain_only: explicit_regex,
@@ -286,10 +303,31 @@ impl Rules {
         }
         best
     }
-    /// Bounded per-domain cache belongs to this immutable rule snapshot; reload invalidates it.
-    pub fn cosmetic_css(&self, domain: &str) -> Arc<str> {
-        self.cosmetic.css(domain)
+    /// Decrypted HTTPS request: domain/app rules plus full network syntax with request context.
+    pub fn check(&self, domain: &str, context: &Context, packages: &[String]) -> Option<Matched> {
+        let mut best = self.matches(domain, Some(context.url), packages);
+        if let Some((rank, rule)) = self.network.check(context) {
+            choose(&mut best, rank, &rule);
+        }
+        best
     }
+    /// Bounded per-domain cache belongs to this immutable rule snapshot; reload invalidates it.
+    pub fn cosmetic_page(&self, domain: &str) -> Arc<cosmetic::Page> {
+        self.cosmetic.page(domain)
+    }
+    /// CSS for generic `.class`/`#id` rules matching what the page reported.
+    pub fn generic_css(&self, page: &cosmetic::Page, classes: &[&str], ids: &[&str]) -> String {
+        self.cosmetic.generic(page, classes, ids)
+    }
+}
+fn bounded_regex(pattern: &str) -> Result<regex::Regex, &'static str> {
+    regex::RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .size_limit(128 * 1024)
+        .dfa_size_limit(32 * 1024)
+        .nest_limit(32)
+        .build()
+        .map_err(|_| "Regex không hợp lệ hoặc vượt giới hạn bộ nhớ")
 }
 fn valid_domain(domain: &str) -> bool {
     let domain = domain.trim_end_matches('.');
