@@ -45,6 +45,7 @@ import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.DropdownArrowEndAction
 import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
 import io.github.suqi8.coui.kmp.basic.Switch
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
@@ -121,7 +122,14 @@ fun AppHint(text: String) {
 
 @Composable
 fun AppSectionTitle(text: String) {
-    SmallTitle(text = text)
+    // The page already supplies the outer inset; avoid counting it again in COUI's title margin.
+    SmallTitle(
+        text = text,
+        insideMargin = PaddingValues(
+            horizontal = AppSpacing.page,
+            vertical = SmallTitleDefaults.InsideMargin.calculateTopPadding(),
+        ),
+    )
 }
 
 @Composable
@@ -206,6 +214,7 @@ fun AppChoicePreference(
     compact: Boolean = false,
     showSelectedValue: Boolean = false,
     modifier: Modifier = Modifier,
+    entrySummary: (Int) -> String? = { null },
     onSelected: (Int) -> Unit,
 ) {
     var shown by remember { mutableStateOf(false) }
@@ -263,12 +272,21 @@ fun AppChoicePreference(
                             .padding(vertical = ListPreferenceDefaults.PanelItemVerticalPadding),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
-                        Text(
-                            label,
-                            modifier = Modifier.weight(1f),
-                            style = COUITheme.textStyles.headline2,
-                            color = COUITheme.colorScheme.onSurface,
-                        )
+                        Column(Modifier.weight(1f).padding(end = AppSpacing.gap)) {
+                            Text(
+                                label,
+                                style = COUITheme.textStyles.headline2,
+                                color = COUITheme.colorScheme.onSurface,
+                            )
+                            entrySummary(index)?.let { summary ->
+                                Text(
+                                    summary,
+                                    modifier = Modifier.padding(top = AppSpacing.gap / 2),
+                                    style = COUITheme.textStyles.footnote1,
+                                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                        }
                         if (index == selected)
                             io.github.suqi8.coui.kmp.basic.Icon(
                                 COUIIcons.Basic.Check,

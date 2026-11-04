@@ -157,3 +157,12 @@ Tag `v1.1.0` không có release: workflow dừng ở một test kết nối lạ
 - **Chặn QUIC** giờ chỉ drop UDP/443 của app đang lọc HTTPS (đã chọn, có CA), để chúng dùng TCP qua proxy. App khác như YouTube, Instagram giữ HTTP/3; chặn quảng cáo của chúng dựa vào DNS nên không đổi.
 - Với app lọc HTTPS, host proxy không giải mã (nhạy cảm, pinning) cũng giữ QUIC khi biết được tên miền.
 - Đã kiểm tra test Rust (tuần tự), Clippy và fmt. Chưa thử trên máy thật.
+
+## 1.1.3 — Giao diện bộ lọc và thống kê ứng dụng
+
+- Tab Bộ lọc chia thành hai tab con DNS và trình duyệt, giữ vị trí cuộn riêng và hiển thị số danh sách đang bật của từng loại.
+- Thêm bộ lọc bằng URL và sửa quy tắc riêng trong bottom sheet COUI; cập nhật tất cả và quy tắc riêng được ghi rõ là dùng chung.
+- Thống kê mỗi ứng dụng thu gọn thành tên, biểu tượng, số yêu cầu, số đã chặn và một thanh tỷ lệ xanh–đỏ; phần đỏ thể hiện tỷ lệ đã chặn.
+- Giảm lề trái tiêu đề nhóm đồng bộ trong ứng dụng và căn giữa nhãn tab con.
+- Mỗi lựa chọn DNS có ghi chú riêng về giao thức, mã hóa và địa chỉ máy chủ, bao gồm DNS của mạng, UDP, DoH, DoT, DoQ và tùy chỉnh.
+- Đã kiểm tra build/lint debug và release, 7 unit test của core/common và core/data; giao diện được xem trên máy ảo với nền sáng/tối và các tỷ lệ chặn 0%, một phần, 100%.

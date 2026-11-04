@@ -34,6 +34,18 @@ import kotlinx.coroutines.withContext
 
 private val themeLabels = listOf("Theo hệ thống", "Sáng", "Tối", "Monet")
 
+private val DnsUpstream.description: String
+    get() = when (this) {
+        DnsUpstream.System -> "Dùng DNS do Wi-Fi hoặc mạng di động cung cấp."
+        DnsUpstream.Cloudflare -> "1.1.1.1 · DNS thông thường, không mã hóa."
+        DnsUpstream.CloudflareDoH -> "1.1.1.1 · Mã hóa truy vấn DNS qua HTTPS (DoH)."
+        DnsUpstream.CloudflareDoT -> "1.1.1.1 · Mã hóa truy vấn DNS qua TLS (DoT)."
+        DnsUpstream.Quad9 -> "9.9.9.9 · DNS thông thường, không mã hóa."
+        DnsUpstream.AdGuardDoH -> "94.140.14.14 · Mã hóa truy vấn DNS qua HTTPS (DoH)."
+        DnsUpstream.AdGuardDoQ -> "94.140.14.14 · Mã hóa truy vấn DNS qua QUIC (DoQ)."
+        DnsUpstream.Custom -> "Nhập URL DoH / DoT và IP máy chủ để kết nối với DNS riêng."
+    }
+
 @Composable
 fun SettingsScreen(
     theme: ThemeMode,
@@ -240,6 +252,7 @@ fun SettingsScreen(
                     "DNS upstream",
                     DnsUpstream.entries.map { it.title },
                     dns.upstream.ordinal,
+                    entrySummary = { DnsUpstream.entries[it].description },
                 ) { selected ->
                     action { settings.setDns(dns.copy(upstream = DnsUpstream.entries[selected])) }
                 }
