@@ -1,8 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title desc">
-  <title id="title">BlockAds</title>
-  <desc id="desc">Blue outline shield and blocking symbol on a light blue rounded tile.</desc>
-  <rect width="512" height="512" rx="116" fill="#E5F1FF"/>
-  <path d="M256 116C220 139 181 152 148 158V241C148 304 185 351 248 383C253 386 259 386 264 383C327 351 364 304 364 241V158C331 152 292 139 256 116Z" stroke="#3482FF" stroke-width="18" stroke-linejoin="round"/>
-  <circle cx="256" cy="247" r="55" stroke="#3482FF" stroke-width="16"/>
-  <path d="M226 247H286" stroke="#3482FF" stroke-width="16" stroke-linecap="round"/>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g clip-path="url(#clip0_886_6)">
+<path d="M396 0H116C51.935 0 0 51.935 0 116V396C0 460.065 51.935 512 116 512H396C460.065 512 512 460.065 512 396V116C512 51.935 460.065 0 396 0Z" fill="#E5F1FF"/>
+<use xlink:href="#stroke0_886_6" fill="#73C7F7"/>
+<use xlink:href="#stroke0_886_6" fill="white" fill-opacity="0.2"/>
+<path d="M190.8 97C160.2 116.55 127.05 127.6 99 132.7V203.25C99 256.8 130.45 296.75 184 323.95C188.25 326.5 193.35 326.5 197.6 323.95C251.15 296.75 282.6 256.8 282.6 203.25V132.7C254.55 127.6 221.4 116.55 190.8 97Z" stroke-width="27.2" stroke-linejoin="round" stroke="#3482FF"/>
+</g>
+<defs>
+<clipPath id="clip0_886_6">
+<rect width="512" height="512" fill="white"/>
+</clipPath>
+<path id="stroke0_886_6" d="M191.014 216H417.986C429.995 216 436 221.646 436 232.939V365.061C436 376.354 429.995 382 417.986 382H191.014C179.005 382 173 376.354 173 365.061V232.939C173 221.646 179.005 216 191.014 216Z"/>
+</defs>
 </svg>
