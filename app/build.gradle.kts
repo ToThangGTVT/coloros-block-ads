@@ -16,8 +16,8 @@ android {
         applicationId = "com.utc.color.blockads"
         minSdk = 33
         targetSdk = 37
-        versionCode = 18
-        versionName = "1.1.3"
+        versionCode = 19
+        versionName = "1.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {

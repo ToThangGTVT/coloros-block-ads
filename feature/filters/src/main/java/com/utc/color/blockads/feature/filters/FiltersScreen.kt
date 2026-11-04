@@ -1,5 +1,7 @@
 package com.utc.color.blockads.feature.filters
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
@@ -21,6 +23,7 @@ fun FiltersScreen(
     onCatalog: () -> Unit,
     onBrowserCatalog: () -> Unit,
 ) {
+    val strings = rememberAppStrings()
     val lists by filters.lists.collectAsStateWithLifecycle(initialValue = emptyList())
     val status by filters.status.collectAsStateWithLifecycle()
     val saved by settings.customRules.collectAsStateWithLifecycle(initialValue = "")
@@ -38,8 +41,8 @@ fun FiltersScreen(
     var sheetError by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val dateFormat = remember { java.text.DateFormat.getDateTimeInstance() }
-    val numberFormat = remember { java.text.NumberFormat.getIntegerInstance() }
+    val dateFormat = remember(strings.configuration.locales[0]) { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.DEFAULT, java.text.DateFormat.DEFAULT, strings.configuration.locales[0]) }
+    val numberFormat = remember(strings.configuration.locales[0]) { java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
     fun action(block: suspend () -> Unit) {
         scope.launch {
             try {
@@ -48,13 +51,13 @@ fun FiltersScreen(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failure.message ?: "Không thực hiện được thao tác"
+                error = failure.userMessage(strings) ?: strings.getString(L10n.string.operation_failed)
             }
         }
     }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.padding(horizontal = AppSpacing.page)) {
-            AppContentTabs(listOf("Bộ lọc DNS", "Bộ lọc trình duyệt"), tab) { tab = it }
+            AppContentTabs(listOf(strings.getString(L10n.string.dns_filters), strings.getString(L10n.string.browser_filters)), tab) { tab = it }
         }
         Box(Modifier.weight(1f)) {
             states.SaveableStateProvider(tab) {
@@ -71,30 +74,30 @@ fun FiltersScreen(
                                         verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
                                     ) {
                                         AppText(
-                                            if (browser) "Lọc nội dung trang web"
-                                            else "Chặn tên miền",
+                                            if (browser) strings.getString(L10n.string.web_filtering)
+                                            else strings.getString(L10n.string.domain_blocking),
                                             prominent = true,
                                         )
                                         AppHint(
-                                            if (browser) "Cần bật lọc HTTPS cho trình duyệt"
-                                            else "Áp dụng cho mọi ứng dụng qua DNS"
+                                            if (browser) strings.getString(L10n.string.browser_https_required)
+                                            else strings.getString(L10n.string.all_apps_dns_hint)
                                         )
                                     }
                                     AppHelpTooltip(
                                         text =
                                             if (browser)
-                                                "Chặn quảng cáo và ẩn phần tử trên trang web. Cần bật lọc HTTPS và chọn trình duyệt trong danh sách ứng dụng. Các bộ lọc này không chặn DNS."
+                                                strings.getString(L10n.string.browser_filters_help)
                                             else
-                                                "Chặn tên miền quảng cáo, theo dõi và mã độc cho các ứng dụng được lọc khi VPN BlockAds đang bật.",
+                                                strings.getString(L10n.string.dns_filters_help),
                                         label =
-                                            if (browser) "Hướng dẫn bộ lọc trình duyệt"
-                                            else "Hướng dẫn bộ lọc DNS",
+                                            if (browser) strings.getString(L10n.string.browser_filters_help_label)
+                                            else strings.getString(L10n.string.dns_filters_help_label),
                                     )
                                 }
                                 AppText(
-                                    "${visibleLists.count { it.enabled }} / ${visibleLists.size} danh sách đang bật"
+                                    strings.getQuantityString(L10n.plurals.lists_enabled, visibleLists.size, visibleLists.count { it.enabled }, visibleLists.size)
                                 )
-                                if (status.loading) AppHint("Đang tải bộ lọc…")
+                                if (status.loading) AppHint(strings.getString(L10n.string.filters_loading))
                             }
                         }
                     }
@@ -104,25 +107,25 @@ fun FiltersScreen(
                     item(key = "sources", contentType = "card") {
                         AppPreferenceGroup {
                             AppArrowPreference(
-                                "Chọn từ thư viện",
-                                if (browser) "Bộ lọc trình duyệt AdGuard"
-                                else "Danh sách DNS AdGuard Home",
+                                strings.getString(L10n.string.choose_from_catalog),
+                                if (browser) strings.getString(L10n.string.adguard_browser_filters)
+                                else strings.getString(L10n.string.adguard_dns_lists),
                                 if (browser) onBrowserCatalog else onCatalog,
                             )
-                            AppArrowPreference("Thêm bằng URL", "Nhập liên kết HTTPS của bộ lọc") {
+                            AppArrowPreference(strings.getString(L10n.string.add_by_url), strings.getString(L10n.string.filter_url_hint)) {
                                 sheetError = null
                                 addingBrowser = browser
                             }
                         }
                     }
                     item(key = "lists-title", contentType = "title") {
-                        AppSectionTitle("Danh sách đã thêm")
+                        AppSectionTitle(strings.getString(L10n.string.added_lists))
                     }
                     if (visibleLists.isEmpty()) {
                         item(key = "empty", contentType = "card") {
                             AppCard {
-                                AppText("Chưa có bộ lọc nào")
-                                AppHint("Chọn từ thư viện hoặc thêm bằng URL để bắt đầu.")
+                                AppText(strings.getString(L10n.string.filters_empty))
+                                AppHint(strings.getString(L10n.string.filters_empty_hint))
                             }
                         }
                     }
@@ -132,8 +135,8 @@ fun FiltersScreen(
                                 title = list.name,
                                 summary =
                                     list.error
-                                        ?: ("${numberFormat.format(list.ruleCount)} quy tắc · " +
-                                            if (list.updatedAt == 0L) "Chưa tải"
+                                        ?: (strings.getQuantityString(L10n.plurals.filter_rules_prefix, list.ruleCount, numberFormat.format(list.ruleCount)) +
+                                            if (list.updatedAt == 0L) strings.getString(L10n.string.not_downloaded)
                                             else dateFormat.format(java.util.Date(list.updatedAt))),
                                 checked = list.enabled,
                                 onCheckedChange = { action { filters.setEnabled(list.id, it) } },
@@ -141,19 +144,19 @@ fun FiltersScreen(
                         }
                     }
                     item(key = "shared-title", contentType = "title") {
-                        AppSectionTitle("Quản lý chung")
+                        AppSectionTitle(strings.getString(L10n.string.shared_management))
                     }
                     item(key = "shared-actions", contentType = "card") {
                         AppPreferenceGroup {
                             AppArrowPreference(
-                                "Cập nhật tất cả",
-                                "Cả DNS và trình duyệt · ${numberFormat.format(status.loaded)} quy tắc đã nạp",
+                                strings.getString(L10n.string.update_all),
+                                strings.getQuantityString(L10n.plurals.loaded_rules_summary, status.loaded, numberFormat.format(status.loaded)),
                             ) {
                                 if (!status.loading) action { filters.updateAll() }
                             }
                             AppArrowPreference(
-                                "Quy tắc riêng",
-                                "Dùng chung cho DNS và trình duyệt",
+                                strings.getString(L10n.string.custom_rules),
+                                strings.getString(L10n.string.custom_rules_shared),
                             ) {
                                 sheetError = null
                                 editingCustom = true
@@ -161,7 +164,7 @@ fun FiltersScreen(
                             if (status.ignored > 0)
                                 AppGroupContent {
                                     AppHint(
-                                        "${numberFormat.format(status.ignored)} quy tắc không hỗ trợ đã bỏ qua"
+                                        strings.getQuantityString(L10n.plurals.unsupported_rules_ignored, status.ignored, numberFormat.format(status.ignored))
                                     )
                                 }
                         }
@@ -173,14 +176,14 @@ fun FiltersScreen(
     val addBrowser = addingBrowser
     AppBottomSheet(
         show = addBrowser != null,
-        title = if (addBrowser == true) "Thêm bộ lọc trình duyệt" else "Thêm bộ lọc DNS",
+        title = if (addBrowser == true) strings.getString(L10n.string.add_browser_filter) else strings.getString(L10n.string.add_dns_filter),
         onDismiss = { if (!busy) addingBrowser = null },
     ) {
         if (addBrowser != null)
             AppColumn {
                 AppTextInput(
                     value = if (addBrowser) browserUrl else dnsUrl,
-                    label = "URL bộ lọc (HTTPS)",
+                    label = strings.getString(L10n.string.filter_url),
                     error = sheetError != null,
                     onChange = {
                         if (addBrowser) browserUrl = it else dnsUrl = it
@@ -188,7 +191,7 @@ fun FiltersScreen(
                     },
                 )
                 sheetError?.let { AppText(it) }
-                AppAction(if (busy) "Đang thêm…" else "Thêm bộ lọc", primary = true) {
+                AppAction(if (busy) strings.getString(L10n.string.adding) else strings.getString(L10n.string.add_filter), primary = true) {
                     if (!busy) {
                         val url = if (addBrowser) browserUrl else dnsUrl
                         busy = true
@@ -201,7 +204,7 @@ fun FiltersScreen(
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (failure: Exception) {
-                                sheetError = failure.message ?: "Không thêm được bộ lọc"
+                                sheetError = failure.userMessage(strings) ?: strings.getString(L10n.string.filter_add_failed)
                             } finally {
                                 busy = false
                             }
@@ -212,21 +215,21 @@ fun FiltersScreen(
     }
     AppBottomSheet(
         show = editingCustom,
-        title = "Quy tắc riêng",
+        title = strings.getString(L10n.string.custom_rules),
         onDismiss = { if (!busy) editingCustom = false },
     ) {
         AppColumn {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { AppHint("Dùng chung cho DNS và trình duyệt") }
+                Box(Modifier.weight(1f)) { AppHint(strings.getString(L10n.string.custom_rules_shared)) }
                 AppHelpTooltip(
                     text =
-                        "Mỗi dòng một quy tắc.\n||domain^ để chặn · @@||domain^ để cho phép.\nexample.com##.banner để ẩn phần tử · example.com#@#.banner để bỏ ẩn.\nẨn phần tử cần bật lọc HTTPS và chọn trình duyệt trong danh sách ứng dụng.",
-                    label = "Hướng dẫn viết quy tắc riêng",
+                        strings.getString(L10n.string.custom_rules_help),
+                    label = strings.getString(L10n.string.custom_rules_help_label),
                 )
             }
             AppTextInput(
                 value = custom ?: saved,
-                label = "Mỗi dòng một quy tắc",
+                label = strings.getString(L10n.string.one_rule_per_line),
                 multiline = true,
                 error = sheetError != null,
                 onChange = {
@@ -235,7 +238,7 @@ fun FiltersScreen(
                 },
             )
             sheetError?.let { AppText(it) }
-            AppAction(if (busy) "Đang lưu…" else "Lưu quy tắc", primary = true) {
+            AppAction(if (busy) strings.getString(L10n.string.saving) else strings.getString(L10n.string.save_rules), primary = true) {
                 if (!busy) {
                     val rules = custom ?: saved
                     busy = true
@@ -248,7 +251,7 @@ fun FiltersScreen(
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            sheetError = failure.message ?: "Không lưu được quy tắc"
+                            sheetError = failure.userMessage(strings) ?: strings.getString(L10n.string.rules_save_failed)
                         } finally {
                             busy = false
                         }

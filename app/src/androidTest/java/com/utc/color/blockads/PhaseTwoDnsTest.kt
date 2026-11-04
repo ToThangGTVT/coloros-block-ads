@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -173,12 +174,12 @@ class PhaseTwoDnsTest {
                 while (model.queries.latest("blocked.blockads.test")?.blocked != true) delay(100)
             }
             assertNotNull(model.queries.latest("blocked.blockads.test")?.matchedRule)
-            compose.onNodeWithText("Nhật ký").performClick()
+            compose.onNodeWithText(appString(L10n.string.log)).performClick()
             compose.onNodeWithText("Tìm domain").performTextInput("blocked.blockads.test")
             compose.waitUntil(5000) {
                 compose
                     .onAllNodes(
-                        hasText("blocked.blockads.test") and hasText("Đã chặn", substring = true)
+                        hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
                     )
                     .fetchSemanticsNodes()
                     .isNotEmpty()
@@ -186,10 +187,10 @@ class PhaseTwoDnsTest {
             androidx.test.espresso.Espresso.closeSoftKeyboard()
             compose
                 .onAllNodes(
-                    hasText("blocked.blockads.test") and hasText("Đã chặn", substring = true)
+                    hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
                 )[0]
                 .performClick()
-            compose.onNodeWithText("Chặn").assertExists()
+            compose.onNodeWithText(appString(L10n.string.block_action)).assertExists()
             delay(600)
             android.os.ParcelFileDescriptor.AutoCloseInputStream(
                     androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
@@ -200,7 +201,7 @@ class PhaseTwoDnsTest {
                 )
                 .use { it.readBytes() }
             androidx.test.espresso.Espresso.pressBack()
-            compose.onNodeWithText("Trang chủ").performClick()
+            compose.onNodeWithText(appString(L10n.string.home)).performClick()
             model.filters.saveCustom(original + "\n@@||blocked.blockads.test^")
             assertEquals("203.0.113.7", address(query("blocked.blockads.test")))
             assertFalse(runCatching { model.filters.saveCustom("||bad..domain^") }.isSuccess)

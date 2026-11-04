@@ -166,3 +166,11 @@ Tag `v1.1.0` không có release: workflow dừng ở một test kết nối lạ
 - Giảm lề trái tiêu đề nhóm đồng bộ trong ứng dụng và căn giữa nhãn tab con.
 - Mỗi lựa chọn DNS có ghi chú riêng về giao thức, mã hóa và địa chỉ máy chủ, bao gồm DNS của mạng, UDP, DoH, DoT, DoQ và tùy chỉnh.
 - Đã kiểm tra build/lint debug và release, 7 unit test của core/common và core/data; giao diện được xem trên máy ảo với nền sáng/tối và các tỷ lệ chặn 0%, một phần, 100%.
+
+## 1.1.4 — Hỗ trợ Tiếng Việt và English
+
+- Chuyển giao diện, thông báo VPN và thông báo lỗi sang tài nguyên ngôn ngữ Việt–Anh của Android.
+- Thêm **Cài đặt → Giao diện → Ngôn ngữ** với Theo hệ thống, Tiếng Việt và English; lựa chọn được Android lưu và giữ sau khi tạo lại màn hình.
+- Mặc định theo ngôn ngữ thiết bị, dùng tiếng Anh nếu ngôn ngữ đó chưa được hỗ trợ. Có thể đổi ngôn ngữ riêng của ứng dụng trong cài đặt Android.
+- Định dạng số, ngày và số ít/số nhiều theo ngôn ngữ đang chọn; thông báo VPN cập nhật khi đổi ngôn ngữ.
+- Đã kiểm tra build/lint debug, 7 unit test của core/common và core/data cùng 3 kiểm thử ngôn ngữ trên máy ảo, gồm đổi Việt–Anh, giữ lựa chọn sau khi tạo lại màn hình và quay về Theo hệ thống.

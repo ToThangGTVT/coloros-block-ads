@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -87,7 +88,7 @@ class BottomSheetTest {
         Thread.sleep(500)
         compose.onNodeWithText("Chọn thử").performClick()
         Thread.sleep(500)
-        compose.onNodeWithText("Hủy").performTouchInput { click(center) }
+        compose.onNodeWithText(appString(L10n.string.cancel)).performTouchInput { click(center) }
         compose.runOnIdle { assertEquals(AppTab.Home, selectedTab) }
     }
 }

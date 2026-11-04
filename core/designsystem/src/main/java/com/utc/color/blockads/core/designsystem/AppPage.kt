@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
@@ -43,12 +44,15 @@ import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
-enum class AppTab(val label: String) {
-    Home("Trang chủ"),
-    Log("Nhật ký"),
-    Filters("Bộ lọc"),
-    Firewall("Tường lửa"),
-    Settings("Cài đặt"),
+enum class AppTab(val labelRes: Int) {
+    Home(L10n.string.home),
+    Log(L10n.string.log),
+    Filters(L10n.string.filters),
+    Firewall(L10n.string.firewall),
+    Settings(L10n.string.settings);
+
+    val label: String
+        @Composable get() = androidx.compose.ui.res.stringResource(labelRes)
 }
 
 private const val TabKey = "blockads.tab"
@@ -182,6 +186,7 @@ fun AppPage(
     scrollable: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val strings = rememberAppStrings()
     val surface = COUITheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(surface)
@@ -205,7 +210,7 @@ fun AppPage(
                             IconButton(onClick = onBack) {
                                 Icon(
                                     imageVector = COUIIcons.Back,
-                                    contentDescription = "Quay lại",
+                                    contentDescription = strings.getString(L10n.string.back),
                                     tint = COUITheme.colorScheme.onSurface,
                                 )
                             }

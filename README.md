@@ -21,6 +21,10 @@ Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình th
 | **Tường lửa** | Cho phép hoặc chặn mạng từng ứng dụng khi VPN bật. |
 | **Cài đặt** | Chọn DNS, chỉnh ghi log, sao lưu và kiểm tra cập nhật. |
 
+## Ngôn ngữ
+
+Ứng dụng hỗ trợ **Tiếng Việt** và **English**, mặc định theo ngôn ngữ thiết bị (dùng tiếng Anh nếu chưa hỗ trợ ngôn ngữ đó). Đổi tại **Cài đặt → Giao diện → Ngôn ngữ**, hoặc mục ngôn ngữ ứng dụng trong cài đặt Android.
+
 ## Ảnh màn hình
 
 <p align="center">

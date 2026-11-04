@@ -1,5 +1,7 @@
 package com.utc.color.blockads.core.certificate
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
@@ -24,7 +26,7 @@ import org.json.JSONObject
 
 /** The root private key is an Android Keystore handle; only public certificates can be exported. */
 class CertificateRepository(
-    context: Context,
+    private val context: Context,
     private val settings: SettingsRepository,
     private val engine: EngineBridge,
 ) {
@@ -57,7 +59,7 @@ class CertificateRepository(
                         if (nativeSupported && !engine.configureHttps(json.toString())) {
                             engine.configureHttps("{}")
                             _state.update {
-                                it.copy(error = "Cấu hình HTTPS không hợp lệ; đã tắt xét HTTPS")
+                                it.copy(error = context.getString(L10n.string.https_config_invalid))
                             }
                         }
                     }
@@ -72,7 +74,7 @@ class CertificateRepository(
     suspend fun create() =
         withContext(Dispatchers.IO) {
             require(nativeSupported) {
-                "Lõi Rust chưa hỗ trợ API HTTPS của bản app này; hãy build/cài lại đúng bản"
+                context.getString(L10n.string.https_api_unsupported)
             }
             lock.withLock {
                 val keys = store()
@@ -106,12 +108,12 @@ class CertificateRepository(
                     val (signer, point) = signer(keys)
                     val der = engine.generateCa(signer, point)
                     val certificate = parse(der)
-                    require(certificate.basicConstraints >= 0) { "CA không có BasicConstraints" }
+                    require(certificate.basicConstraints >= 0) { context.getString(L10n.string.ca_basic_constraints) }
                     certificate.verify(keys.getCertificate(Alias).publicKey)
                     file.parentFile!!.mkdirs()
                     val temp = File(file.parentFile, "root-ca.tmp")
                     temp.writeBytes(der)
-                    check(temp.renameTo(file)) { "Không lưu được chứng chỉ" }
+                    check(temp.renameTo(file)) { context.getString(L10n.string.certificate_save_failed) }
                 }
             }
             refresh()
@@ -149,7 +151,7 @@ class CertificateRepository(
                 _state.value =
                     CertificateState(
                         error =
-                            "Lõi Rust và API HTTPS chưa đồng bộ. DNS/SNI vẫn hoạt động; cần build lại native trước khi dùng HTTPS."
+                            context.getString(L10n.string.https_api_mismatch)
                     )
                 return@withContext
             }
@@ -161,7 +163,7 @@ class CertificateRepository(
                         _state.value = CertificateState()
                         return@withLock
                     }
-                    require(file.length() <= 8192) { "Chứng chỉ không hợp lệ" }
+                    require(file.length() <= 8192) { context.getString(L10n.string.certificate_invalid) }
                     val der = file.readBytes()
                     val certificate = parse(der)
                     certificate.checkValidity()
@@ -209,7 +211,7 @@ class CertificateRepository(
                     .onFailure { error ->
                         runCatching { engine.setCa(null) }
                         _state.value =
-                            CertificateState(error = error.message ?: "Không đọc được CA")
+                            CertificateState(error = error.userMessage(context.resources) ?: context.getString(L10n.string.ca_read_failed))
                     }
             }
         }
@@ -228,16 +230,16 @@ class CertificateRepository(
             lock.withLock {
                 settings.setHttps(settings.https.first().copy(enabled = false))
                 if (nativeSupported) {
-                    check(engine.configureHttps("{}")) { "Không tắt được lọc HTTPS" }
+                    check(engine.configureHttps("{}")) { context.getString(L10n.string.https_disable_failed) }
                     // Drops the native signer and leaf cache; also closes current HTTPS proxies.
-                    check(engine.setCa(null)) { "Không gỡ được CA khỏi lõi HTTPS" }
+                    check(engine.setCa(null)) { context.getString(L10n.string.ca_unload_failed) }
                 }
                 val keys = store()
                 keys.deleteEntry(Alias)
-                check(!keys.containsAlias(Alias)) { "Không xóa được khóa CA trong Keystore" }
+                check(!keys.containsAlias(Alias)) { context.getString(L10n.string.ca_key_delete_failed) }
                 _state.value = CertificateState()
                 for (path in listOf(file, File(file.parentFile, "root-ca.tmp"))) {
-                    check(!path.exists() || path.delete()) { "Không xóa được file ${path.name}" }
+                    check(!path.exists() || path.delete()) { context.getString(L10n.string.file_delete_failed, path.name) }
                 }
             }
         }
@@ -247,10 +249,10 @@ class CertificateRepository(
         lock.withLock {
             if (enabled) {
                 require(state.value.created && state.value.installed) {
-                    "Hãy tạo và cài CA trong Settings hệ thống trước"
+                    context.getString(L10n.string.ca_install_first)
                 }
                 require(settings.https.first().apps.isNotEmpty()) {
-                    "Chọn ít nhất một ứng dụng để lọc HTTPS"
+                    context.getString(L10n.string.https_select_app)
                 }
             }
             settings.setHttps(settings.https.first().copy(enabled = enabled))

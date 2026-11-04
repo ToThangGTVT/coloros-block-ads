@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.ui.test.*
@@ -96,10 +97,10 @@ class FirewallTest {
             assertTrue(dns().takeLast(4).all { it == 0.toByte() })
             assertTrue(http().contains("blockads-phase1"))
 
-            compose.onNodeWithText("Tường lửa").performClick()
-            compose.onNodeWithText("Tìm ứng dụng").performTextInput("com.utc.color.blockads")
+            compose.onNodeWithText(appString(L10n.string.firewall)).performClick()
+            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput("com.utc.color.blockads")
             androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose.onNodeWithText("Cho phép truy cập mạng").performClick()
+            compose.onNodeWithText(appString(L10n.string.allow_network)).performClick()
             applied(true)
             assertTrue(runCatching { dns() }.exceptionOrNull() is SocketTimeoutException)
             assertFalse(runCatching { http() }.getOrDefault("").contains("blockads-phase1"))

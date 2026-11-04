@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -76,7 +77,7 @@ class FilterCatalogTest {
             assertTrue(list.browser)
             assertTrue(list.error, list.ruleCount > 0)
             val refused = runCatching { model.filters.addUrl(entry.url) }
-            assertEquals("Đã có trong bộ lọc trình duyệt", refused.exceptionOrNull()?.message)
+            assertEquals(appString(L10n.string.browser_filter_exists), refused.exceptionOrNull()?.message)
         } finally {
             model.filters.lists.first().singleOrNull { it.url == entry.url }?.let {
                 model.filters.remove(it.id)

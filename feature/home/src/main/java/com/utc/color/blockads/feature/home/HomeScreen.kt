@@ -1,5 +1,6 @@
 package com.utc.color.blockads.feature.home
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.common.FilterStatus
@@ -16,48 +17,49 @@ fun HomeScreen(
     onPrivateDns: () -> Unit,
     onProtection: (Boolean) -> Unit,
 ) {
+    val strings = rememberAppStrings()
     val stats by queries.today.collectAsStateWithLifecycle()
     val week by queries.week.collectAsStateWithLifecycle()
     val top by queries.topDomains.collectAsStateWithLifecycle()
     val enabled =
         tunnel.status in
             listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
-    val number = remember { java.text.NumberFormat.getIntegerInstance() }
+    val number = remember(strings.configuration.locales[0]) { java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
     AppColumn {
         AppProtectionCard(
             title =
                 when (tunnel.status) {
-                    TunnelStatus.Off -> "VPN đang tắt"
-                    TunnelStatus.Connecting -> "Đang kết nối…"
+                    TunnelStatus.Off -> strings.getString(L10n.string.vpn_off)
+                    TunnelStatus.Connecting -> strings.getString(L10n.string.connecting)
                     TunnelStatus.Connected ->
-                        if (filter.loaded > 0) "Đang bảo vệ" else "VPN đang bật · Chưa có rule"
-                    TunnelStatus.Reconnecting -> "Đang chờ kết nối mạng…"
-                    TunnelStatus.Revoked -> "Quyền VPN đã bị thu hồi"
-                    TunnelStatus.Error -> "Không thể kết nối VPN"
+                        if (filter.loaded > 0) strings.getString(L10n.string.protecting) else strings.getString(L10n.string.vpn_no_rules)
+                    TunnelStatus.Reconnecting -> strings.getString(L10n.string.network_waiting)
+                    TunnelStatus.Revoked -> strings.getString(L10n.string.vpn_revoked)
+                    TunnelStatus.Error -> strings.getString(L10n.string.vpn_connection_failed)
                 },
             checked = enabled,
             enabled = tunnel.status != TunnelStatus.Connecting,
             onChange = onProtection,
         ) {
             AppHint(
-                if (filter.loading) "Đang nạp bộ lọc…"
-                else "${number.format(filter.loaded)} rule đang dùng"
+                if (filter.loading) strings.getString(L10n.string.filters_preparing)
+                else strings.getQuantityString(L10n.plurals.rules_in_use, filter.loaded, number.format(filter.loaded))
             )
             tunnel.detail?.let { AppHint(it) }
             filter.error?.let { AppHint(it) }
         }
         if (tunnel.privateDns)
             AppCard {
-                AppText("Private DNS đang bật", prominent = true)
-                AppHint("Có thể vượt qua bộ lọc DNS. Nên tắt để chặn đầy đủ.")
-                AppAction("Mở cài đặt", primary = true, onClick = onPrivateDns)
+                AppText(strings.getString(L10n.string.private_dns_on), prominent = true)
+                AppHint(strings.getString(L10n.string.private_dns_hint))
+                AppAction(strings.getString(L10n.string.open_settings), primary = true, onClick = onPrivateDns)
             }
-        AppSectionTitle("Hôm nay")
+        AppSectionTitle(strings.getString(L10n.string.today))
         AppCard { AppStatistics(stats.total, stats.blocked) }
-        AppSectionTitle("7 ngày gần đây")
+        AppSectionTitle(strings.getString(L10n.string.last_seven_days))
         AppCard { AppTrafficChart(week) }
-        AppSectionTitle("Bị chặn nhiều nhất")
-        if (top.isEmpty()) AppCard { AppHint("Chưa có") }
+        AppSectionTitle(strings.getString(L10n.string.most_blocked))
+        if (top.isEmpty()) AppCard { AppHint(strings.getString(L10n.string.none_yet)) }
         else AppDomainBreakdown(
             domains = top.map { it.domain to it.count },
             otherCount = (top.first().totalBlocked - top.sumOf { it.count }).coerceAtLeast(0),

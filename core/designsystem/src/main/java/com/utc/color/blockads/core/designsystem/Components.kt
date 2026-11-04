@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -163,18 +164,19 @@ fun AppProtectionCard(
 
 @Composable
 fun AppStatistics(total: Long, blocked: Long) {
+    val strings = rememberAppStrings()
     androidx.compose.foundation.layout.Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         listOf(
-                "Tổng request" to java.text.NumberFormat.getIntegerInstance().format(total),
-                "Đã chặn" to java.text.NumberFormat.getIntegerInstance().format(blocked),
-                "Tỷ lệ chặn" to
+                strings.getString(L10n.string.total_requests) to java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]).format(total),
+                strings.getString(L10n.string.blocked) to java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]).format(blocked),
+                strings.getString(L10n.string.block_rate) to
                     (if (total == 0L) "0%"
                     else
                         String.format(
-                            java.util.Locale.getDefault(),
+                            strings.configuration.locales[0],
                             "%.1f%%",
                             blocked * 100.0 / total,
                         )),
@@ -217,6 +219,7 @@ fun AppChoicePreference(
     entrySummary: (Int) -> String? = { null },
     onSelected: (Int) -> Unit,
 ) {
+    val strings = rememberAppStrings()
     var shown by remember { mutableStateOf(false) }
     if (compact) {
         val palette = COUITheme.colorScheme
@@ -297,7 +300,7 @@ fun AppChoicePreference(
                     }
                 }
             }
-            AppAction("Hủy") { shown = false }
+            AppAction(strings.getString(L10n.string.cancel)) { shown = false }
         }
     }
 }
@@ -397,15 +400,16 @@ fun AppQueryRow(
     domain: String,
     blocked: Boolean,
     time: String,
-    appName: String = "Chưa xác định",
+    appName: String = androidx.compose.ui.res.stringResource(L10n.string.unknown),
     icon: android.graphics.Bitmap? = null,
     onClick: () -> Unit,
 ) {
+    val strings = rememberAppStrings()
     Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick) {
         AppIdentity(appName, icon)
         Text(domain, style = COUITheme.textStyles.body1, color = COUITheme.colorScheme.onSurface)
         Text(
-            (if (blocked) "Đã chặn" else "Cho phép") + " · " + time,
+            (if (blocked) strings.getString(L10n.string.blocked) else strings.getString(L10n.string.allowed)) + " · " + time,
             style = COUITheme.textStyles.footnote1,
             color = if (blocked) COUITheme.colorScheme.error else COUITheme.colorScheme.primary,
         )

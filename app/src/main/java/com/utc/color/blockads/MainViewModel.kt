@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.utc.color.blockads.core.common.ThemeMode
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 class MainViewModel
 @Inject
 constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     val settings: SettingsRepository,
     engine: EngineBridge,
     val tunnel: TunnelController,
@@ -36,7 +38,7 @@ constructor(
             SharingStarted.WhileSubscribed(5_000),
             ThemeMode.System,
         )
-    private val _version = MutableStateFlow("Đang tải…")
+    private val _version = MutableStateFlow(context.getString(L10n.string.loading))
     val version = _version.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -51,7 +53,7 @@ constructor(
                 settings.setTheme(mode)
                 _error.value = null
             } catch (_: IOException) {
-                _error.value = "Không lưu được chủ đề. Vui lòng thử lại."
+                _error.value = context.getString(L10n.string.theme_save_failed)
             }
         }
     }

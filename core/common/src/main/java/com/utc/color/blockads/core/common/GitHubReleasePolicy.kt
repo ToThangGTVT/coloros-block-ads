@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.common
 
+import com.utc.color.blockads.core.common.R as L10n
 import java.net.URI
 
 object GitHubReleasePolicy {
@@ -20,7 +21,7 @@ object GitHubReleasePolicy {
                 segments.size == 7 &&
                 segments.drop(1).all { it.isNotBlank() && it != "." && it != ".." }
         ) {
-            "Đường dẫn cập nhật không hợp lệ"
+            localizedError(L10n.string.update_url_invalid)
         }
     }
 }

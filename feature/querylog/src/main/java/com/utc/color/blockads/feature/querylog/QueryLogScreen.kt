@@ -1,5 +1,7 @@
 package com.utc.color.blockads.feature.querylog
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
@@ -22,11 +24,12 @@ fun QueryLogScreen(
     settings: SettingsRepository,
     apps: AppsRepository,
 ) {
+    val strings = rememberAppStrings()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val states = rememberSaveableStateHolder()
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.padding(horizontal = AppSpacing.page)) {
-            AppContentTabs(listOf("Truy vấn", "Thống kê ứng dụng"), tab) { tab = it }
+            AppContentTabs(listOf(strings.getString(L10n.string.queries), strings.getString(L10n.string.app_statistics)), tab) { tab = it }
         }
         Box(Modifier.weight(1f)) {
             states.SaveableStateProvider(tab) {
@@ -44,13 +47,14 @@ private fun QueryHistory(
     settings: SettingsRepository,
     apps: AppsRepository,
 ) {
+    val strings = rememberAppStrings()
     val installed by apps.apps.collectAsStateWithLifecycle()
     var appUid by rememberSaveable { mutableIntStateOf(-1) }
     val choices = remember(installed) { installed.distinctBy { it.uid } }
     var status by rememberSaveable { mutableIntStateOf(0) }
     val appByUid = remember(installed) { installed.associateBy { it.uid } }
-    val choiceLabels = remember(choices) { listOf("Tất cả") + choices.map { it.label } }
-    val timeFormat = remember { java.text.DateFormat.getTimeInstance() }
+    val choiceLabels = remember(choices, strings.configuration.locales[0]) { listOf(strings.getString(L10n.string.all)) + choices.map { it.label } }
+    val timeFormat = remember(strings.configuration.locales[0]) { java.text.DateFormat.getTimeInstance(java.text.DateFormat.DEFAULT, strings.configuration.locales[0]) }
     val rows =
         remember(repository, status, appUid) {
                 repository.searchPages("", listOf(-1, 1, 0)[status], appUid)
@@ -65,11 +69,11 @@ private fun QueryHistory(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
         ) {
             AppChoicePreference(
-                "Trạng thái", listOf("Tất cả", "Đã chặn", "Cho phép"), status,
+                strings.getString(L10n.string.status), listOf(strings.getString(L10n.string.all), strings.getString(L10n.string.blocked), strings.getString(L10n.string.allowed)), status,
                 compact = true, modifier = Modifier.weight(1f),
             ) { status = it }
             AppChoicePreference(
-                "Ứng dụng",
+                strings.getString(L10n.string.apps),
                 choiceLabels,
                 (choices.indexOfFirst { it.uid == appUid } + 1).coerceAtLeast(0),
                 compact = true, modifier = Modifier.weight(1f),
@@ -77,7 +81,7 @@ private fun QueryHistory(
                 appUid = if (index == 0) -1 else choices[index - 1].uid
             }
         }
-        if (rows.itemCount == 0) AppCard { AppHint("Chưa có nhật ký. Bật VPN để bắt đầu.") }
+        if (rows.itemCount == 0) AppCard { AppHint(strings.getString(L10n.string.logs_empty)) }
         error?.let { AppText(it) }
         LazyColumn(
             modifier = Modifier.weight(1f),
@@ -103,7 +107,7 @@ private fun QueryHistory(
                         timeFormat.format(java.util.Date(row.timestamp)) +
                             " · " +
                             row.protocol.uppercase(),
-                        appName = app?.label ?: row.uid?.let { "UID $it" } ?: "Chưa xác định",
+                        appName = app?.label ?: row.uid?.let { "UID $it" } ?: strings.getString(L10n.string.unknown),
                         icon = icon,
                     ) {
                         selected = row
@@ -115,26 +119,26 @@ private fun QueryHistory(
     val row = selected
     AppBottomSheet(
         show = row != null,
-        title = row?.domain ?: "Truy vấn",
+        title = row?.domain ?: strings.getString(L10n.string.queries),
         onDismiss = { selected = null },
     ) {
         if (row != null)
             AppColumn {
-                AppText(if (row.blocked) "Đã chặn" else "Cho phép", prominent = true)
-                AppHint("Rule: ${row.matchedRule ?: "Không có rule khớp"}")
+                AppText(if (row.blocked) strings.getString(L10n.string.blocked) else strings.getString(L10n.string.allowed), prominent = true)
+                AppHint(strings.getString(L10n.string.matched_rule, row.matchedRule ?: strings.getString(L10n.string.no_matching_rule)))
                 AppHint(
-                    "Ứng dụng: " +
+                    strings.getString(L10n.string.app_prefix) +
                         (installed
                             .filter { it.uid == row.uid }
                             .joinToString { it.label }
                             .takeIf { it.isNotBlank() }
                             ?: row.uid?.let { "UID $it" }
-                            ?: "Chưa xác định") +
+                            ?: strings.getString(L10n.string.unknown)) +
                         " · " +
                         row.protocol.uppercase()
                 )
                 AppButtonRow {
-                    AppButton("Cho phép") {
+                    AppButton(strings.getString(L10n.string.allow_action)) {
                         scope.launch {
                             runCatching {
                                 filters.saveCustom(
@@ -142,10 +146,10 @@ private fun QueryHistory(
                                 )
                             }
                                 .onSuccess { selected = null }
-                                .onFailure { error = it.message }
+                                .onFailure { error = it.userMessage(strings) }
                         }
                     }
-                    AppButton("Chặn", primary = true) {
+                    AppButton(strings.getString(L10n.string.block_action), primary = true) {
                         scope.launch {
                             runCatching {
                                 filters.saveCustom(
@@ -153,7 +157,7 @@ private fun QueryHistory(
                                 )
                             }
                                 .onSuccess { selected = null }
-                                .onFailure { error = it.message }
+                                .onFailure { error = it.userMessage(strings) }
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -145,11 +146,11 @@ class PhaseThreeTrafficTest {
                 ) delay(100)
             }
             assertTrue(http("http.blockads.test").startsWith("HTTP/1.1 204"))
-            compose.onNodeWithText("Cài đặt").performClick()
-            compose.onNodeWithTag("page-list").performScrollToNode(hasText("Ứng dụng"))
-            compose.onNodeWithText("Ứng dụng").performClick()
-            compose.onNodeWithText("Tìm ứng dụng").performTextInput("BlockAds")
-            compose.onNodeWithText("Chính sách · BlockAds").assertExists()
+            compose.onNodeWithText(appString(L10n.string.settings)).performClick()
+            compose.onNodeWithTag("page-list").performScrollToNode(hasText(appString(L10n.string.apps)))
+            compose.onNodeWithText(appString(L10n.string.apps)).performClick()
+            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput("BlockAds")
+            compose.onNodeWithText(appString(L10n.string.app_policy_title, "BlockAds")).assertExists()
         } finally {
             model.tunnel.stop()
             withTimeout(15000) { model.tunnel.state.first { it.status == TunnelStatus.Off } }

@@ -102,3 +102,5 @@ val verifyNativeCore =
     }
 
 tasks.named("preBuild") { dependsOn(verifyNativeCore) }
+
+dependencies { implementation(project(":core:common")) }

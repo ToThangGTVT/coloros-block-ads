@@ -1,5 +1,6 @@
 package com.utc.color.blockads
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavKey
@@ -11,6 +12,7 @@ import com.utc.color.blockads.core.designsystem.AppNavDisplay
 import com.utc.color.blockads.core.designsystem.AppPage
 import com.utc.color.blockads.core.designsystem.AppTab
 import com.utc.color.blockads.core.designsystem.AppTabHost
+import com.utc.color.blockads.core.designsystem.rememberAppStrings
 import com.utc.color.blockads.core.designsystem.appTabMetadata
 import com.utc.color.blockads.core.filter.CatalogSource
 import com.utc.color.blockads.feature.apps.AppsScreen
@@ -73,6 +75,7 @@ fun BlockAdsApp(
     certificates: com.utc.color.blockads.core.certificate.CertificateRepository,
     onProtection: (Boolean) -> Unit,
 ) {
+    val strings = rememberAppStrings()
     val context = LocalContext.current
     val backStack = rememberNavBackStack(Destination.Home)
     val pop: () -> Unit = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
@@ -99,10 +102,10 @@ fun BlockAdsApp(
                     ) { destination ->
                         val title =
                             when (destination) {
-                                Destination.Apps -> "Ứng dụng"
-                                Destination.Certificate -> "Lọc HTTPS"
-                                Destination.Catalog -> "Danh sách DNS"
-                                Destination.BrowserCatalog -> "Bộ lọc trình duyệt"
+                                Destination.Apps -> strings.getString(L10n.string.apps)
+                                Destination.Certificate -> strings.getString(L10n.string.https_filtering)
+                                Destination.Catalog -> strings.getString(L10n.string.dns_lists)
+                                Destination.BrowserCatalog -> strings.getString(L10n.string.browser_filters)
                                 else -> destination.tab.label
                             }
                         AppPage(

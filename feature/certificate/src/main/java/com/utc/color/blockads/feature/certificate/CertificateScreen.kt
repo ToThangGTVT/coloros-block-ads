@@ -1,5 +1,7 @@
 package com.utc.color.blockads.feature.certificate
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
@@ -20,6 +22,7 @@ fun CertificateScreen(
     apps: AppsRepository,
     onApps: () -> Unit,
 ) {
+    val strings = rememberAppStrings()
     val state by repository.state.collectAsStateWithLifecycle()
     val config by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
     val installed by apps.apps.collectAsStateWithLifecycle()
@@ -32,7 +35,7 @@ fun CertificateScreen(
         scope.launch {
             runCatching { block() }
                 .onSuccess { feedback = success }
-                .onFailure { feedback = it.message ?: "Không thực hiện được" }
+                .onFailure { feedback = it.userMessage(strings) ?: strings.getString(L10n.string.action_failed) }
         }
     }
     val export =
@@ -40,56 +43,56 @@ fun CertificateScreen(
             ActivityResultContracts.CreateDocument("application/x-x509-ca-cert")
         ) { uri ->
             if (uri != null)
-                action("Đã xuất CA công khai") {
+                action(strings.getString(L10n.string.ca_exported)) {
                     withContext(Dispatchers.IO) {
                         context.contentResolver.openOutputStream(uri)?.use {
                             it.write(repository.exportCertificate())
-                        } ?: error("Không mở được file")
+                        } ?: error(strings.getString(L10n.string.file_open_failed))
                     }
                 }
         }
     AppColumn {
         AppCard {
-            AppHint("Chỉ app tin CA người dùng, thường là trình duyệt.")
-            AppHint("Ngân hàng, thanh toán, y tế luôn được bỏ qua.")
-            AppHint("Có thể ẩn quảng cáo bằng quy tắc CSS theo website trong Bộ lọc → Quy tắc riêng.")
+            AppHint(strings.getString(L10n.string.https_trust_hint))
+            AppHint(strings.getString(L10n.string.https_sensitive_hint))
+            AppHint(strings.getString(L10n.string.https_css_hint))
         }
         (feedback ?: state.error)?.let { AppCard { AppText(it) } }
-        AppSectionTitle("1 · Tạo CA")
+        AppSectionTitle(strings.getString(L10n.string.ca_step_create))
         AppCard {
             if (!state.created) {
-                AppHint("Khóa nằm trong Android Keystore, không rời thiết bị.")
-                AppAction("Tạo CA", primary = true) { action("Đã tạo CA") { repository.create() } }
+                AppHint(strings.getString(L10n.string.ca_key_hint))
+                AppAction(strings.getString(L10n.string.ca_create), primary = true) { action(strings.getString(L10n.string.ca_created)) { repository.create() } }
             } else {
                 AppText(
-                    if (state.hardwareBacked) "Khóa bảo vệ bằng phần cứng"
-                    else "Khóa trong Android Keystore"
+                    if (state.hardwareBacked) strings.getString(L10n.string.ca_hardware_key)
+                    else strings.getString(L10n.string.ca_keystore_key)
                 )
                 AppHint("SHA-256 ${state.fingerprint}")
             }
         }
-        AppSectionTitle("2 · Cài CA")
+        AppSectionTitle(strings.getString(L10n.string.ca_step_install))
         AppPreferenceGroup {
             if (state.created)
-                AppArrowPreference("Xuất CA", "Lưu file BlockAds-CA.crt") {
+                AppArrowPreference(strings.getString(L10n.string.ca_export), strings.getString(L10n.string.ca_export_hint)) {
                     export.launch("BlockAds-CA.crt")
                 }
-            AppArrowPreference("Mở cài đặt", "Bảo mật → Cài chứng chỉ → Chứng chỉ CA") {
+            AppArrowPreference(strings.getString(L10n.string.open_settings), strings.getString(L10n.string.ca_install_path)) {
                 runCatching {
                     context.startActivity(
                         android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS)
                     )
                 }
-                    .onFailure { feedback = "Không mở được Settings" }
+                    .onFailure { feedback = strings.getString(L10n.string.settings_open_failed) }
             }
             AppArrowPreference(
-                "Kiểm tra lại",
-                if (state.installed) "Đã cài và khớp" else "Chưa cài",
+                strings.getString(L10n.string.check_again),
+                if (state.installed) strings.getString(L10n.string.ca_installed) else strings.getString(L10n.string.ca_not_installed),
             ) {
                 action { repository.refresh() }
             }
         }
-        AppSectionTitle("3 · Chọn ứng dụng")
+        AppSectionTitle(strings.getString(L10n.string.ca_step_apps))
         AppPreferenceGroup {
             installed
                 .filter { it.packageName in HttpsSettings().apps || it.packageName in config.apps }
@@ -111,12 +114,12 @@ fun CertificateScreen(
                         }
                     }
                 }
-            AppArrowPreference("Thêm ứng dụng", onClick = onApps)
+            AppArrowPreference(strings.getString(L10n.string.add_apps), onClick = onApps)
         }
         AppPreferenceGroup {
             AppSwitchPreference(
-                "Bật lọc HTTPS",
-                "Áp dụng cho ứng dụng đã chọn, cần CA đã cài",
+                strings.getString(L10n.string.https_enable),
+                strings.getString(L10n.string.https_enable_hint),
                 config.enabled && state.installed,
             ) { enabled ->
                 action { repository.setEnabled(enabled) }
@@ -124,36 +127,36 @@ fun CertificateScreen(
         }
         AppPreferenceGroup {
             AppArrowPreference(
-                if (deleting) "Đang xóa CA…" else "Xóa CA đã lưu",
-                "Xóa khóa trong bộ nhớ bảo mật và chứng chỉ của app",
+                if (deleting) strings.getString(L10n.string.ca_deleting) else strings.getString(L10n.string.ca_delete_saved),
+                strings.getString(L10n.string.ca_delete_hint),
             ) {
                 if (!deleting) confirmDelete = true
             }
         }
-        AppHint("Gỡ app không tự gỡ CA. Có thể gỡ trong Cài đặt → Thông tin xác thực.")
+        AppHint(strings.getString(L10n.string.ca_uninstall_hint))
     }
     AppBottomSheet(
         show = confirmDelete,
-        title = "Xóa CA đã lưu?",
+        title = strings.getString(L10n.string.ca_delete_confirm),
         onDismiss = { confirmDelete = false },
     ) {
         AppColumn {
-            AppText("Khóa riêng trong Android Keystore sẽ bị xóa vĩnh viễn. Lọc HTTPS sẽ tắt.")
-            AppHint("Chứng chỉ đã cài trong Android và các file CA đã xuất vẫn còn. Gỡ chứng chỉ trong Cài đặt → Bảo mật → Thông tin xác thực người dùng.")
-            AppHint("Nếu tạo CA mới, bạn cần cài lại chứng chỉ mới để dùng lọc HTTPS.")
+            AppText(strings.getString(L10n.string.ca_delete_warning))
+            AppHint(strings.getString(L10n.string.ca_delete_system_hint))
+            AppHint(strings.getString(L10n.string.ca_recreate_hint))
             AppButtonRow {
-                AppButton("Hủy") { confirmDelete = false }
-                AppButton("Xóa CA", primary = true) {
+                AppButton(strings.getString(L10n.string.cancel)) { confirmDelete = false }
+                AppButton(strings.getString(L10n.string.ca_delete), primary = true) {
                     confirmDelete = false
                     if (!deleting) {
                         deleting = true
                         scope.launch {
                             try {
                                 repository.delete()
-                                feedback = "Đã xóa khóa CA trong Keystore và chứng chỉ của app. Lọc HTTPS đã tắt."
+                                feedback = strings.getString(L10n.string.ca_deleted)
                             } catch (error: Exception) {
                                 if (error is CancellationException) throw error
-                                feedback = error.message ?: "Không xóa được CA"
+                                feedback = error.userMessage(strings) ?: strings.getString(L10n.string.ca_delete_failed)
                             } finally {
                                 deleting = false
                             }

@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.data
 
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -42,8 +43,8 @@ class GitHubUpdateRepository(context: Context) {
                     if (connection.responseCode == 404) return@withContext null
                     require(connection.responseCode == 200) {
                         if (connection.responseCode == 403 || connection.responseCode == 429)
-                            "GitHub đang giới hạn lượt kiểm tra. Hãy thử lại sau."
-                        else "Không lấy được bản phát hành từ GitHub (${connection.responseCode})"
+                            context.getString(L10n.string.github_rate_limited)
+                        else context.getString(L10n.string.github_release_failed, connection.responseCode)
                     }
                     JSONObject(readSmall(connection))
                 } finally {
@@ -63,7 +64,7 @@ class GitHubUpdateRepository(context: Context) {
             val descriptor =
                 try {
                     require(descriptorConnection.responseCode == 200) {
-                        "Không tải được thông tin cập nhật"
+                        context.getString(L10n.string.update_info_failed)
                     }
                     JSONObject(readSmall(descriptorConnection))
                 } finally {
@@ -78,7 +79,7 @@ class GitHubUpdateRepository(context: Context) {
                     .associateBy { it.getString("abi") }
             val variant =
                 Build.SUPPORTED_ABIS.firstNotNullOfOrNull { byAbi[it] }
-                    ?: error("Bản cập nhật chỉ hỗ trợ ARMv7 và ARM64")
+                    ?: error(context.getString(L10n.string.update_arm_only))
             val update =
                 GitHubUpdate(
                     descriptor.getLong("versionCode"),
@@ -88,7 +89,7 @@ class GitHubUpdateRepository(context: Context) {
                     variant.getLong("size"),
                 )
             require(update.sha256.matches(Regex("[0-9a-f]{64}")) && update.size in 1..MaxApkBytes) {
-                "Thông tin cập nhật không hợp lệ"
+                context.getString(L10n.string.update_info_invalid)
             }
             requireDownloadUrl(update.apkUrl)
             // Metadata and APK must belong to this same release, not a different tag.
@@ -100,7 +101,7 @@ class GitHubUpdateRepository(context: Context) {
                         asset.optLong("size") == update.size
                 }
             ) {
-                "Không tìm thấy APK tương ứng trong bản phát hành"
+                context.getString(L10n.string.update_apk_missing)
             }
             update.takeIf { it.versionCode > installed().longVersionCode }
         }
@@ -116,7 +117,7 @@ class GitHubUpdateRepository(context: Context) {
             val connection = open(update.apkUrl)
             try {
                 require(connection.responseCode == 200) {
-                    "Không tải được APK (${connection.responseCode})"
+                    context.getString(L10n.string.apk_download_failed, connection.responseCode)
                 }
                 val digest = MessageDigest.getInstance("SHA-256")
                 var received = 0L
@@ -129,7 +130,7 @@ class GitHubUpdateRepository(context: Context) {
                             val count = input.read(buffer)
                             if (count < 0) break
                             received += count
-                            require(received <= update.size) { "Kích thước APK không hợp lệ" }
+                            require(received <= update.size) { context.getString(L10n.string.apk_size_invalid) }
                             digest.update(buffer, 0, count)
                             output.write(buffer, 0, count)
                             val next = (received * 100 / update.size).toInt()
@@ -140,11 +141,11 @@ class GitHubUpdateRepository(context: Context) {
                         }
                     }
                 }
-                require(received == update.size) { "APK tải chưa hoàn tất" }
+                require(received == update.size) { context.getString(L10n.string.apk_incomplete) }
                 require(digest.digest().joinToString("") { "%02x".format(it) } == update.sha256) {
-                    "APK không khớp mã SHA-256. Hãy tải lại."
+                    context.getString(L10n.string.apk_checksum_mismatch)
                 }
-                check(partial.renameTo(apk)) { "Không lưu được APK" }
+                check(partial.renameTo(apk)) { context.getString(L10n.string.apk_save_failed) }
                 validateApk(apk, update)
                 apk
             } catch (error: Exception) {
@@ -159,19 +160,19 @@ class GitHubUpdateRepository(context: Context) {
     fun validateApk(apk: File, update: GitHubUpdate) {
         val archive =
             manager.getPackageArchiveInfo(apk.absolutePath, signingFlags)
-                ?: error("APK không hợp lệ")
+                ?: error(context.getString(L10n.string.apk_invalid))
         val current = installed()
         require(
             archive.packageName == context.packageName &&
                 archive.longVersionCode == update.versionCode &&
                 archive.longVersionCode > current.longVersionCode
         ) {
-            "APK không phải bản cập nhật của BlockAds"
+            context.getString(L10n.string.apk_wrong_app)
         }
         val signers = archive.signingInfo?.apkContentsSigners.orEmpty().toSet()
         val currentSigners = current.signingInfo?.apkContentsSigners.orEmpty().toSet()
         require(signers.isNotEmpty() && signers == currentSigners) {
-            "Khác chữ ký với bản đang cài. Hãy dùng bản release từ GitHub để nhận cập nhật tiếp theo."
+            context.getString(L10n.string.apk_signature_mismatch)
         }
     }
 
@@ -188,7 +189,7 @@ class GitHubUpdateRepository(context: Context) {
                     (url.host in setOf("github.com", "api.github.com") ||
                         url.host.endsWith(".githubusercontent.com"))
             ) {
-                "GitHub chuyển hướng tới địa chỉ không hợp lệ"
+                context.getString(L10n.string.github_redirect_invalid)
             }
             val connection =
                 (url.openConnection() as HttpURLConnection).apply {
@@ -205,7 +206,7 @@ class GitHubUpdateRepository(context: Context) {
                     URL(
                         url,
                         connection.getHeaderField("Location")
-                            ?: error("Thiếu địa chỉ chuyển hướng"),
+                            ?: error(context.getString(L10n.string.redirect_missing)),
                     )
             } catch (error: Exception) {
                 connection.disconnect()
@@ -213,13 +214,13 @@ class GitHubUpdateRepository(context: Context) {
             }
             connection.disconnect()
         }
-        error("GitHub chuyển hướng quá nhiều lần")
+        error(context.getString(L10n.string.github_redirect_limit))
     }
 
     private fun readSmall(connection: HttpURLConnection): String =
         connection.inputStream.use {
             val bytes = it.readNBytes(1024 * 1024 + 1)
-            require(bytes.size <= 1024 * 1024) { "Thông tin cập nhật quá lớn" }
+            require(bytes.size <= 1024 * 1024) { context.getString(L10n.string.update_info_too_large) }
             bytes.toString(Charsets.UTF_8)
         }
 

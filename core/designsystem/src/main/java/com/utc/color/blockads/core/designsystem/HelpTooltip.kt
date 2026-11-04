@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 
 /** Tap or long-press for usage guidance; outside tap or Back dismisses it. */
 @Composable
-fun AppHelpTooltip(text: String, label: String = "Hướng dẫn") {
+fun AppHelpTooltip(text: String, label: String = androidx.compose.ui.res.stringResource(L10n.string.help)) {
     val state = rememberTooltipState(isPersistent = true)
     val scope = rememberCoroutineScope()
     val colors = TooltipDefaults.richTooltipColors()

@@ -1,5 +1,7 @@
 package com.utc.color.blockads.feature.apps
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +21,7 @@ fun AppsScreen(
     settings: com.utc.color.blockads.core.data.SettingsRepository,
     firewallOnly: Boolean = false,
 ) {
+    val strings = rememberAppStrings()
     val apps by repository.apps.collectAsStateWithLifecycle()
     val https by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
     val policies by repository.policies.collectAsStateWithLifecycle()
@@ -28,7 +31,7 @@ fun AppsScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val uidCounts = remember(apps) { apps.groupingBy { it.uid }.eachCount() }
-    val modeTitles = remember { AppFilterMode.entries.map { it.title } }
+    val modeTitles = AppFilterMode.entries.map { strings.getString(it.titleRes) }
     val blockedUids =
         remember(apps, policies, blockedApps) {
             resolveAppPolicy(apps, policies, blockedApps).blockedUids
@@ -50,15 +53,15 @@ fun AppsScreen(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
         ) {
             Box(Modifier.weight(1f)) {
-                AppTextInput(search, "Tìm ứng dụng", onChange = { search = it })
+                AppTextInput(search, strings.getString(L10n.string.search_apps), onChange = { search = it })
             }
             if (firewallOnly) AppHelpTooltip(
-                text = "Tường lửa chỉ có hiệu lực khi VPN BlockAds đang bật. Áp dụng cho Wi-Fi và dữ liệu di động.",
-                label = "Hướng dẫn tường lửa",
+                text = strings.getString(L10n.string.firewall_help),
+                label = strings.getString(L10n.string.firewall_help_label),
             )
         }
         AppPreferenceGroup {
-            AppSwitchPreference("Hiện app hệ thống", "Chỉ app có dùng mạng", system) {
+            AppSwitchPreference(strings.getString(L10n.string.show_system_apps), strings.getString(L10n.string.network_apps_only), system) {
                 system = it
             }
         }
@@ -77,30 +80,30 @@ fun AppsScreen(
                     AppItemHeader(app.label, app.packageName, icon)
                     if (firewallOnly) {
                         AppSwitchPreference(
-                            "Cho phép truy cập mạng",
+                            strings.getString(L10n.string.allow_network),
                             if ((uidCounts[app.uid] ?: 0) > 1)
-                                "Áp dụng cho tất cả ứng dụng dùng chung UID"
-                            else if (app.uid in blockedUids) "Đã chặn toàn bộ mạng khi VPN bật"
-                            else "Cho phép Wi-Fi và dữ liệu di động",
+                                strings.getString(L10n.string.shared_uid_policy)
+                            else if (app.uid in blockedUids) strings.getString(L10n.string.network_blocked)
+                            else strings.getString(L10n.string.network_allowed),
                             app.uid !in blockedUids,
                         ) { allowed ->
                             scope.launch {
                                 runCatching { repository.setNetworkAllowed(app, allowed) }
                                     .onSuccess { error = null }
-                                    .onFailure { error = "Không lưu được cấu hình tường lửa" }
+                                    .onFailure { error = strings.getString(L10n.string.firewall_save_failed) }
                             }
                         }
                     } else if (app.uid in blockedUids) {
                         AppGroupContent {
                             AppHint(
-                                "Mạng đang bị chặn trong tab Tường lửa. Cấu hình lọc sẽ áp dụng khi cho phép mạng lại."
+                                strings.getString(L10n.string.network_blocked_policy_hint)
                             )
                         }
                     }
                     if (!firewallOnly) {
                         AppSwitchPreference(
-                            "Lọc HTTPS",
-                            "Cần cài CA",
+                            strings.getString(L10n.string.https_filtering),
+                            strings.getString(L10n.string.ca_required),
                             app.packageName in https.apps,
                         ) { checked ->
                             scope.launch {
@@ -115,11 +118,11 @@ fun AppsScreen(
                                         )
                                     )
                                 }
-                                    .onFailure { error = it.message }
+                                    .onFailure { error = it.userMessage(strings) }
                             }
                         }
                         AppChoicePreference(
-                            "Chính sách · ${app.label}",
+                            strings.getString(L10n.string.app_policy_title, app.label),
                             modeTitles,
                             (policies[app.packageName] ?: AppFilterMode.Filter).ordinal,
                         ) { index ->
@@ -127,7 +130,7 @@ fun AppsScreen(
                                 runCatching {
                                     repository.setMode(app, AppFilterMode.entries[index])
                                 }
-                                    .onFailure { error = "Không lưu được chính sách ứng dụng" }
+                                    .onFailure { error = strings.getString(L10n.string.app_policy_save_failed) }
                             }
                         }
                     }

@@ -1,5 +1,7 @@
 package com.utc.color.blockads.feature.settings
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -17,6 +19,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun rememberGitHubUpdateContent(): @Composable () -> Unit {
+    val strings = rememberAppStrings()
     val context = LocalContext.current
     val repository = remember(context) { GitHubUpdateRepository(context) }
     val scope = rememberCoroutineScope()
@@ -39,39 +42,39 @@ internal fun rememberGitHubUpdateContent(): @Composable () -> Unit {
                 }
             )
         }
-            .onFailure { message = it.message ?: "Không mở được trình cài đặt" }
+            .onFailure { message = it.userMessage(strings) ?: strings.getString(L10n.string.installer_open_failed) }
     }
     val installPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (context.packageManager.canRequestPackageInstalls()) install()
             else
                 message =
-                    "Cần cho phép BlockAds cài ứng dụng để cập nhật. APK đã tải vẫn được giữ lại."
+                    strings.getString(L10n.string.install_permission_required)
         }
 
     return {
-        AppSectionTitle("Cập nhật ứng dụng")
+        AppSectionTitle(strings.getString(L10n.string.app_updates))
         AppPreferenceGroup {
             AppArrowPreference(
-                "Kiểm tra cập nhật GitHub",
-                if (busy) "Đang xử lý…" else "Đang dùng ${repository.currentVersion}",
+                strings.getString(L10n.string.check_github_updates),
+                if (busy) strings.getString(L10n.string.processing) else strings.getString(L10n.string.current_version, repository.currentVersion),
             ) {
                 if (!busy)
                     scope.launch {
                         busy = true
-                        message = "Đang kiểm tra bản phát hành…"
+                        message = strings.getString(L10n.string.checking_releases)
                         try {
                             update = repository.check()
                             downloaded = null
                             message =
                                 if (update == null)
-                                    "Bạn đang dùng bản mới nhất hoặc GitHub chưa có bản phát hành."
+                                    strings.getString(L10n.string.no_update)
                                 else
-                                    "Có bản ${update!!.versionName} · ${"%.1f".format(update!!.size / 1048576.0)} MB"
+                                    strings.getString(L10n.string.update_available, update!!.versionName, "%.1f".format(update!!.size / 1048576.0))
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (error: Exception) {
-                            message = error.message ?: "Không kiểm tra được cập nhật"
+                            message = error.userMessage(strings) ?: strings.getString(L10n.string.update_check_failed)
                         } finally {
                             busy = false
                         }
@@ -83,9 +86,9 @@ internal fun rememberGitHubUpdateContent(): @Composable () -> Unit {
                     val available = update
                     if (available != null) {
                         AppAction(
-                            if (downloaded != null) "Cài đặt bản cập nhật"
-                            else if (busy) "Đang tải $progress%"
-                            else "Tải bản ${available.versionName}",
+                            if (downloaded != null) strings.getString(L10n.string.install_update)
+                            else if (busy) strings.getString(L10n.string.download_progress, progress)
+                            else strings.getString(L10n.string.download_version, available.versionName),
                             primary = true,
                         ) {
                             if (!busy) {
@@ -102,22 +105,22 @@ internal fun rememberGitHubUpdateContent(): @Composable () -> Unit {
                                             )
                                         }
                                             .onFailure {
-                                                message = "Không mở được quyền cài ứng dụng"
+                                                message = strings.getString(L10n.string.install_permission_open_failed)
                                             }
                                 } else
                                     scope.launch {
                                         busy = true
                                         progress = 0
-                                        message = "Đang tải APK từ GitHub…"
+                                        message = strings.getString(L10n.string.downloading_apk)
                                         try {
                                             downloaded =
                                                 repository.download(available) { progress = it }
                                             message =
-                                                "Đã tải và xác minh APK. Nhấn cài đặt để cập nhật."
+                                                strings.getString(L10n.string.apk_ready)
                                         } catch (cancelled: CancellationException) {
                                             throw cancelled
                                         } catch (error: Exception) {
-                                            message = error.message ?: "Tải bản cập nhật thất bại"
+                                            message = error.userMessage(strings) ?: strings.getString(L10n.string.update_download_failed)
                                         } finally {
                                             busy = false
                                         }
@@ -126,13 +129,13 @@ internal fun rememberGitHubUpdateContent(): @Composable () -> Unit {
                         }
                     }
                 }
-            AppArrowPreference("Xem trên GitHub", "Lịch sử phiên bản và APK") {
+            AppArrowPreference(strings.getString(L10n.string.view_github), strings.getString(L10n.string.release_history)) {
                 runCatching {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse(GitHubUpdateRepository.ReleasesUrl))
                     )
                 }
-                    .onFailure { message = "Không mở được GitHub" }
+                    .onFailure { message = strings.getString(L10n.string.github_open_failed) }
             }
         }
     }

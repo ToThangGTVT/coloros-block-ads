@@ -1,9 +1,10 @@
 package com.utc.color.blockads.core.common
 
-enum class AppFilterMode(val title: String) {
-    Filter("Lọc"),
-    BypassFiltering("Bỏ qua lọc"),
-    BypassTunnel("Bỏ qua tunnel"),
+import com.utc.color.blockads.core.common.R as L10n
+enum class AppFilterMode(val titleRes: Int) {
+    Filter(L10n.string.mode_filter),
+    BypassFiltering(L10n.string.mode_bypass_filtering),
+    BypassTunnel(L10n.string.mode_bypass_tunnel),
 }
 
 data class InstalledApp(

@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.tunnel
 
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -38,7 +39,7 @@ class TunnelController(context: Context) {
             TunnelRuntime.state.value =
                 TunnelState(
                     TunnelStatus.Error,
-                    "Không thể khởi động dịch vụ VPN từ trạng thái hiện tại.",
+                    context.getString(L10n.string.vpn_start_failed),
                 )
         }
     }

@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.data
 
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -62,10 +63,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         require(
             value.apps.size <= 100
         ) {
-            "Danh sách HTTPS quá dài"
+            localizedError(L10n.string.https_list_too_long)
         }
         require(value.apps.all { it.matches(Regex("[A-Za-z0-9_.]+")) }) {
-            "Package ứng dụng không hợp lệ"
+            localizedError(L10n.string.package_invalid)
         }
         store.edit {
             it[Https] =
@@ -105,13 +106,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     private fun parseBlockedApps(json: String?): Set<String> {
         val array = JSONArray(json ?: "[]")
-        require(array.length() <= 2000) { "Tối đa 2000 ứng dụng trong tường lửa" }
+        require(array.length() <= 2000) { localizedError(L10n.string.firewall_app_limit) }
         return (0 until array.length())
             .map { array.getString(it) }
             .toSet()
             .also { packages ->
                 require(packages.all { it.matches(Regex("[A-Za-z0-9_.]+")) }) {
-                    "Package ứng dụng trong tường lửa không hợp lệ"
+                    localizedError(L10n.string.firewall_package_invalid)
                 }
             }
     }
@@ -121,7 +122,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { prefs ->
             val blocked = parseBlockedApps(prefs[BlockedApps]).toMutableSet()
             if (allowed) blocked.removeAll(packages.toSet()) else blocked.addAll(packages)
-            require(blocked.size <= 2000) { "Tối đa 2000 ứng dụng trong tường lửa" }
+            require(blocked.size <= 2000) { localizedError(L10n.string.firewall_app_limit) }
             prefs[BlockedApps] = JSONArray(blocked.sorted()).toString()
         }
     }
@@ -272,11 +273,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
      * All fields are validated before one atomic edit. FilterRepository validates custom syntax.
      */
     suspend fun importConfiguration(text: String) {
-        require(text.length <= 2 * 1024 * 1024) { "Cấu hình vượt quá 2 MB" }
+        require(text.length <= 2 * 1024 * 1024) { localizedError(L10n.string.configuration_too_large) }
         val json = JSONObject(text)
-        require(json.getInt("schema") == 1) { "Phiên bản cấu hình không hỗ trợ" }
+        require(json.getInt("schema") == 1) { localizedError(L10n.string.configuration_version_unsupported) }
         require((json.optString(CustomRules.name)).length <= 1024 * 1024) {
-            "Custom rules vượt quá 1 MB"
+            localizedError(L10n.string.custom_rules_too_large)
         }
         val dns =
             DnsSettings(
@@ -289,24 +290,24 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         if (dns.upstream == DnsUpstream.Custom) parseDnsEndpoint(dns.customUrl, dns.customBootstrap)
         ThemeMode.valueOf(json.optString(ThemeKey.name, "System"))
         val retention = json.optInt(Retention.name, 7)
-        require(retention in listOf(1, 7, 30)) { "Thời gian giữ log không hợp lệ" }
+        require(retention in listOf(1, 7, 30)) { localizedError(L10n.string.retention_invalid) }
         if (json.has(Lists.name)) org.json.JSONArray(json.getString(Lists.name))
         if (json.has(AppPolicies.name)) org.json.JSONObject(json.getString(AppPolicies.name))
         parseBlockedApps(if (json.has(BlockedApps.name)) json.getString(BlockedApps.name) else null)
         val lists = parseLists(json.optString(Lists.name).takeIf { it.isNotBlank() })
-        require(lists.size <= 30) { "Tối đa 30 danh sách" }
+        require(lists.size <= 30) { localizedError(L10n.string.filter_list_limit) }
         lists.forEach { list ->
-            require(list.id.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { "ID danh sách không hợp lệ" }
+            require(list.id.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { localizedError(L10n.string.filter_id_invalid) }
             val url = java.net.URI(list.url)
             require(url.scheme == "https" && !url.host.isNullOrBlank() && url.userInfo == null) {
-                "Filter cần URL HTTPS"
+                localizedError(L10n.string.filter_https_required)
             }
         }
         val policies = parsePolicies(json.optString(AppPolicies.name))
         require(
             policies.size <= 2000 && policies.keys.all { it.matches(Regex("[A-Za-z0-9_.]+")) }
         ) {
-            "Chính sách ứng dụng không hợp lệ"
+            localizedError(L10n.string.app_policy_invalid)
         }
         // Imported download metadata must not reference cached files for a different URL.
         val cleanLists = JSONArray()
@@ -375,7 +376,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 ),
                 FilterList(
                     "abpvn",
-                    "ABPVN · Tiếng Việt",
+                    "ABPVN",
                     "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn.txt",
                     browser = true,
                 ),

@@ -1,19 +1,20 @@
 package com.utc.color.blockads.core.common
 
+import com.utc.color.blockads.core.common.R as L10n
 enum class DnsUpstream(
-    val title: String,
+    val titleRes: Int,
     val protocol: String,
     val ip: String = "",
     val serverName: String = "",
 ) {
-    System("DNS của mạng", "system"),
-    Cloudflare("Cloudflare · UDP", "udp", "1.1.1.1"),
-    CloudflareDoH("Cloudflare · DoH", "https", "1.1.1.1", "cloudflare-dns.com"),
-    CloudflareDoT("Cloudflare · DoT", "tls", "1.1.1.1", "one.one.one.one"),
-    Quad9("Quad9 · UDP", "udp", "9.9.9.9"),
-    AdGuardDoH("AdGuard · DoH", "https", "94.140.14.14", "dns.adguard-dns.com"),
-    AdGuardDoQ("AdGuard · DoQ", "quic", "94.140.14.14", "dns.adguard-dns.com"),
-    Custom("Tùy chỉnh DoH / DoT", "custom"),
+    System(L10n.string.dns_network, "system"),
+    Cloudflare(L10n.string.dns_cloudflare_udp, "udp", "1.1.1.1"),
+    CloudflareDoH(L10n.string.dns_cloudflare_doh, "https", "1.1.1.1", "cloudflare-dns.com"),
+    CloudflareDoT(L10n.string.dns_cloudflare_dot, "tls", "1.1.1.1", "one.one.one.one"),
+    Quad9(L10n.string.dns_quad9_udp, "udp", "9.9.9.9"),
+    AdGuardDoH(L10n.string.dns_adguard_doh, "https", "94.140.14.14", "dns.adguard-dns.com"),
+    AdGuardDoQ(L10n.string.dns_adguard_doq, "quic", "94.140.14.14", "dns.adguard-dns.com"),
+    Custom(L10n.string.dns_custom, "custom"),
 }
 
 enum class BlockResponse {
@@ -55,7 +56,7 @@ data class DnsEndpoint(
 )
 
 fun parseDnsEndpoint(url: String, bootstrap: String): DnsEndpoint {
-    require(url.length <= 2048 && bootstrap.length <= 64) { "Địa chỉ DNS quá dài" }
+    require(url.length <= 2048 && bootstrap.length <= 64) { localizedError(L10n.string.dns_address_too_long) }
     val uri = java.net.URI(url.trim())
     require(
         uri.scheme in listOf("https", "tls") &&
@@ -63,7 +64,7 @@ fun parseDnsEndpoint(url: String, bootstrap: String): DnsEndpoint {
             uri.userInfo == null &&
             uri.fragment == null
     ) {
-        "Cần URL https:// (DoH) hoặc tls:// (DoT) hợp lệ"
+        localizedError(L10n.string.dns_url_invalid)
     }
     val ipv4 =
         bootstrap.split('.').let {
@@ -83,11 +84,11 @@ fun parseDnsEndpoint(url: String, bootstrap: String): DnsEndpoint {
                         java.net.InetAddress.getByName(bootstrap) is java.net.Inet6Address
                 }
                 .getOrDefault(false)
-    require(ipv4 || ipv6) { "Cần IP bootstrap cố định để tránh DNS loop" }
+    require(ipv4 || ipv6) { localizedError(L10n.string.dns_bootstrap_invalid) }
     val port = if (uri.port == -1) if (uri.scheme == "https") 443 else 853 else uri.port
-    require(port in 1..65535) { "Port không hợp lệ" }
+    require(port in 1..65535) { localizedError(L10n.string.port_invalid) }
     require(uri.scheme != "tls" || (uri.path.orEmpty().isEmpty() && uri.query == null)) {
-        "DoT không dùng path/query"
+        localizedError(L10n.string.dot_path_invalid)
     }
     return DnsEndpoint(
         if (uri.scheme == "https") "https" else "tls",

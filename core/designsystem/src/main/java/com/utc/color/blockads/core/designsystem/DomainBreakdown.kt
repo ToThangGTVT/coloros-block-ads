@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -22,10 +23,11 @@ import java.text.NumberFormat
 /** One proportional bar and a matching legend for the displayed top domains. */
 @Composable
 fun AppDomainBreakdown(domains: List<Pair<String, Long>>, otherCount: Long = 0) {
+    val strings = rememberAppStrings()
     val namedEntries = domains.filter { it.second > 0 }
-    val entries = namedEntries + if (otherCount > 0) listOf("Khác" to otherCount) else emptyList()
+    val entries = namedEntries + if (otherCount > 0) listOf(strings.getString(L10n.string.other) to otherCount) else emptyList()
     if (entries.isEmpty()) {
-        AppCard { AppHint("Chưa có") }
+        AppCard { AppHint(strings.getString(L10n.string.none_yet)) }
         return
     }
     val palette = COUITheme.colorScheme
@@ -36,7 +38,7 @@ fun AppDomainBreakdown(domains: List<Pair<String, Long>>, otherCount: Long = 0) 
             else lerp(mutedBlue, palette.surface, (0.08f + index * 0.13f).coerceAtMost(0.6f))
         }
     }
-    val number = remember { NumberFormat.getIntegerInstance() }
+    val number = remember(strings.configuration.locales[0]) { NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
     val total = entries.sumOf { it.second.toDouble() }
     AppPreferenceGroup {
         Row(
@@ -45,9 +47,9 @@ fun AppDomainBreakdown(domains: List<Pair<String, Long>>, otherCount: Long = 0) 
                 .height(20.dp)
                 .clip(RoundedCornerShape(50))
                 .semantics {
-                    contentDescription = "Tỷ trọng trong các tên miền bị chặn nhiều nhất: " +
+                    contentDescription = strings.getString(L10n.string.domain_breakdown_description) +
                         entries.joinToString("; ") { (domain, count) ->
-                            "$domain ${number.format(count)} lượt"
+                            strings.getQuantityString(L10n.plurals.domain_requests, count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), domain, number.format(count))
                         }
                 },
         ) {

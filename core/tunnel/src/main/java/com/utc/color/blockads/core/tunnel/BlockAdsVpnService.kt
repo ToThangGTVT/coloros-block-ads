@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.tunnel
 
+import com.utc.color.blockads.core.common.R as L10n
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -53,16 +54,17 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
     private var snapshot: UnderlyingNetwork? = null
     private var excludedPackages: Set<String>? = null
     @Volatile private var liveUpdatesEnabled = false
-    @Volatile private var lastNotificationText = "Đang kết nối VPN…"
+    @Volatile private var lastNotificationText = ""
 
     override fun onCreate() {
         super.onCreate()
+        lastNotificationText = getString(L10n.string.vpn_connecting)
         engine.setDnsEventSink(
             com.utc.color.blockads.core.enginebridge.DnsEventSink(queries::onDnsEvents)
         )
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(
-                NotificationChannel(ChannelId, "Tunnel VPN", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(ChannelId, getString(L10n.string.vpn_channel), NotificationManager.IMPORTANCE_LOW)
             )
         scope.launch {
             settings.liveUpdates.collect { enabled ->
@@ -83,8 +85,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                         .notify(
                             NotificationId,
                             notification(
-                                if (status.loaded > 0) "Đang bảo vệ · ${status.loaded} rule"
-                                else "VPN đang bật · Chưa có rule"
+                                if (status.loaded > 0) resources.getQuantityString(L10n.plurals.protecting_rules, status.loaded, status.loaded)
+                                else getString(L10n.string.vpn_no_rules)
                             ),
                         )
                 }
@@ -98,8 +100,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                         .notify(
                             NotificationId,
                             notification(
-                                if (filters.status.value.loaded > 0) "VPN đang bảo vệ"
-                                else "VPN đang bật · Chưa có rule"
+                                if (filters.status.value.loaded > 0) getString(L10n.string.vpn_protecting)
+                                else getString(L10n.string.vpn_no_rules)
                             ),
                         )
             }
@@ -133,7 +135,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                     shutdown(
                         TunnelState(
                             TunnelStatus.Error,
-                            "Kết nối VPN bị gián đoạn. Hãy bật lại VPN.",
+                            getString(L10n.string.vpn_interrupted),
                         )
                     )
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -163,10 +165,10 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             val type =
                 if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
                 else 0
-            startForeground(NotificationId, notification("Đang kết nối VPN…"), type)
+            startForeground(NotificationId, notification(getString(L10n.string.vpn_connecting)), type)
         } catch (_: RuntimeException) {
             TunnelRuntime.state.value =
-                TunnelState(TunnelStatus.Error, "Không thể chạy dịch vụ VPN nền.")
+                TunnelState(TunnelStatus.Error, getString(L10n.string.vpn_background_failed))
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
@@ -246,7 +248,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                             shutdown(
                                 TunnelState(
                                     TunnelStatus.Error,
-                                    "Tunnel đã dừng ngoài dự kiến. Hãy bật lại VPN.",
+                                    getString(L10n.string.vpn_stopped_unexpectedly),
                                 )
                             )
                             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -260,7 +262,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             shutdown(
                 TunnelState(
                     TunnelStatus.Error,
-                    "Không thể mở VPN. Kiểm tra quyền hoặc VPN luôn bật của ứng dụng khác.",
+                    getString(L10n.string.vpn_open_failed),
                 )
             )
             if (lastStartId == startId) {
@@ -295,9 +297,9 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                 notification(
                     if (connected)
                         if (filters.status.value.loaded > 0)
-                            "Đang bảo vệ · ${filters.status.value.loaded} rule"
-                        else "VPN đang bật · Chưa có rule"
-                    else "Đang chờ kết nối mạng…"
+                            resources.getQuantityString(L10n.plurals.protecting_rules, filters.status.value.loaded, filters.status.value.loaded)
+                        else getString(L10n.string.vpn_no_rules)
+                    else getString(L10n.string.network_waiting)
                 ),
             )
     }
@@ -340,7 +342,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             shutdown(
                 TunnelState(
                     TunnelStatus.Revoked,
-                    "Quyền VPN đã bị thu hồi hoặc một VPN khác đã thay thế.",
+                    getString(L10n.string.vpn_revoked_detail),
                 )
             )
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -361,6 +363,30 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         underlying = null
         snapshot = null
         TunnelRuntime.state.value = state
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(ChannelId, getString(L10n.string.vpn_channel), NotificationManager.IMPORTANCE_LOW)
+        )
+        scope.launch {
+            gate.withLock {
+                if (engine.isRunning()) {
+                    val text = when (TunnelRuntime.state.value.status) {
+                        TunnelStatus.Connected -> {
+                            val count = filters.status.value.loaded
+                            if (count > 0) resources.getQuantityString(L10n.plurals.protecting_rules, count, count)
+                            else getString(L10n.string.vpn_no_rules)
+                        }
+                        TunnelStatus.Reconnecting -> getString(L10n.string.network_waiting)
+                        else -> getString(L10n.string.vpn_connecting)
+                    }
+                    manager.notify(NotificationId, notification(text))
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -387,21 +413,21 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
         val allowed = total - blocked
         val blockedRatio = if (total > 0) blocked.toDouble() / total else 0.0
         val allowedRatio = if (total > 0) allowed.toDouble() / total else 0.0
-        val numbers = java.text.NumberFormat.getIntegerInstance()
-        val percent = java.text.NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 }
+        val numbers = java.text.NumberFormat.getIntegerInstance(resources.configuration.locales[0])
+        val percent = java.text.NumberFormat.getPercentInstance(resources.configuration.locales[0]).apply { maximumFractionDigits = 1 }
         val blockedPercent = percent.format(blockedRatio)
-        val counters = SpannableStringBuilder("Hôm nay · ")
+        val counters = SpannableStringBuilder(getString(L10n.string.today_prefix))
         fun appendCount(value: Long, ratio: Double, label: String, color: Int) {
             val start = counters.length
             counters.append(numbers.format(value)).append(" ").append(label)
                 .append(" (").append(percent.format(ratio)).append(")")
             counters.setSpan(ForegroundColorSpan(color), start, counters.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        appendCount(allowed, allowedRatio, "cho qua", 0xFF34865D.toInt())
+        appendCount(allowed, allowedRatio, getString(L10n.string.allowed_lowercase), 0xFF34865D.toInt())
         counters.append(" / ")
-        appendCount(blocked, blockedRatio, "đã chặn", 0xFFB95E57.toInt())
+        appendCount(blocked, blockedRatio, getString(L10n.string.blocked_lowercase), 0xFFB95E57.toInt())
         val compact = android.icu.text.CompactDecimalFormat.getInstance(
-            java.util.Locale.US, android.icu.text.CompactDecimalFormat.CompactStyle.SHORT,
+            resources.configuration.locales[0], android.icu.text.CompactDecimalFormat.CompactStyle.SHORT,
         ).apply { maximumFractionDigits = 0 }
         val launch = packageManager.getLaunchIntentForPackage(packageName)
         val hide = PendingIntent.getService(
@@ -412,7 +438,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             .setSmallIcon(R.drawable.ic_notification_shield)
             .setContentTitle(
                 if (Build.VERSION.SDK_INT >= 36 && liveUpdatesEnabled)
-                    if (total > 0) "BlockAds · Chặn $blockedPercent" else "BlockAds · Chưa có request"
+                    if (total > 0) getString(L10n.string.notification_block_rate, blockedPercent) else getString(L10n.string.notification_no_requests)
                 else "BlockAds"
             )
             .setContentText(counters)
@@ -462,8 +488,8 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
                         setShortCriticalText(
                             when (TunnelRuntime.state.value.status) {
                                 TunnelStatus.Connected -> "${compact.format(allowed)}/${compact.format(blocked)}"
-                                TunnelStatus.Reconnecting -> "Chờ mạng"
-                                else -> "Kết nối"
+                                TunnelStatus.Reconnecting -> getString(L10n.string.network_waiting_short)
+                                else -> getString(L10n.string.connecting_short)
                             }
                         )
                         setDeleteIntent(hide)

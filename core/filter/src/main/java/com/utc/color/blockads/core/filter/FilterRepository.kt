@@ -1,5 +1,7 @@
 package com.utc.color.blockads.core.filter
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
 import android.content.Context
 import com.utc.color.blockads.core.common.*
 import com.utc.color.blockads.core.data.SettingsRepository
@@ -36,7 +38,7 @@ data class CatalogEntry(
 )
 
 class FilterRepository(
-    context: Context,
+    private val context: Context,
     private val settings: SettingsRepository,
     private val engine: EngineBridge,
 ) {
@@ -64,7 +66,7 @@ class FilterRepository(
                             _status.value =
                                 _status.value.copy(
                                     loading = false,
-                                    error = error.message ?: "Không nạp được bộ lọc",
+                                    error = error.userMessage(context.resources) ?: context.getString(L10n.string.filters_load_failed),
                                 )
                         }
                     if (!ready.isCompleted) ready.complete(Unit)
@@ -116,7 +118,7 @@ class FilterRepository(
             check(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
             Fetched(
                 connection.inputStream.use {
-                    readLimited(it, 4 * 1024 * 1024, "Tài nguyên vượt quá 4 MB")
+                    readLimited(it, 4 * 1024 * 1024, context.getString(L10n.string.resources_too_large))
                 },
                 connection.getHeaderField("ETag"),
             )
@@ -146,7 +148,7 @@ class FilterRepository(
                             val temporary = File(directory, "resources-$name.tmp")
                             temporary.writeText(update.content)
                             check(temporary.renameTo(resource(name))) {
-                                "Không lưu được tài nguyên"
+                                context.getString(L10n.string.resources_save_failed)
                             }
                             update.etag?.let { resourceTag(name).writeText(it) }
                                 ?: resourceTag(name).delete()
@@ -199,7 +201,7 @@ class FilterRepository(
         _status.value = _status.value.copy(loading = true, error = null)
         val active = lists.first().filter { it.enabled }
         require(active.sumOf { file(it.id).length() } <= 32L * 1024 * 1024) {
-            "Tổng filter bật vượt quá 32 MB"
+            context.getString(L10n.string.enabled_filters_too_large)
         }
         fun join(browser: Boolean) = buildString {
             active.filter { it.browser == browser }.forEach { list ->
@@ -223,7 +225,7 @@ class FilterRepository(
         }
         val result = JSONObject(engine.replaceRules(dns, browser, custom))
         check(result.optBoolean("applied")) {
-            "Custom rules không hợp lệ: ${result.optJSONArray("errors")}"
+            context.getString(L10n.string.custom_rules_compile_invalid, result.optJSONArray("errors"))
         }
         compiledSignature = signature
         _status.value =
@@ -296,7 +298,7 @@ class FilterRepository(
         connection.instanceFollowRedirects = false
         return try {
             check(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
-            connection.inputStream.use { readLimited(it, 2 * 1024 * 1024, "Danh sách vượt quá 2 MB") }
+            connection.inputStream.use { readLimited(it, 2 * 1024 * 1024, context.getString(L10n.string.list_too_large)) }
         } finally {
             connection.disconnect()
         }
@@ -320,18 +322,18 @@ class FilterRepository(
     suspend fun addUrl(url: String, name: String? = null, browser: Boolean = false) {
         val uri = URI(url.trim())
         require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) {
-            "Cần URL HTTPS hợp lệ"
+            context.getString(L10n.string.https_url_invalid)
         }
         val normalized = uri.toASCIIString()
-        require(normalized.length <= 4096) { "URL quá dài" }
+        require(normalized.length <= 4096) { context.getString(L10n.string.url_too_long) }
         val existing = lists.first()
         existing.firstOrNull { it.url == normalized && it.browser != browser }?.let {
             throw IllegalArgumentException(
-                if (it.browser) "Đã có trong bộ lọc trình duyệt" else "Đã có trong danh sách DNS"
+                if (it.browser) context.getString(L10n.string.browser_filter_exists) else context.getString(L10n.string.dns_filter_exists)
             )
         }
         require(existing.any { it.url == normalized } || existing.size < 30) {
-            "Tối đa 30 danh sách"
+            context.getString(L10n.string.filter_list_limit)
         }
         val id =
             MessageDigest.getInstance("SHA-256").digest(normalized.toByteArray()).joinToString("") {
@@ -392,7 +394,7 @@ class FilterRepository(
                             etag = connection.getHeaderField("ETag")
                             modified = connection.getHeaderField("Last-Modified")
                             connection.inputStream.use {
-                                readLimited(it, 20 * 1024 * 1024, "List vượt quá 20 MB")
+                                readLimited(it, 20 * 1024 * 1024, context.getString(L10n.string.filter_download_too_large))
                             }
                         } finally {
                             connection.disconnect()
@@ -402,10 +404,10 @@ class FilterRepository(
                             if (list.browser) engine.replaceRules("", content, "", apply = false)
                             else engine.replaceRules(content, "", "", apply = false)
                         )
-                    check(compiled.getInt("loaded") > 0) { "List không có quy tắc được hỗ trợ" }
+                    check(compiled.getInt("loaded") > 0) { context.getString(L10n.string.filter_rules_unsupported) }
                     val temporary = File(directory, "$id.tmp")
                     temporary.writeText(content)
-                    check(temporary.renameTo(file(id))) { "Không lưu được filter" }
+                    check(temporary.renameTo(file(id))) { context.getString(L10n.string.filter_save_failed) }
                     settings.editLists { all ->
                         all.map {
                             if (it.id == id)
@@ -423,14 +425,14 @@ class FilterRepository(
                     .onFailure { error ->
                         settings.editLists { all ->
                             all.map {
-                                if (it.id == id) it.copy(error = error.message ?: "Tải thất bại")
+                                if (it.id == id) it.copy(error = error.userMessage(context.resources) ?: context.getString(L10n.string.download_failed))
                                 else it
                             }
                         }
                         _status.value =
                             _status.value.copy(
                                 loading = false,
-                                error = error.message ?: "Tải bộ lọc thất bại",
+                                error = error.userMessage(context.resources) ?: context.getString(L10n.string.filter_download_failed),
                             )
                     }
                 reload()
@@ -442,7 +444,7 @@ class FilterRepository(
         val custom = JSONObject(text).optString("custom_rules", "")
         val validation =
             JSONObject(engine.replaceRules("", "", custom, apply = false)).getJSONArray("errors")
-        require(validation.length() == 0) { "Custom rules không hợp lệ: $validation" }
+        require(validation.length() == 0) { context.getString(L10n.string.custom_rules_invalid, validation) }
         settings.importConfiguration(text)
         reload()
         scope.launch {
@@ -451,13 +453,13 @@ class FilterRepository(
     }
 
     suspend fun saveCustom(text: String) {
-        require(text.length <= 1024 * 1024) { "Custom rules vượt quá 1 MB" }
+        require(text.length <= 1024 * 1024) { context.getString(L10n.string.custom_rules_too_large) }
         val validation =
             JSONObject(engine.replaceRules("", "", text, apply = false)).getJSONArray("errors")
         require(validation.length() == 0) {
             (0 until validation.length()).joinToString("\n") { index ->
                 validation.getJSONObject(index).let {
-                    "Dòng ${it.getInt("line")}: ${it.getString("message")}"
+                    context.getString(L10n.string.custom_rule_line_error, it.getInt("line"), it.getString("message"))
                 }
             }
         }

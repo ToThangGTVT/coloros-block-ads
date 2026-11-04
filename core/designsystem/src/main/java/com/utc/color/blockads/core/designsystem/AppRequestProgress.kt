@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,14 +21,15 @@ import java.text.NumberFormat
 /** A single bar: primary is allowed traffic, red is the blocked share of all requests. */
 @Composable
 fun AppRequestProgress(total: Long, blocked: Long) {
+    val strings = rememberAppStrings()
     val palette = COUITheme.colorScheme
     val totalCount = total.coerceAtLeast(0)
     val blockedCount = blocked.coerceIn(0, totalCount)
     val fraction = if (totalCount == 0L) 0f else (blockedCount.toDouble() / totalCount).toFloat()
-    val number = remember { NumberFormat.getIntegerInstance() }
-    val percent = remember { NumberFormat.getPercentInstance().apply { maximumFractionDigits = 1 } }
-    val totalLabel = "${number.format(totalCount)} yêu cầu"
-    val blockedLabel = "${number.format(blockedCount)} đã chặn · ${percent.format(fraction)}"
+    val number = remember(strings.configuration.locales[0]) { NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
+    val percent = remember(strings.configuration.locales[0]) { NumberFormat.getPercentInstance(strings.configuration.locales[0]).apply { maximumFractionDigits = 1 } }
+    val totalLabel = strings.getQuantityString(L10n.plurals.requests_count, totalCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), number.format(totalCount))
+    val blockedLabel = strings.getString(L10n.string.blocked_count_percent, number.format(blockedCount), percent.format(fraction))
 
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.gap)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap)) {

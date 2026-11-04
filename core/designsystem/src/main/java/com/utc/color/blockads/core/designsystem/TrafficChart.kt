@@ -1,5 +1,6 @@
 package com.utc.color.blockads.core.designsystem
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
@@ -24,8 +25,9 @@ import kotlin.math.roundToInt
 /** MPAndroidChart is isolated here; every visual token comes from COUI. */
 @Composable
 fun AppTrafficChart(days: List<TrafficDay>) {
+    val strings = rememberAppStrings()
     if (days.isEmpty()) {
-        AppText("Đang tải thống kê…")
+        AppText(strings.getString(L10n.string.statistics_loading))
         return
     }
     val palette = COUITheme.colorScheme
@@ -34,14 +36,14 @@ fun AppTrafficChart(days: List<TrafficDay>) {
     val textSize = style.fontSize.value * LocalDensity.current.fontScale
     fun format(pattern: String) =
         days.map {
-            DateTimeFormatter.ofPattern(pattern, java.util.Locale.ENGLISH)
+            DateTimeFormatter.ofPattern(pattern, strings.configuration.locales[0])
                 .format(Instant.ofEpochMilli(it.day).atZone(ZoneId.systemDefault()))
         }
     // Axis shows weekdays (Mon, Tue, …); the accessibility text keeps the full date.
-    val labels = remember(days) { format("EEE") }
-    val dates = remember(days) { format("dd/MM") }
+    val labels = remember(days, strings.configuration.locales[0]) { format("EEE") }
+    val dates = remember(days, strings.configuration.locales[0]) { format("dd/MM") }
     val series =
-        remember(days, palette.primary, palette.error) {
+        remember(days, palette.primary, palette.error, strings.configuration.locales[0]) {
             // Total first so the blocked area, always within it, is drawn on top.
             fun area(label: String, color: androidx.compose.ui.graphics.Color, value: (TrafficDay) -> Long) =
                 LineDataSet(
@@ -69,18 +71,18 @@ fun AppTrafficChart(days: List<TrafficDay>) {
                             )
                     }
             LineData(
-                area("Tất cả", palette.primary) { it.total },
-                area("Đã chặn", palette.error) { it.blocked },
+                area(strings.getString(L10n.string.all), palette.primary) { it.total },
+                area(strings.getString(L10n.string.blocked), palette.error) { it.blocked },
             )
         }
     LineChart(
         data = series,
         modifier = Modifier.fillMaxWidth().height(AppSpacing.page * 12),
         contentDescription =
-            "Thống kê 7 ngày: " +
+            strings.getString(L10n.string.traffic_week_description) +
                 days
                     .mapIndexed { index, day ->
-                        "${dates[index]} tổng ${day.total}, chặn ${day.blocked}"
+                        strings.getString(L10n.string.traffic_day_description, dates[index], day.total, day.blocked)
                     }
                     .joinToString("; "),
         setup = {

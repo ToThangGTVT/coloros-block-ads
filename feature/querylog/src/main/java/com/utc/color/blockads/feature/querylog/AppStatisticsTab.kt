@@ -1,5 +1,6 @@
 package com.utc.color.blockads.feature.querylog
 
+import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,7 @@ import com.utc.color.blockads.core.designsystem.*
 
 @Composable
 internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsRepository) {
+    val strings = rememberAppStrings()
     var period by rememberSaveable { mutableIntStateOf(0) }
     val hours = if (period == 0) 24 else 168
     val historyFlow = remember(repository, hours) { repository.appStatistics(hours) }
@@ -50,8 +52,8 @@ internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsReposito
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
         ) {
             AppChoicePreference(
-                "Thời gian",
-                listOf("24 giờ", "7 ngày"),
+                strings.getString(L10n.string.time_range),
+                listOf(strings.getString(L10n.string.last_day), strings.getString(L10n.string.seven_days)),
                 period,
                 compact = true,
                 showSelectedValue = true,
@@ -60,8 +62,8 @@ internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsReposito
                 period = it
             }
             AppChoicePreference(
-                "Sắp xếp theo",
-                listOf("Nhiều request", "Nhiều lượt chặn"),
+                strings.getString(L10n.string.sort_by),
+                listOf(strings.getString(L10n.string.most_requests), strings.getString(L10n.string.most_blocks)),
                 sort,
                 compact = true,
                 showSelectedValue = true,
@@ -70,13 +72,13 @@ internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsReposito
                 sort = it
             }
         }
-        AppHint("Dựa trên nhật ký còn lưu trong khoảng đã chọn. Các app cùng UID được tính chung.")
+        AppHint(strings.getString(L10n.string.app_statistics_hint))
         Spacer(Modifier.height(AppSpacing.gap))
         if (ranked.isEmpty())
             AppCard {
                 AppHint(
-                    if (history == null) "Đang tải thống kê…"
-                    else "Chưa có nhật ký trong khoảng này."
+                    if (history == null) strings.getString(L10n.string.statistics_loading)
+                    else strings.getString(L10n.string.logs_period_empty)
                 )
             }
         LazyColumn(
@@ -90,7 +92,7 @@ internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsReposito
                 val label =
                     matches
                         .joinToString { it.label }
-                        .ifBlank { item.uid?.let { "UID $it" } ?: "Chưa xác định" }
+                        .ifBlank { item.uid?.let { "UID $it" } ?: strings.getString(L10n.string.unknown) }
                 val icon by
                     produceState(app?.let { apps.cachedIcon(it.packageName) }, app?.packageName) {
                         value = app?.let { apps.icon(it.packageName) }

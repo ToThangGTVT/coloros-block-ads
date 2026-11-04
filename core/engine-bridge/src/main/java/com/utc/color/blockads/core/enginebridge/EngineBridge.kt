@@ -1,5 +1,7 @@
 package com.utc.color.blockads.core.enginebridge
 
+import com.utc.color.blockads.core.common.R as L10n
+import com.utc.color.blockads.core.common.localizedError
 class EngineBridge {
     fun supportsHttps(): Boolean =
         try {
@@ -11,7 +13,7 @@ class EngineBridge {
     private external fun nativeHttpsApiVersion(): Int
 
     fun generateCa(signer: RootCaSigner, publicPoint: ByteArray): ByteArray =
-        nativeGenerateCa(signer, publicPoint) ?: error("Không tạo được chứng chỉ CA")
+        nativeGenerateCa(signer, publicPoint) ?: error(localizedError(L10n.string.ca_create_failed))
 
     fun setCa(
         signer: RootCaSigner?,
@@ -56,7 +58,7 @@ class EngineBridge {
      * the previous set stays active.
      */
     fun setResources(scriptlets: String, redirects: String): String =
-        nativeSetResources(scriptlets, redirects) ?: error("Không nạp được tài nguyên")
+        nativeSetResources(scriptlets, redirects) ?: error(localizedError(L10n.string.resources_load_failed))
 
     private external fun nativeSetResources(scriptlets: String, redirects: String): String?
 

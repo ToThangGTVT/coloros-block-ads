@@ -36,8 +36,8 @@ class HomeLogProfile {
         ) {
             pressHome()
             startActivityAndWait()
-            check(device.wait(Until.hasObject(By.desc("Nhật ký")), 10000))
-            device.findObject(By.desc("Nhật ký")).click()
+            check(device.wait(Until.hasObject(By.desc(java.util.regex.Pattern.compile("Nhật ký|Log"))), 10000))
+            device.findObject(By.desc(java.util.regex.Pattern.compile("Nhật ký|Log"))).click()
             check(device.wait(Until.hasObject(By.textContains("profile.test")), 10000))
             repeat(4) {
                 device.swipe(
@@ -48,7 +48,7 @@ class HomeLogProfile {
                     20,
                 )
             }
-            device.findObject(By.desc("Trang chủ")).click()
+            device.findObject(By.desc(java.util.regex.Pattern.compile("Trang chủ|Home"))).click()
         }
     }
 }

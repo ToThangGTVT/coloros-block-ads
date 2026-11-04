@@ -1,5 +1,9 @@
 package com.utc.color.blockads.feature.settings
 
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.common.R as L10n
+import android.app.LocaleManager
+import android.os.LocaleList
 import android.content.Intent
 import android.Manifest
 import android.app.NotificationManager
@@ -32,18 +36,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val themeLabels = listOf("Theo hệ thống", "Sáng", "Tối", "Monet")
-
-private val DnsUpstream.description: String
+private val DnsUpstream.descriptionRes: Int
     get() = when (this) {
-        DnsUpstream.System -> "Dùng DNS do Wi-Fi hoặc mạng di động cung cấp."
-        DnsUpstream.Cloudflare -> "1.1.1.1 · DNS thông thường, không mã hóa."
-        DnsUpstream.CloudflareDoH -> "1.1.1.1 · Mã hóa truy vấn DNS qua HTTPS (DoH)."
-        DnsUpstream.CloudflareDoT -> "1.1.1.1 · Mã hóa truy vấn DNS qua TLS (DoT)."
-        DnsUpstream.Quad9 -> "9.9.9.9 · DNS thông thường, không mã hóa."
-        DnsUpstream.AdGuardDoH -> "94.140.14.14 · Mã hóa truy vấn DNS qua HTTPS (DoH)."
-        DnsUpstream.AdGuardDoQ -> "94.140.14.14 · Mã hóa truy vấn DNS qua QUIC (DoQ)."
-        DnsUpstream.Custom -> "Nhập URL DoH / DoT và IP máy chủ để kết nối với DNS riêng."
+        DnsUpstream.System -> L10n.string.dns_system_description
+        DnsUpstream.Cloudflare -> L10n.string.dns_cloudflare_description
+        DnsUpstream.CloudflareDoH -> L10n.string.dns_cloudflare_doh_description
+        DnsUpstream.CloudflareDoT -> L10n.string.dns_cloudflare_dot_description
+        DnsUpstream.Quad9 -> L10n.string.dns_quad9_description
+        DnsUpstream.AdGuardDoH -> L10n.string.dns_adguard_doh_description
+        DnsUpstream.AdGuardDoQ -> L10n.string.dns_adguard_doq_description
+        DnsUpstream.Custom -> L10n.string.dns_custom_description
     }
 
 @Composable
@@ -58,6 +60,7 @@ fun SettingsScreen(
     filters: FilterRepository,
     queries: QueryLogRepository,
 ) {
+    val strings = rememberAppStrings()
     val dns by settings.dns.collectAsStateWithLifecycle(initialValue = DnsSettings())
     val blockQuic by settings.blockQuic.collectAsStateWithLifecycle(initialValue = true)
     val autoStart by settings.autoStart.collectAsStateWithLifecycle(initialValue = false)
@@ -66,6 +69,9 @@ fun SettingsScreen(
     val retention by settings.logRetentionDays.collectAsStateWithLifecycle(initialValue = 7)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val localeManager = remember(context) { context.getSystemService(LocaleManager::class.java) }
+    val languageTags = listOf("", "vi", "en")
+    val appLanguage = localeManager.applicationLocales.let { if (it.isEmpty) "" else it[0].language }
     val notificationManager = remember(context) { context.getSystemService(NotificationManager::class.java) }
     var notificationsAllowed by remember { mutableStateOf(notificationManager.areNotificationsEnabled()) }
     var promotionAllowed by remember {
@@ -102,7 +108,7 @@ fun SettingsScreen(
         scope.launch {
             runCatching { block() }
                 .onSuccess { feedback = success }
-                .onFailure { feedback = it.message ?: "Thao tác thất bại" }
+                .onFailure { feedback = it.userMessage(strings) ?: strings.getString(L10n.string.settings_action_failed) }
         }
     }
     val export =
@@ -110,25 +116,25 @@ fun SettingsScreen(
             ActivityResultContracts.CreateDocument("application/json")
         ) { uri ->
             if (uri != null)
-                action("Đã xuất cấu hình") {
+                action(strings.getString(L10n.string.configuration_exported)) {
                     withContext(Dispatchers.IO) {
                         val json = settings.exportConfiguration()
                         context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
                             it.write(json)
-                        } ?: error("Không mở được file")
+                        } ?: error(strings.getString(L10n.string.file_open_failed))
                     }
                 }
         }
     val import =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null)
-                action("Đã nhập cấu hình") {
+                action(strings.getString(L10n.string.configuration_imported)) {
                     withContext(Dispatchers.IO) {
                         val bytes =
                             context.contentResolver.openInputStream(uri)?.use {
                                 it.readNBytes(2 * 1024 * 1024 + 1)
-                            } ?: error("Không mở được file")
-                        require(bytes.size <= 2 * 1024 * 1024) { "File vượt quá 2 MB" }
+                            } ?: error(strings.getString(L10n.string.file_open_failed))
+                        require(bytes.size <= 2 * 1024 * 1024) { strings.getString(L10n.string.file_too_large) }
                         filters.importConfiguration(bytes.toString(Charsets.UTF_8))
                     }
                 }
@@ -139,14 +145,14 @@ fun SettingsScreen(
             feedback?.let { AppCard { AppText(it) } }
         }
         item(key = "settings-1", contentType = "settings-section") {
-            AppSectionTitle("Bảo vệ")
+            AppSectionTitle(strings.getString(L10n.string.protection))
         }
         item(key = "settings-2", contentType = "settings-section") {
             AppPreferenceGroup {
                 AppSwitchPreference(
-                    "Ưu tiên chạy ngầm",
-                    if (backgroundAllowed) "Đã miễn tối ưu hóa pin cho BlockAds"
-                    else "Miễn tối ưu hóa pin để VPN tiếp tục bảo vệ khi tắt màn hình",
+                    strings.getString(L10n.string.background_priority),
+                    if (backgroundAllowed) strings.getString(L10n.string.battery_exempt)
+                    else strings.getString(L10n.string.battery_exempt_hint),
                     backgroundAllowed,
                 ) { enabled ->
                     val intent =
@@ -166,62 +172,60 @@ fun SettingsScreen(
                                     )
                                 )
                             }
-                                .onFailure { feedback = "Không mở được cài đặt pin" }
+                                .onFailure { feedback = strings.getString(L10n.string.battery_settings_failed) }
                         }
                 }
                 AppSwitchPreference(
-                    "Tự bật sau khởi động",
-                    "Cần đã cấp quyền VPN",
+                    strings.getString(L10n.string.auto_start),
+                    strings.getString(L10n.string.vpn_permission_required),
                     autoStart,
                 ) {
                     action { settings.setAutoStart(it) }
                 }
                 AppSwitchPreference(
                     "IPv6",
-                    "Tắt để chặn IPv6 trong VPN",
+                    strings.getString(L10n.string.ipv6_hint),
                     ipv6,
                 ) {
                     action { settings.setIpv6(it) }
                 }
                 AppSwitchPreference(
-                    "Chặn QUIC",
-                    "Áp dụng cho app lọc HTTPS, để lọc qua TCP",
+                    strings.getString(L10n.string.block_quic),
+                    strings.getString(L10n.string.block_quic_hint),
                     blockQuic,
                 ) {
                     action { settings.setBlockQuic(it) }
                 }
                 AppArrowPreference(
-                    "Ứng dụng",
-                    "Lọc quảng cáo và HTTPS theo app",
+                    strings.getString(L10n.string.apps),
+                    strings.getString(L10n.string.app_filtering_hint),
                     onApps,
                 )
-                AppArrowPreference("Lọc HTTPS", "Chặn theo URL và ẩn phần tử quảng cáo", onCertificate)
-                AppArrowPreference("VPN luôn bật", "Cài đặt hệ thống") {
+                AppArrowPreference(strings.getString(L10n.string.https_filtering), strings.getString(L10n.string.https_filtering_hint), onCertificate)
+                AppArrowPreference(strings.getString(L10n.string.always_on_vpn), strings.getString(L10n.string.system_settings)) {
                     runCatching {
                         context.startActivity(
                             android.content.Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
                         )
                     }
-                        .onFailure { feedback = "Không mở được cài đặt VPN" }
+                        .onFailure { feedback = strings.getString(L10n.string.vpn_settings_failed) }
                 }
             }
         }
         if (Build.VERSION.SDK_INT >= 36) item(key = "settings-notifications", contentType = "settings-section") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { AppSectionTitle("Thông báo") }
+                Box(Modifier.weight(1f)) { AppSectionTitle(strings.getString(L10n.string.notifications)) }
                 AppHelpTooltip(
-                    text = "Hiển thị trạng thái VPN dạng viên thuốc (Live Updates) trên Android 16 trở lên. " +
-                        "Vị trí và khả năng hiển thị phụ thuộc Android và hãng máy. " +
-                        "Tắt tùy chọn này chỉ ẩn viên thuốc; thông báo dịch vụ VPN vẫn được giữ để chạy nền.",
-                    label = "Hướng dẫn thông báo dạng viên thuốc",
+                    text = strings.getString(L10n.string.live_updates_help),
+                    label = strings.getString(L10n.string.live_updates_help_label),
                 )
             }
             AppPreferenceGroup {
                 AppSwitchPreference(
-                    "Thông báo dạng viên thuốc",
+                    strings.getString(L10n.string.live_updates),
                     when {
-                        liveUpdates && !notificationsAllowed -> "Android chưa cho phép thông báo"
-                        liveUpdates && !promotionAllowed -> "Live Updates đang tắt trong Android"
+                        liveUpdates && !notificationsAllowed -> strings.getString(L10n.string.notifications_not_allowed)
+                        liveUpdates && !promotionAllowed -> strings.getString(L10n.string.live_updates_disabled)
                         else -> null
                     },
                     liveUpdates,
@@ -232,13 +236,13 @@ fun SettingsScreen(
                     }
                 }
                 if (liveUpdates && (!notificationsAllowed || !promotionAllowed)) {
-                    AppArrowPreference("Cài đặt thông báo Android") {
+                    AppArrowPreference(strings.getString(L10n.string.android_notification_settings)) {
                         runCatching {
                             context.startActivity(
                                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                                     .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                             )
-                        }.onFailure { feedback = "Không mở được cài đặt thông báo" }
+                        }.onFailure { feedback = strings.getString(L10n.string.notification_settings_failed) }
                     }
                 }
             }
@@ -249,10 +253,10 @@ fun SettingsScreen(
         item(key = "settings-4", contentType = "settings-section") {
             AppPreferenceGroup {
                 AppChoicePreference(
-                    "DNS upstream",
-                    DnsUpstream.entries.map { it.title },
+                    strings.getString(L10n.string.dns_upstream),
+                    DnsUpstream.entries.map { strings.getString(it.titleRes) },
                     dns.upstream.ordinal,
-                    entrySummary = { DnsUpstream.entries[it].description },
+                    entrySummary = { strings.getString(DnsUpstream.entries[it].descriptionRes) },
                 ) { selected ->
                     action { settings.setDns(dns.copy(upstream = DnsUpstream.entries[selected])) }
                 }
@@ -260,16 +264,16 @@ fun SettingsScreen(
                     AppGroupContent {
                         AppTextInput(
                             customUrl ?: dns.customUrl,
-                            "URL https:// hoặc tls://",
+                            strings.getString(L10n.string.dns_url),
                             onChange = { customUrl = it },
                         )
                         AppTextInput(
                             bootstrap ?: dns.customBootstrap,
-                            "IP bootstrap",
+                            strings.getString(L10n.string.bootstrap_ip),
                             onChange = { bootstrap = it },
                         )
-                        AppAction("Lưu", primary = true) {
-                            action("Đã lưu DNS tùy chỉnh") {
+                        AppAction(strings.getString(L10n.string.save), primary = true) {
+                            action(strings.getString(L10n.string.custom_dns_saved)) {
                                 settings.setDns(
                                     dns.copy(
                                         customUrl = customUrl ?: dns.customUrl,
@@ -280,7 +284,7 @@ fun SettingsScreen(
                         }
                     }
                 AppChoicePreference(
-                    "Kiểu phản hồi chặn",
+                    strings.getString(L10n.string.block_response),
                     listOf("0.0.0.0 / ::", "NXDOMAIN"),
                     dns.blockResponse.ordinal,
                 ) { selected ->
@@ -289,8 +293,8 @@ fun SettingsScreen(
                     }
                 }
                 AppSwitchPreference(
-                    "Nhật ký kết nối",
-                    "Chỉ lưu trên thiết bị",
+                    strings.getString(L10n.string.connection_log),
+                    strings.getString(L10n.string.on_device_only),
                     dns.logging,
                 ) { enabled ->
                     action { settings.setDns(dns.copy(logging = enabled)) }
@@ -298,13 +302,24 @@ fun SettingsScreen(
             }
         }
         item(key = "settings-5", contentType = "settings-section") {
-            AppSectionTitle("Giao diện")
+            AppSectionTitle(strings.getString(L10n.string.appearance))
         }
         item(key = "settings-6", contentType = "settings-section") {
             AppPreferenceGroup {
                 AppChoicePreference(
-                    title = "Chủ đề",
-                    entries = themeLabels,
+                    title = strings.getString(L10n.string.language),
+                    entries = listOf(
+                        strings.getString(L10n.string.follow_system),
+                        strings.getString(L10n.string.language_vietnamese),
+                        strings.getString(L10n.string.language_english),
+                    ),
+                    selected = languageTags.indexOf(appLanguage).coerceAtLeast(0),
+                ) { index ->
+                    localeManager.applicationLocales = LocaleList.forLanguageTags(languageTags[index])
+                }
+                AppChoicePreference(
+                    title = strings.getString(L10n.string.theme),
+                    entries = listOf(strings.getString(L10n.string.follow_system), strings.getString(L10n.string.theme_light), strings.getString(L10n.string.theme_dark), "Monet"),
                     selected = theme.ordinal,
                     onSelected = { onTheme(ThemeMode.entries[it]) },
                 )
@@ -314,13 +329,13 @@ fun SettingsScreen(
             if (error != null) AppCard { AppText(error) }
         }
         item(key = "settings-8", contentType = "settings-section") {
-            AppSectionTitle("Dữ liệu")
+            AppSectionTitle(strings.getString(L10n.string.data))
         }
         item(key = "settings-9", contentType = "settings-section") {
             AppPreferenceGroup {
                 AppChoicePreference(
-                    "Giữ nhật ký",
-                    listOf("1 ngày", "7 ngày", "30 ngày"),
+                    strings.getString(L10n.string.log_retention),
+                    listOf(strings.getString(L10n.string.one_day), strings.getString(L10n.string.seven_days), strings.getString(L10n.string.thirty_days)),
                     listOf(1, 7, 30).indexOf(retention).coerceAtLeast(0),
                 ) { index ->
                     action {
@@ -328,14 +343,14 @@ fun SettingsScreen(
                         queries.prune()
                     }
                 }
-                AppArrowPreference("Xuất cấu hình", "File JSON") {
+                AppArrowPreference(strings.getString(L10n.string.export_configuration), strings.getString(L10n.string.json_file)) {
                     export.launch("blockads-config.json")
                 }
-                AppArrowPreference("Nhập cấu hình", "Từ file JSON") {
+                AppArrowPreference(strings.getString(L10n.string.import_configuration), strings.getString(L10n.string.import_json_hint)) {
                     import.launch(arrayOf("application/json", "text/plain"))
                 }
-                AppArrowPreference("Xóa nhật ký kết nối") {
-                    action("Đã xóa nhật ký") { queries.clearLogs() }
+                AppArrowPreference(strings.getString(L10n.string.clear_logs)) {
+                    action(strings.getString(L10n.string.logs_cleared)) { queries.clearLogs() }
                 }
             }
         }
@@ -343,7 +358,7 @@ fun SettingsScreen(
             updateContent()
         }
         item(key = "settings-11", contentType = "settings-section") {
-            AppSectionTitle("Giới thiệu")
+            AppSectionTitle(strings.getString(L10n.string.about))
         }
         item(key = "settings-12", contentType = "settings-section") {
             AppCard {
