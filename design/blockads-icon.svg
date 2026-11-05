@@ -1,14 +1,1 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-<g clip-path="url(#clip0_886_6)">
-<path d="M396 0H116C51.935 0 0 51.935 0 116V396C0 460.065 51.935 512 116 512H396C460.065 512 512 460.065 512 396V116C512 51.935 460.065 0 396 0Z" fill="#CCF66B"/>
-<use xlink:href="#stroke0_886_6" fill="#80B94D"/>
-<use xlink:href="#stroke0_886_6" fill="white" fill-opacity="0.2"/>
-<path d="M190.8 97C160.2 116.55 127.05 127.6 99 132.7V203.25C99 256.8 130.45 296.75 184 323.95C188.25 326.5 193.35 326.5 197.6 323.95C251.15 296.75 282.6 256.8 282.6 203.25V132.7C254.55 127.6 221.4 116.55 190.8 97Z" stroke-width="27.2" stroke-linejoin="round" stroke="#0B3D2E"/>
-</g>
-<defs>
-<clipPath id="clip0_886_6">
-<rect width="512" height="512" fill="white"/>
-</clipPath>
-<path id="stroke0_886_6" d="M191.014 216H417.986C429.995 216 436 221.646 436 232.939V365.061C436 376.354 429.995 382 417.986 382H191.014C179.005 382 173 376.354 173 365.061V232.939C173 221.646 179.005 216 191.014 216Z"/>
-</defs>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" fill="none" viewBox="0 0 512 512"><g clip-path="url(#clip0_886_6)"><path fill="#CCF66B" d="M396 0H116C51.935 0 0 51.935 0 116V396C0 460.065 51.935 512 116 512H396C460.065 512 512 460.065 512 396V116C512 51.935 460.065 0 396 0Z"/><use fill="#80B94D" xlink:href="#stroke0_886_6"/><use fill="#fff" fill-opacity=".2" xlink:href="#stroke0_886_6"/><path stroke="#0B3D2E" stroke-linejoin="round" stroke-width="27.2" d="M190.8 97C160.2 116.55 127.05 127.6 99 132.7V203.25C99 256.8 130.45 296.75 184 323.95C188.25 326.5 193.35 326.5 197.6 323.95C251.15 296.75 282.6 256.8 282.6 203.25V132.7C254.55 127.6 221.4 116.55 190.8 97Z"/></g><defs><clipPath id="clip0_886_6"><rect width="512" height="512" fill="#fff"/></clipPath><path id="stroke0_886_6" d="M191.014 216H417.986C429.995 216 436 221.646 436 232.939V365.061C436 376.354 429.995 382 417.986 382H191.014C179.005 382 173 376.354 173 365.061V232.939C173 221.646 179.005 216 191.014 216Z"/></defs></svg>
