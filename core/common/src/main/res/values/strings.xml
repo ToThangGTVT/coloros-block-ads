@@ -280,6 +280,7 @@
     <string name="app_statistics">"App statistics"</string>
     <string name="status">"Status"</string>
     <string name="logs_empty">"No logs yet. Turn on the VPN to get started."</string>
+    <string name="back_to_top">"Back to top"</string>
     <string name="requests_loading">"Loading requests…"</string>
     <string name="app_requests_empty">"No retained requests match this filter."</string>
     <string name="request_capture">"Capture request details"</string>

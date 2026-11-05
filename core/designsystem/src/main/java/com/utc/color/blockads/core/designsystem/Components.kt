@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
@@ -50,12 +51,15 @@ import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownArrowEndAction
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
 import io.github.suqi8.coui.kmp.basic.Switch
 import io.github.suqi8.coui.kmp.basic.SwitchDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Check
@@ -287,10 +291,12 @@ fun AppChoicePreference(
     val strings = rememberAppStrings()
     var shown by remember { mutableStateOf(false) }
     if (compact) {
+        val palette = COUITheme.colorScheme
+        val dark = appUsesDarkColors()
         val active = selected > 0
         Row(
             modifier = modifier.clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
+                .background(if (dark) palette.opaqueSurfaceContainerHigh else Color.White)
                 .clickable(enabled = entries.isNotEmpty(), role = Role.DropdownList) { shown = true }
                 .semantics {
                     contentDescription = title
@@ -305,11 +311,18 @@ fun AppChoicePreference(
                 text = if (active || showSelectedValue) entries.getOrNull(selected) ?: title else title,
                 modifier = Modifier.weight(1f),
                 style = COUITheme.textStyles.body1,
-                color = if (active) AppBrandColors.Green else Color(0xE6000000),
+                color = when {
+                    dark && active -> palette.primary
+                    dark -> palette.onSurface
+                    active -> AppBrandColors.Green
+                    else -> Color(0xE6000000)
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            DropdownArrowEndAction(actionColor = Color(0x66000000))
+            DropdownArrowEndAction(
+                actionColor = if (dark) palette.onSurfaceSecondary else Color(0x66000000),
+            )
         }
     } else BasicComponent(
         title = title,
@@ -414,6 +427,19 @@ fun AppAction(label: String, primary: Boolean = false, onClick: () -> Unit) {
 }
 
 @Composable
+fun AppBackToTopButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val strings = rememberAppStrings()
+    FloatingActionButton(onClick = onClick, modifier = modifier) {
+        Icon(
+            painterResource(R.drawable.ic_back_to_top),
+            contentDescription = strings.getString(L10n.string.back_to_top),
+            tint = COUITheme.colorScheme.onPrimary,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
 fun AppTextInput(
     value: String,
     label: String,
@@ -422,6 +448,9 @@ fun AppTextInput(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onChange: (String) -> Unit,
 ) {
+    val palette = COUITheme.colorScheme
+    val dark = appUsesDarkColors()
+    val background = if (dark) palette.opaqueSurfaceContainerHigh else Color.White
     io.github.suqi8.coui.kmp.basic.TextField(
         value = value,
         onValueChange = onChange,
@@ -431,18 +460,20 @@ fun AppTextInput(
         minLines = if (multiline) 3 else 1,
         maxLines = if (multiline) 8 else 1,
         singleLine = !multiline,
-        textStyle = COUITheme.textStyles.body1.copy(color = Color(0xE6000000)),
-        colors = io.github.suqi8.coui.kmp.basic.TextFieldDefaults.textFieldColors(
-            backgroundColor = Color.White,
-            labelColor = Color(0x8A000000),
-            borderColor = AppBrandColors.Green,
-            unfocusedBorderColor = Color(0x1F000000),
-            counterColor = Color(0x66000000),
-            iconColor = Color(0x8A000000),
-            disabledTextColor = Color(0x42000000),
-        ),
+        textStyle = COUITheme.textStyles.body1.copy(color = if (dark) palette.onSurface else Color(0xE6000000)),
+        colors =
+            if (dark) TextFieldDefaults.textFieldColors(backgroundColor = background)
+            else TextFieldDefaults.textFieldColors(
+                backgroundColor = background,
+                labelColor = Color(0x8A000000),
+                borderColor = AppBrandColors.Green,
+                unfocusedBorderColor = Color(0x1F000000),
+                counterColor = Color(0x66000000),
+                iconColor = Color(0x8A000000),
+                disabledTextColor = Color(0x42000000),
+            ),
         modifier = Modifier.fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(12.dp))
+            .background(background, RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp),
     )
 }
@@ -480,16 +511,18 @@ fun AppQueryRow(
     time: String,
     appName: String = androidx.compose.ui.res.stringResource(L10n.string.unknown),
     icon: android.graphics.Bitmap? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val strings = rememberAppStrings()
-    Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick) {
+    val palette = COUITheme.colorScheme
+    Card(modifier = modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick) {
         AppIdentity(appName, icon)
-        Text(domain, style = COUITheme.textStyles.body1, color = COUITheme.colorScheme.onSurface)
+        Text(domain, style = COUITheme.textStyles.body1, color = palette.onSurface)
         Text(
             (if (blocked) strings.getString(L10n.string.blocked) else strings.getString(L10n.string.allowed)) + " · " + time,
             style = COUITheme.textStyles.footnote1,
-            color = if (blocked) COUITheme.colorScheme.error else COUITheme.colorScheme.primary,
+            color = if (blocked) palette.error else palette.primary,
         )
     }
 }

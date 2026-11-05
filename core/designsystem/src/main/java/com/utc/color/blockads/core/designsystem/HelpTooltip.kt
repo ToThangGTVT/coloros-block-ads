@@ -24,7 +24,13 @@ import kotlinx.coroutines.launch
 fun AppHelpTooltip(text: String, label: String = androidx.compose.ui.res.stringResource(L10n.string.help)) {
     val state = rememberTooltipState(isPersistent = true)
     val scope = rememberCoroutineScope()
-    val colors = TooltipDefaults.richTooltipColors()
+    val palette = COUITheme.colorScheme
+    val colors = if (appUsesDarkColors()) {
+        TooltipDefaults.richTooltipColors(
+            containerColor = palette.opaqueSurfaceContainerHigh,
+            contentColor = palette.onSurfaceContainer,
+        )
+    } else TooltipDefaults.richTooltipColors()
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         state = state,

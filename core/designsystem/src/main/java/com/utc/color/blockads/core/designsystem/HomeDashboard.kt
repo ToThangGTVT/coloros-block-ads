@@ -15,11 +15,13 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.*
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import android.view.WindowInsetsController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.collapse
@@ -80,21 +82,33 @@ fun AppHomeDashboard(
     LaunchedEffect(panel.settledValue) { wasExpanded = panel.settledValue == HomePanelPosition.Expanded }
     var heroHeight by remember { mutableIntStateOf(0) }
     val bodyScroll = rememberScrollState()
+    // The hero runs behind the status bar and stays dark in both themes.
+    val view = LocalView.current
+    val dark by rememberUpdatedState(appUsesDarkColors())
+    val lightStatusBar = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+    // A SideEffect runs after the activity's theme SideEffect, so it wins on every theme change.
+    SideEffect { view.windowInsetsController?.setSystemBarsAppearance(0, lightStatusBar) }
+    DisposableEffect(view) {
+        onDispose {
+            view.windowInsetsController?.setSystemBarsAppearance(if (dark) 0 else lightStatusBar, lightStatusBar)
+        }
+    }
+    val statusBar = WindowInsets.statusBars.getTop(density).toFloat()
     BoxWithConstraints(
         Modifier.fillMaxSize().clipToBounds()
             .background(Brush.verticalGradient(listOf(Color(0xFF123E2D), Color(0xFF082F26)))),
     ) {
-        val expandedTop = with(density) { 64.dp.toPx() }.coerceAtMost(constraints.maxHeight * 0.2f)
+        val expandedTop = (statusBar + with(density) { 64.dp.toPx() }).coerceAtMost(constraints.maxHeight * 0.2f)
         val collapsedTop = (if (heroHeight > 0) heroHeight.toFloat() else with(density) { 440.dp.toPx() })
             .coerceAtMost((constraints.maxHeight - with(density) { 200.dp.toPx() }).coerceAtLeast(expandedTop))
             .coerceAtLeast(expandedTop)
-        SideEffect {
-            panel.updateAnchors(DraggableAnchors {
+        val anchors = remember(expandedTop, collapsedTop) {
+            DraggableAnchors {
                 HomePanelPosition.Expanded at expandedTop
                 HomePanelPosition.Collapsed at collapsedTop
-            })
+            }
         }
-        val panelTop = panel.offset.takeUnless { it.isNaN() } ?: collapsedTop
+        SideEffect { panel.updateAnchors(anchors) }
         val nestedScroll = remember(panel, expandedTop, collapsedTop) {
             object : NestedScrollConnection {
                 override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
@@ -126,7 +140,8 @@ fun AppHomeDashboard(
             }
         }
         Column(
-            Modifier.fillMaxWidth().onSizeChanged { heroHeight = it.height }.padding(horizontal = 24.dp),
+            Modifier.fillMaxWidth().onSizeChanged { heroHeight = it.height }
+                .windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
@@ -213,8 +228,16 @@ fun AppHomeDashboard(
         }
         Card(
             modifier = Modifier.fillMaxWidth()
-                .offset { IntOffset(0, panelTop.roundToInt()) }
-                .height(with(density) { (constraints.maxHeight - panelTop).coerceAtLeast(0f).toDp() })
+                // The visible height changes as the panel moves. Read the drag offset in layout.
+                .layout { measurable, constraints ->
+                    val top = (panel.offset.takeUnless { it.isNaN() } ?: collapsedTop)
+                        .roundToInt().coerceIn(0, constraints.maxHeight)
+                    val height = constraints.maxHeight - top
+                    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+                    layout(placeable.width, constraints.maxHeight) {
+                        placeable.placeRelativeWithLayer(0, top)
+                    }
+                }
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .testTag("home-panel")
                 .nestedScroll(nestedScroll)
@@ -240,7 +263,12 @@ fun AppHomeDashboard(
             AppContentTabs(
                 labels = listOf(strings.getString(L10n.string.home_actions), strings.getString(L10n.string.home_statistics)),
                 selected = selected,
-                onSelect = { selected = it },
+                onSelect = {
+                    selected = it
+                    // The collapsed panel only fits the top of the chart; open it for statistics.
+                    if (it == 1 && panel.settledValue == HomePanelPosition.Collapsed)
+                        scope.launch { panel.animateTo(HomePanelPosition.Expanded) }
+                },
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
             Column(Modifier.fillMaxWidth().weight(1f).testTag("home-panel-content").verticalScroll(bodyScroll).padding(top = 8.dp, bottom = 8.dp)) {

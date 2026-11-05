@@ -8,9 +8,11 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -25,6 +27,11 @@ import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+// Larger bursts are shown at once so the list never lags behind live traffic.
+private const val MaxAnimatedRequests = 6
+private const val RequestStaggerMillis = 70
+private val RequestOrder = compareBy(QueryEntity::timestamp, QueryEntity::id)
 
 @Composable
 fun QueryLogScreen(
@@ -74,12 +81,11 @@ fun AppRequestsScreen(
             activeMinutes = null
         }
     }
-    val previews by repository.requestPreviews.collectAsStateWithLifecycle()
     QueryHistory(
         repository, filters, settings, apps,
         appOnly = true,
         fixedUid = uid,
-        previews = if (duration != null && isCurrent) previews else emptyMap(),
+        captureActive = duration != null && isCurrent,
         captureControls = if (uid != null) {
             {
                 RequestCaptureControls(settings, preferredMinutes, duration != null) { enabled ->
@@ -168,7 +174,7 @@ private fun QueryHistory(
     apps: AppsRepository,
     appOnly: Boolean = false,
     fixedUid: Int? = null,
-    previews: Map<Long, RequestPreview> = emptyMap(),
+    captureActive: Boolean = false,
     captureControls: (@Composable () -> Unit)? = null,
 ) {
     val strings = rememberAppStrings()
@@ -193,6 +199,29 @@ private fun QueryHistory(
     var selected by remember { mutableStateOf<QueryEntity?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val snapshot = rows.itemSnapshotList
+    val head = snapshot.items.firstOrNull()?.takeIf { snapshot.placeholdersBefore == 0 }
+    // Newest request already on screen; anything newer in this snapshot just arrived.
+    var shownHead by remember(rows) { mutableStateOf<QueryEntity?>(null) }
+    val previous = shownHead
+    val arrivals =
+        if (head == null || previous == null) 0
+        else snapshot.items.indexOfFirst { RequestOrder.compare(it, previous) <= 0 }
+            .let { if (it < 0) snapshot.items.size else it }
+    // Paging may hand new rows to the list before this recomposes; the list then keeps the old head
+    // in view at index `arrivals`. Treat that as still following the head.
+    val atTop = !listState.canScrollBackward || (
+        arrivals > 0 &&
+            listState.firstVisibleItemIndex == arrivals &&
+            listState.firstVisibleItemScrollOffset == 0
+        )
+    val animatedArrivals = if (atTop && arrivals <= MaxAnimatedRequests) arrivals else 0
+    SideEffect {
+        // Keep following the head like a console instead of the old first row's key.
+        if (atTop && arrivals > 0) listState.requestScrollToItem(0)
+        if (head != null) shownHead = head
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = AppSpacing.page)) {
         if (captureControls != null) {
             Spacer(Modifier.height(AppSpacing.gap))
@@ -227,17 +256,29 @@ private fun QueryHistory(
             }
         }
         error?.let { AppText(it) }
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
-            contentPadding = PaddingValues(bottom = AppSpacing.gap),
-        ) {
-            items(
-                count = rows.itemCount,
-                key = rows.itemKey { it.id },
-                contentType = { "query" },
-            ) { index ->
-                rows[index]?.let { row ->
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(bottom = 56.dp + AppSpacing.gap),
+            ) {
+                items(
+                    count = rows.itemCount,
+                    key = rows.itemKey { it.id },
+                    contentType = { "query" },
+                ) { index ->
+                    val row = rows[index]
+                    if (row == null) {
+                        // Unloaded pages retain their positions for jumps back to the start.
+                        Spacer(Modifier.fillMaxWidth().height(96.dp + AppSpacing.gap))
+                        return@items
+                    }
+                    // The oldest request of a burst opens first, newer ones follow above it.
+                    val entrance = rememberAppListEntrance(
+                        key = row.id,
+                        enabled = index < animatedArrivals,
+                        delayMillis = (animatedArrivals - 1 - index) * RequestStaggerMillis,
+                    )
                     val app = appByUid[row.uid]
                     val icon by
                         produceState(
@@ -246,18 +287,27 @@ private fun QueryHistory(
                         ) {
                             value = app?.let { apps.icon(it.packageName) }
                         }
-                    AppQueryRow(
-                        row.domain,
-                        row.blocked,
-                        timeFormat.format(java.util.Date(row.timestamp)) +
-                            " · " +
-                            row.protocol.uppercase(),
-                        appName = app?.label ?: row.uid?.let { "UID $it" } ?: strings.getString(L10n.string.unknown),
-                        icon = icon,
-                    ) {
-                        selected = row
+                    // Spacing lives inside the animated slot so it opens together with the card.
+                    Box(Modifier.appListEntrance(entrance).padding(bottom = AppSpacing.gap)) {
+                        AppQueryRow(
+                            row.domain,
+                            row.blocked,
+                            timeFormat.format(java.util.Date(row.timestamp)) +
+                                " · " +
+                                row.protocol.uppercase(),
+                            appName = app?.label ?: row.uid?.let { "UID $it" } ?: strings.getString(L10n.string.unknown),
+                            icon = icon,
+                        ) {
+                            selected = row
+                        }
                     }
                 }
+            }
+            if (!atTop) {
+                AppBackToTopButton(
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = AppSpacing.gap),
+                    onClick = { listState.requestScrollToItem(0) },
+                )
             }
         }
     }
@@ -285,7 +335,13 @@ private fun QueryHistory(
                     )
                     if (appOnly) {
                         AppHint(timeFormat.format(java.util.Date(row.timestamp)))
-                        val preview = previews[row.id]
+                        val preview = if (captureActive) {
+                            key(row.id) {
+                                val flow = remember(repository, row.id) { repository.requestPreview(row.id) }
+                                val value by flow.collectAsStateWithLifecycle(initialValue = null)
+                                value
+                            }
+                        } else null
                         if (preview == null) {
                             AppHint(strings.getString(L10n.string.request_preview_unavailable))
                         } else {

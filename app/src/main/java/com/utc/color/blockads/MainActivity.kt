@@ -11,7 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,11 +61,13 @@ class MainActivity : ComponentActivity() {
                 }
             AppTheme(theme) {
                 val dark = appUsesDarkColors()
-                SideEffect {
+                // Only on theme changes, so a page may restyle the status bar (Home's dark hero).
+                DisposableEffect(dark) {
                     WindowInsetsControllerCompat(window, window.decorView).apply {
                         isAppearanceLightStatusBars = !dark
                         isAppearanceLightNavigationBars = !dark
                     }
+                    onDispose {}
                 }
                 BlockAdsApp(
                     theme,

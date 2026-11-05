@@ -118,14 +118,18 @@ class QueryLogRepository(
     }
 
     fun appPages(uid: Int?, status: Int) =
-        Pager(PagingConfig(pageSize = 50, maxSize = 300, enablePlaceholders = false)) {
+        Pager(
+            PagingConfig(pageSize = 50, maxSize = 300, enablePlaceholders = true, jumpThreshold = 50),
+        ) {
             database.queries().appPagingSource(uid, status)
         }.flow
 
     private var captureSession = 0L
     private var captureUid: Int? = null
     private val previews = MutableStateFlow<Map<Long, RequestPreview>>(emptyMap())
-    val requestPreviews = previews.asStateFlow()
+
+    fun requestPreview(id: Long): Flow<RequestPreview?> =
+        previews.map { it[id] }.distinctUntilChanged()
 
     @Synchronized
     fun setRequestCapture(uid: Int?, minutes: Int = 0) {
@@ -159,8 +163,8 @@ class QueryLogRepository(
         }
     }
 
-    @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    fun appStatistics(hours: Int): Flow<AppQueryHistory> {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun appStatistics(hours: Int): Flow<List<AppQueryStats>> {
         require(hours == 24 || hours == 168)
         return flow {
             while (true) {
@@ -169,10 +173,12 @@ class QueryLogRepository(
             }
         }.flatMapLatest { now ->
             val since = now - hours * 3_600_000L
-            database.queries().observeAppHours(since).map { buckets ->
-                AppQueryHistory(since, System.currentTimeMillis() / 3_600_000L, buckets)
-            }
-        }.distinctUntilChanged().sample(1000)
+            database.queries().observeAppStats(since)
+        }.distinctUntilChanged().conflate().transform { stats ->
+            // Show the initial result immediately and keep the latest update during bursts.
+            emit(stats)
+            delay(1000)
+        }
     }
 
     private val batches = Channel<String>(32)
@@ -209,10 +215,12 @@ class QueryLogRepository(
                         initialLoadSize = 50,
                         prefetchDistance = 10,
                         maxSize = 300,
-                        enablePlaceholders = false,
+                        enablePlaceholders = true,
+                        jumpThreshold = 50,
                     )
                 ) {
-                    database.queries().pagingSource(search, status, uid)
+                    if (uid == -1) database.queries().pagingSource(search, status)
+                    else database.queries().appPagingSource(uid, status, search)
                 }
                 .flow
                 .cachedIn(CoroutineScope(scope.coroutineContext + job))

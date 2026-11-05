@@ -22,29 +22,19 @@ internal fun AppStatisticsTab(
     val strings = rememberAppStrings()
     var period by rememberSaveable { mutableIntStateOf(0) }
     val hours = if (period == 0) 24 else 168
-    val historyFlow = remember(repository, hours) { repository.appStatistics(hours) }
+    val statsFlow = remember(repository, hours) { repository.appStatistics(hours) }
     // Key the collector so changing period immediately clears the previous window.
-    val history =
-        key(hours) {
-            val value by historyFlow.collectAsStateWithLifecycle(initialValue = null)
-            value
-        }
     val stats =
-        remember(history) {
-            history
-                ?.buckets
-                .orEmpty()
-                .groupBy { it.uid }
-                .map { (uid, buckets) ->
-                    AppQueryStats(uid, buckets.sumOf { it.total }, buckets.sumOf { it.blocked })
-                }
+        key(hours) {
+            val value by statsFlow.collectAsStateWithLifecycle(initialValue = null)
+            value
         }
     val installed by apps.apps.collectAsStateWithLifecycle()
     val appsByUid = remember(installed) { installed.groupBy { it.uid } }
     var sort by rememberSaveable { mutableIntStateOf(0) }
     val ranked =
         remember(stats, sort) {
-            stats.sortedWith(
+            stats.orEmpty().sortedWith(
                 compareByDescending<AppQueryStats> { if (sort == 0) it.total else it.blocked }
                     .thenByDescending { it.total }
                     .thenBy { it.uid ?: -1 }
@@ -81,7 +71,7 @@ internal fun AppStatisticsTab(
         if (ranked.isEmpty())
             AppCard {
                 AppHint(
-                    if (history == null) strings.getString(L10n.string.statistics_loading)
+                    if (stats == null) strings.getString(L10n.string.statistics_loading)
                     else strings.getString(L10n.string.logs_period_empty)
                 )
             }

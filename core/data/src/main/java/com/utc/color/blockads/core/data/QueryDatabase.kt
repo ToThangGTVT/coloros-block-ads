@@ -18,12 +18,11 @@ data class TopDomain(val domain: String, val count: Long, val totalBlocked: Long
 
 data class AppQueryStats(val uid: Int?, val total: Long, val blocked: Long)
 
-data class AppQueryHour(val uid: Int?, val hour: Long, val total: Long, val blocked: Long)
-
-data class AppQueryHistory(val since: Long, val throughHour: Long, val buckets: List<AppQueryHour>)
-
 // Persist metadata only. Never store packet payloads or HTTP bodies.
-@Entity(tableName = "queries", indices = [Index(value = ["timestamp", "id"])])
+@Entity(
+    tableName = "queries",
+    indices = [Index(value = ["timestamp", "id"]), Index(value = ["uid", "timestamp", "id"])],
+)
 data class QueryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long,
@@ -56,26 +55,24 @@ interface QueryDao {
     fun topDomains(since: Long): Flow<List<TopDomain>>
 
     @Query(
-        """SELECT uid, timestamp / 3600000 AS hour, COUNT(*) AS total,
+        """SELECT uid, COUNT(*) AS total,
             SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) AS blocked
-            FROM queries WHERE timestamp >= :since
-            GROUP BY uid, timestamp / 3600000 ORDER BY hour ASC, uid ASC"""
+            FROM queries WHERE timestamp >= :since GROUP BY uid"""
     )
-    fun observeAppHours(since: Long): Flow<List<AppQueryHour>>
+    fun observeAppStats(since: Long): Flow<List<AppQueryStats>>
 
     @Query("DELETE FROM queries") suspend fun clearLogs()
 
     @Query(
-        "SELECT * FROM queries WHERE (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) AND (:uid = -1 OR uid = :uid) ORDER BY timestamp DESC, id DESC"
+        "SELECT * FROM queries WHERE (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC"
     )
     fun pagingSource(
         search: String = "",
         status: Int = -1,
-        uid: Int = -1,
     ): PagingSource<Int, QueryEntity>
 
-    @Query("SELECT * FROM queries WHERE uid IS :uid AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC")
-    fun appPagingSource(uid: Int?, status: Int): PagingSource<Int, QueryEntity>
+    @Query("SELECT * FROM queries WHERE uid IS :uid AND (:search = '' OR domain LIKE '%' || :search || '%') AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC")
+    fun appPagingSource(uid: Int?, status: Int, search: String = ""): PagingSource<Int, QueryEntity>
 
     @Insert suspend fun insertBatch(events: List<QueryEntity>): List<Long>
 
@@ -85,11 +82,17 @@ interface QueryDao {
     @Query("DELETE FROM queries WHERE timestamp < :before") suspend fun deleteBefore(before: Long)
 }
 
-@Database(entities = [QueryEntity::class, DailyStats::class], version = 3, exportSchema = true)
+@Database(entities = [QueryEntity::class, DailyStats::class], version = 4, exportSchema = true)
 abstract class QueryDatabase : RoomDatabase() {
     abstract fun queries(): QueryDao
 
     companion object {
+        val Migration3To4 =
+            object : androidx.room.migration.Migration(3, 4) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("CREATE INDEX IF NOT EXISTS index_queries_uid_timestamp_id ON queries (uid, timestamp, id)")
+                }
+            }
         val Migration2To3 =
             object : androidx.room.migration.Migration(2, 3) {
                 override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {

@@ -51,7 +51,7 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): QueryDatabase =
         Room.databaseBuilder(context, QueryDatabase::class.java, "queries.db")
-            .addMigrations(QueryDatabase.Migration1To2, QueryDatabase.Migration2To3)
+            .addMigrations(QueryDatabase.Migration1To2, QueryDatabase.Migration2To3, QueryDatabase.Migration3To4)
             .build()
 
     @Provides

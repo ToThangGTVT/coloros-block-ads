@@ -99,7 +99,8 @@ fun AppTrafficChart(days: List<TrafficDay>) {
             // A zero-valued line is centered on the plot's bottom edge. Let its
             // lower half render into the reserved inset instead of clipping it.
             isClipDataToContentEnabled = false
-            extraBottomOffset = 6f
+            // The extra inset also separates the weekday labels from the legend below them.
+            extraBottomOffset = 16f
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.granularity = 1f
             xAxis.isDrawGridLinesEnabled = false

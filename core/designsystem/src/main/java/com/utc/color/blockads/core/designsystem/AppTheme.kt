@@ -3,10 +3,12 @@ package com.utc.color.blockads.core.designsystem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import com.utc.color.blockads.core.common.ThemeMode
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.ColorSchemeMode
+import io.github.suqi8.coui.kmp.theme.Colors
 import io.github.suqi8.coui.kmp.theme.ThemeController
 import io.github.suqi8.coui.kmp.theme.lightColorScheme
 import io.github.suqi8.coui.kmp.theme.darkColorScheme
@@ -18,6 +20,9 @@ object AppBrandColors {
 }
 
 @Composable fun appUsesDarkColors(): Boolean = COUITheme.colorScheme.surface.luminance() < 0.5f
+
+internal val Colors.opaqueSurfaceContainerHigh: Color
+    get() = surfaceContainerHigh.compositeOver(surface)
 
 @Composable
 fun AppTheme(mode: ColorSchemeMode, content: @Composable () -> Unit) {

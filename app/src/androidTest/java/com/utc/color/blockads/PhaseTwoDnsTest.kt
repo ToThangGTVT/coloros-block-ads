@@ -1,6 +1,7 @@
 package com.utc.color.blockads
 
 import com.utc.color.blockads.core.common.R as L10n
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -175,21 +176,15 @@ class PhaseTwoDnsTest {
             }
             assertNotNull(model.queries.latest("blocked.blockads.test")?.matchedRule)
             compose.onNodeWithText(appString(L10n.string.log)).performClick()
-            compose.onNodeWithText("Tìm domain").performTextInput("blocked.blockads.test")
+            val queryList = hasScrollToIndexAction() and
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
+            val blockedQuery =
+                hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
             compose.waitUntil(5000) {
-                compose
-                    .onAllNodes(
-                        hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
-                    )
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
+                compose.onAllNodes(queryList and hasAnyDescendant(hasClickAction())).fetchSemanticsNodes().isNotEmpty()
             }
-            androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose
-                .onAllNodes(
-                    hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
-                )[0]
-                .performClick()
+            compose.onNode(queryList).performScrollToNode(blockedQuery)
+            compose.onAllNodes(blockedQuery).onFirst().performClick()
             compose.onNodeWithText(appString(L10n.string.block_action)).assertExists()
             delay(600)
             android.os.ParcelFileDescriptor.AutoCloseInputStream(

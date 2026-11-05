@@ -127,17 +127,13 @@ fun AppTabHost(
     content: @Composable () -> Unit,
 ) {
     val surface = COUITheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(surface)
-        drawContent()
-    }
     val density = LocalDensity.current
     var barHeight by remember { mutableStateOf(0.dp) }
     // Root overlay host must contain both pages and tab bar so modal sheets intercept
     // touches above the bar as well as above the current page.
     Scaffold(Modifier.fillMaxSize(), contentWindowInsets = WindowInsets(0, 0, 0, 0)) { _ ->
         Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+            Box(Modifier.fillMaxSize()) {
                 CompositionLocalProvider(LocalTabBarHeight provides barHeight) { content() }
             }
             AnimatedVisibility(
@@ -147,9 +143,9 @@ fun AppTabHost(
                 exit = slideOutVertically { it },
             ) {
                 // Measured inside so the hidden bar keeps its height for the tab pages below.
-                BlurredBar(
-                    backdrop,
-                    Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+                Box(
+                    Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                        .background(surface),
                 ) {
                     NavigationBar(
                         modifier =
@@ -190,10 +186,12 @@ fun AppPage(
 ) {
     val strings = rememberAppStrings()
     val surface = COUITheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(surface)
-        drawContent()
-    }
+    val backdrop = if (scrollable && showTopBar) {
+        rememberLayerBackdrop {
+            drawRect(surface)
+            drawContent()
+        }
+    } else null
     val scrollBehavior = COUIScrollBehavior()
     // Sub-pages hide the tab bar, so only tab pages leave room for it.
     val tabBar = if (onBack == null) LocalTabBarHeight.current else 0.dp
@@ -203,7 +201,7 @@ fun AppPage(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         topBar = {
             if (showTopBar)
-            BlurredBar(backdrop, blurEnabled = scrollable) {
+            BlurredBar(backdrop) {
                 TopAppBar(
                     title = title,
                     color = Color.Transparent,
@@ -224,11 +222,12 @@ fun AppPage(
     ) { padding ->
         val bottom: Dp = maxOf(padding.calculateBottomPadding(), tabBar)
         if (!scrollable) {
+            // Without a top bar the page draws behind the status bar and handles that inset itself.
+            val top = if (showTopBar) padding.calculateTopPadding() else 0.dp
             Box(
                 Modifier.fillMaxSize()
-                    .padding(top = padding.calculateTopPadding(), bottom = bottom)
-                    .consumeWindowInsets(padding)
-                    .layerBackdrop(backdrop)
+                    .padding(top = top, bottom = bottom)
+                    .consumeWindowInsets(PaddingValues(top = top, bottom = bottom))
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
             ) {
                 content()
@@ -237,7 +236,7 @@ fun AppPage(
             LazyColumn(
                 modifier =
                     Modifier.fillMaxSize()
-                        .layerBackdrop(backdrop)
+                        .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                         .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding =
                     PaddingValues(
@@ -255,19 +254,17 @@ fun AppPage(
 
 @Composable
 private fun BlurredBar(
-    backdrop: LayerBackdrop,
-    modifier: Modifier = Modifier,
-    blurEnabled: Boolean = true,
+    backdrop: LayerBackdrop?,
     content: @Composable () -> Unit,
 ) {
     // Fixed content starts below the bar; sampling its backdrop would pull
     // the segmented control's green fill upward into the title area.
-    if (!blurEnabled) {
-        Box(modifier.background(COUITheme.colorScheme.surface)) { content() }
+    if (backdrop == null) {
+        Box(Modifier.background(COUITheme.colorScheme.surface)) { content() }
         return
     }
     Box(
-        modifier.textureBlur(
+        Modifier.textureBlur(
             backdrop = backdrop,
             shape = RectangleShape,
             blurRadius = BlurDefaults.BlurRadius,

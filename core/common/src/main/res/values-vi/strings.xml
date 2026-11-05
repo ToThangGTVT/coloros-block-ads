@@ -271,6 +271,7 @@
     <string name="app_statistics">"Thống kê ứng dụng"</string>
     <string name="status">"Trạng thái"</string>
     <string name="logs_empty">"Chưa có nhật ký. Bật VPN để bắt đầu."</string>
+    <string name="back_to_top">"Về đầu danh sách"</string>
     <string name="requests_loading">"Đang tải yêu cầu…"</string>
     <string name="app_requests_empty">"Không có yêu cầu đã lưu khớp với bộ lọc."</string>
     <string name="request_capture">"Ghi chi tiết yêu cầu"</string>

@@ -24,8 +24,6 @@ fun HomeScreen(
 ) {
     val strings = rememberAppStrings()
     val stats by queries.today.collectAsStateWithLifecycle()
-    val week by queries.week.collectAsStateWithLifecycle()
-    val top by queries.topDomains.collectAsStateWithLifecycle()
     val enabled =
         tunnel.status in
             listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
@@ -63,6 +61,8 @@ fun HomeScreen(
             }
         },
         statistics = {
+            val week by queries.week.collectAsStateWithLifecycle()
+            val top by queries.topDomains.collectAsStateWithLifecycle()
             AppText(strings.getString(L10n.string.last_seven_days), prominent = true)
             AppTrafficChart(week)
             AppText(strings.getString(L10n.string.most_blocked), prominent = true)
