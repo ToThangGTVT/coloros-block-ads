@@ -1,10 +1,20 @@
+<p align="center">
+  <img src="docs/media/social-preview.png" width="960" alt="Open AdBlock — Fewer ads. More control. Android ad blocking with no root and a local VPN.">
+</p>
+
 # Open AdBlock
 
 Block ads and trackers on Android with a local VPN. **Android 13 or later. No root required.**
 
+<p>
+  <a href="https://github.com/ToThangGTVT/open-adblock/releases/latest"><img src="docs/media/download-apk.svg" alt="Download APK — latest release" height="52"></a>
+</p>
+
+**Free your screen. Control your connections.** DNS filtering, a per-app firewall, and optional HTTPS filtering in one app, with English and Vietnamese support.
+
 ## Installation
 
-1. Download an APK from the [latest release](https://github.com/ToThangGTVT/coloros-block-ads/releases/latest). Most devices use **arm64-v8a**; 32-bit ARM devices use **armeabi-v7a**.
+1. Download an APK from the [latest release](https://github.com/ToThangGTVT/open-adblock/releases/latest). Most devices use **arm64-v8a**; 32-bit ARM devices use **armeabi-v7a**.
 2. Open the APK and allow installation from this source if Android asks.
 3. Open Open AdBlock → **Home**, turn on protection, and accept the VPN connection request.
 4. If no filter rules are loaded, open **Filters → Choose from catalog**, enable a list, then tap **Update all**.
@@ -46,3 +56,7 @@ The app supports **English** and **Vietnamese**. It follows your device language
 Check for updates in **Settings → App updates → Check GitHub for updates**.
 
 [Build instructions](docs/build.md) · [Release information](docs/releases.md) · [Third-party licenses](THIRD_PARTY_LICENSES.md)
+
+## Repository name
+
+Open AdBlock now lives at **[ToThangGTVT/open-adblock](https://github.com/ToThangGTVT/open-adblock)** (formerly `coloros-block-ads`). If an older app version cannot check for updates after the rename, download the latest APK from Releases and install it over your existing copy. Use the same release signing key; do not uninstall the app to update it.

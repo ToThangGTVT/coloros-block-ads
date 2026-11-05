@@ -1,6 +1,6 @@
 # Phát hành và cập nhật GitHub
 
-Repo: https://github.com/ToThangGTVT/coloros-block-ads
+Repo: https://github.com/ToThangGTVT/open-adblock
 
 ## Phát hành APK
 

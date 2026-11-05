@@ -6,7 +6,7 @@ import org.junit.Test
 class GitHubReleasePolicyTest {
     @Test
     fun onlyAcceptsHttpsAssetsInsideThisRepositoryRelease() {
-        val base = "https://github.com/ToThangGTVT/coloros-block-ads/releases/download/v0.6.0/"
+        val base = "https://github.com/ToThangGTVT/open-adblock/releases/download/v0.6.0/"
         GitHubReleasePolicy.validateDownloadUrl(base + "BlockAds-0.6.0.apk")
         GitHubReleasePolicy.validateDownloadUrl(base + "update.json")
         for (url in
@@ -16,6 +16,8 @@ class GitHubReleasePolicyTest {
                 base.replace("github.com", "user@github.com") + "app.apk",
                 base.replace("github.com", "github.com:8443") + "app.apk",
                 base.replace("ToThangGTVT", "another-owner") + "app.apk",
+                base.replace("open-adblock", "another-repo") + "app.apk",
+                base.replace("open-adblock", "coloros-block-ads") + "app.apk",
                 base + "../app.apk",
                 base + "%2e%2e",
                 base + "nested%2fapp.apk",

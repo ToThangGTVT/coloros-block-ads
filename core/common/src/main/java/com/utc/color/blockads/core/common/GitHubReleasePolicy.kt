@@ -4,7 +4,7 @@ import com.utc.color.blockads.core.common.R as L10n
 import java.net.URI
 
 object GitHubReleasePolicy {
-    const val Repository = "ToThangGTVT/coloros-block-ads"
+    const val Repository = "ToThangGTVT/open-adblock"
     const val ReleasesUrl = "https://github.com/$Repository/releases/latest"
 
     fun validateDownloadUrl(value: String) {

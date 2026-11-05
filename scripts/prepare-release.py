@@ -26,8 +26,8 @@ def main():
     tag = "v" + version
     if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != tag:
         raise SystemExit("Git tag must match versionName in app/build.gradle.kts")
-    repository = os.environ.get("GITHUB_REPOSITORY", "ToThangGTVT/coloros-block-ads")
-    if repository != "ToThangGTVT/coloros-block-ads":
+    repository = os.environ.get("GITHUB_REPOSITORY", "ToThangGTVT/open-adblock")
+    if repository != "ToThangGTVT/open-adblock":
         raise SystemExit("Configure the updater repository before publishing a fork")
     output = root / "dist"
     output.mkdir(exist_ok=True)
