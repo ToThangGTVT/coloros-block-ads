@@ -14,7 +14,11 @@ import com.utc.color.blockads.core.data.QueryLogRepository
 import com.utc.color.blockads.core.designsystem.*
 
 @Composable
-internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsRepository) {
+internal fun AppStatisticsTab(
+    repository: QueryLogRepository,
+    apps: AppsRepository,
+    onAppRequests: (Int?, String) -> Unit,
+) {
     val strings = rememberAppStrings()
     var period by rememberSaveable { mutableIntStateOf(0) }
     val hours = if (period == 0) 24 else 168
@@ -97,7 +101,7 @@ internal fun AppStatisticsTab(repository: QueryLogRepository, apps: AppsReposito
                     produceState(app?.let { apps.cachedIcon(it.packageName) }, app?.packageName) {
                         value = app?.let { apps.icon(it.packageName) }
                     }
-                AppCard {
+                AppCard(onClick = { onAppRequests(item.uid, label) }) {
                     AppColumn {
                         AppIdentity(label, icon)
                         AppRequestProgress(total = item.total, blocked = item.blocked)

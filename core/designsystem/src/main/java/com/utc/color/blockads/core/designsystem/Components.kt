@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +99,11 @@ fun AppLazyList(content: LazyListScope.() -> Unit) {
 @Composable
 fun AppCard(content: @Composable ColumnScope.() -> Unit) {
     Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, content = content)
+}
+
+@Composable
+fun AppCard(onClick: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), insideMargin = AppSpacing.card, onClick = onClick, content = content)
 }
 
 @Composable
@@ -413,6 +419,7 @@ fun AppTextInput(
     label: String,
     multiline: Boolean = false,
     error: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onChange: (String) -> Unit,
 ) {
     io.github.suqi8.coui.kmp.basic.TextField(
@@ -420,6 +427,7 @@ fun AppTextInput(
         onValueChange = onChange,
         label = label,
         isError = error,
+        keyboardOptions = keyboardOptions,
         minLines = if (multiline) 3 else 1,
         maxLines = if (multiline) 8 else 1,
         singleLine = !multiline,

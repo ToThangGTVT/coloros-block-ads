@@ -22,6 +22,9 @@ import org.json.JSONObject
 
 private val Context.settingsStore by preferencesDataStore(name = "settings")
 
+const val DEFAULT_REQUEST_CAPTURE_MINUTES = 5
+const val MAX_REQUEST_CAPTURE_MINUTES = 120
+
 class SettingsRepository(private val store: DataStore<Preferences>) {
     constructor(context: Context) : this(context.applicationContext.settingsStore)
 
@@ -82,6 +85,16 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     val ipv6 = preferences.map { it[Ipv6] ?: true }.distinctUntilChanged()
     val logRetentionDays =
         preferences.map { (it[Retention] ?: 7).coerceIn(1, 30) }.distinctUntilChanged()
+    val requestCaptureMinutes =
+        preferences.map {
+            (it[RequestCaptureMinutes] ?: DEFAULT_REQUEST_CAPTURE_MINUTES)
+                .coerceIn(1, MAX_REQUEST_CAPTURE_MINUTES)
+        }.distinctUntilChanged()
+
+    suspend fun setRequestCaptureMinutes(minutes: Int) {
+        require(minutes in 1..MAX_REQUEST_CAPTURE_MINUTES)
+        store.edit { it[RequestCaptureMinutes] = minutes }
+    }
 
     suspend fun setAutoStart(enabled: Boolean) {
         store.edit { it[AutoStart] = enabled }
@@ -385,6 +398,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val LiveUpdates = booleanPreferencesKey("live_updates")
         val Ipv6 = booleanPreferencesKey("ipv6")
         val Retention = intPreferencesKey("retention_days")
+        val RequestCaptureMinutes = intPreferencesKey("request_capture_minutes")
         val CustomDnsUrl = stringPreferencesKey("custom_dns_url")
         val CustomDnsIp = stringPreferencesKey("custom_dns_ip")
         val AppPolicies = stringPreferencesKey("app_policies")

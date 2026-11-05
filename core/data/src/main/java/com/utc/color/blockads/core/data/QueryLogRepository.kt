@@ -9,10 +9,20 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
-/** Application-lifetime bounded writer; JNI callbacks only enqueue metadata batches. */
+data class RequestPreview(
+    val method: String,
+    val path: String,
+    val query: String?,
+    val body: String?,
+    val urlTruncated: Boolean,
+    val bodyTruncated: Boolean,
+)
+
+/** Application-lifetime bounded writer. Request previews are kept separately from Room. */
 class QueryLogRepository(
     private val database: QueryDatabase,
     private val settings: SettingsRepository,
+    private val configureCapture: (uid: Int, session: Long, minutes: Int) -> Unit,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -102,7 +112,52 @@ class QueryLogRepository(
             .distinctUntilChanged()
             .stateIn(scope, SharingStarted.WhileSubscribed(10_000), emptyList())
 
-    suspend fun clearLogs() = database.queries().clearLogs()
+    suspend fun clearLogs() {
+        database.queries().clearLogs()
+        synchronized(this) { previews.value = emptyMap() }
+    }
+
+    fun appPages(uid: Int?, status: Int) =
+        Pager(PagingConfig(pageSize = 50, maxSize = 300, enablePlaceholders = false)) {
+            database.queries().appPagingSource(uid, status)
+        }.flow
+
+    private var captureSession = 0L
+    private var captureUid: Int? = null
+    private val previews = MutableStateFlow<Map<Long, RequestPreview>>(emptyMap())
+    val requestPreviews = previews.asStateFlow()
+
+    @Synchronized
+    fun setRequestCapture(uid: Int?, minutes: Int = 0) {
+        require(uid == null || minutes in 1..MAX_REQUEST_CAPTURE_MINUTES)
+        captureSession++
+        captureUid = uid
+        previews.value = emptyMap()
+        configureCapture(uid ?: -1, captureSession, minutes)
+    }
+
+    @Synchronized
+    private fun retainPreviews(events: org.json.JSONArray, rows: List<QueryEntity>, ids: List<Long>) {
+        val uid = captureUid ?: return
+        val additions = rows.indices.mapNotNull { index ->
+            if (rows[index].uid != uid) return@mapNotNull null
+            val preview = events.getJSONObject(index).optJSONObject("requestPreview")
+                ?.takeIf { it.optLong("session") == captureSession } ?: return@mapNotNull null
+            fun field(key: String) = if (preview.isNull(key)) null else preview.getString(key)
+            ids[index] to RequestPreview(
+                method = preview.getString("method"),
+                path = preview.getString("path"),
+                query = field("query"),
+                body = field("body"),
+                urlTruncated = preview.optBoolean("urlTruncated"),
+                bodyTruncated = preview.optBoolean("bodyTruncated"),
+            )
+        }
+        if (additions.isNotEmpty()) {
+            previews.value = (previews.value + additions).entries.toList().takeLast(100)
+                .associate { it.toPair() }
+        }
+    }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun appStatistics(hours: Int): Flow<AppQueryHistory> {
@@ -195,8 +250,8 @@ class QueryLogRepository(
                             )
                         }
                     }
-                database.withTransaction {
-                    database.queries().insertBatch(rows)
+                val ids = database.withTransaction {
+                    val inserted = database.queries().insertBatch(rows)
                     val totals = batch.getJSONArray("totals")
                     for (index in 0 until totals.length()) {
                         val value = totals.getJSONObject(index)
@@ -208,7 +263,9 @@ class QueryLogRepository(
                                 value.getLong("blocked"),
                             )
                     }
+                    inserted
                 }
+                retainPreviews(events, rows, ids)
             }
         }
     }

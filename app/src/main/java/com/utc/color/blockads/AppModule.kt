@@ -56,8 +56,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun queries(database: QueryDatabase, settings: SettingsRepository) =
-        com.utc.color.blockads.core.data.QueryLogRepository(database, settings)
+    fun queries(database: QueryDatabase, settings: SettingsRepository, engine: EngineBridge) =
+        com.utc.color.blockads.core.data.QueryLogRepository(database, settings, engine::setRequestCapture)
 
     @Provides
     @Singleton

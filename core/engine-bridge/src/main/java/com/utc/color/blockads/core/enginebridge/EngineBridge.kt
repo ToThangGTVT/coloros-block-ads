@@ -45,6 +45,11 @@ class EngineBridge {
 
     fun setDnsEventSink(sink: DnsEventSink?) = nativeSetDnsEventSink(sink)
 
+    fun setRequestCapture(uid: Int, session: Long, minutes: Int) =
+        nativeSetRequestCapture(uid, session, minutes)
+
+    private external fun nativeSetRequestCapture(uid: Int, session: Long, minutes: Int)
+
     private external fun nativeReplaceRules(
         dns: String,
         browser: String,

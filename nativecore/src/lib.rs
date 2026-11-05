@@ -10,7 +10,7 @@ pub mod udp;
 
 use jni::{
     objects::{GlobalRef, JByteArray, JObject, JString, JValue},
-    sys::{jboolean, jbyteArray, jint, jlongArray, jstring, JNI_FALSE, JNI_TRUE},
+    sys::{jboolean, jbyteArray, jint, jlong, jlongArray, jstring, JNI_FALSE, JNI_TRUE},
     JNIEnv, JavaVM,
 };
 use sockets::Protector;
@@ -284,6 +284,16 @@ pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridg
     } else {
         JNI_FALSE
     }
+}
+#[no_mangle]
+pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeSetRequestCapture(
+    _: JNIEnv,
+    _: JObject,
+    uid: jint,
+    session: jlong,
+    minutes: jint,
+) {
+    dns::set_request_capture(uid, session, minutes);
 }
 #[no_mangle]
 pub extern "system" fn Java_com_utc_color_blockads_core_enginebridge_EngineBridge_nativeReplaceRules(

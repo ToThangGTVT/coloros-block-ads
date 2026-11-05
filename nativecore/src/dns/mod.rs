@@ -29,7 +29,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex, OnceLock, RwLock,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Clone, Deserialize)]
@@ -114,6 +114,40 @@ pub struct Event {
     pub cached: bool,
     pub uid: Option<u32>,
     pub protocol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_preview: Option<RequestPreview>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestPreview {
+    pub session: i64,
+    pub method: String,
+    pub path: String,
+    pub query: Option<String>,
+    pub body: Option<String>,
+    pub url_truncated: bool,
+    pub body_truncated: bool,
+}
+
+static REQUEST_CAPTURE: Mutex<Option<(u32, i64, Instant)>> = Mutex::new(None);
+
+pub(crate) fn set_request_capture(uid: i32, session: i64, minutes: i32) {
+    *REQUEST_CAPTURE.lock().unwrap_or_else(|e| e.into_inner()) = u32::try_from(uid)
+        .ok()
+        .filter(|_| (1..=120).contains(&minutes))
+        .map(|uid| {
+            let deadline = Instant::now() + Duration::from_secs(minutes as u64 * 60);
+            (uid, session, deadline)
+        });
+}
+
+pub(crate) fn capture_session(uid: Option<u32>) -> Option<i64> {
+    REQUEST_CAPTURE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .filter(|(owner, _, until)| Some(*owner) == uid && Instant::now() < *until)
+        .map(|(_, session, _)| session)
 }
 pub trait EventSink: Send + Sync {
     fn batch(&self, json: &str);
@@ -129,7 +163,7 @@ pub fn set_sink(sink: Option<Arc<dyn EventSink>>) {
         .unwrap_or_else(|e| e.into_inner()) = sink;
 }
 pub fn flush() {
-    let events = {
+    let mut events = {
         let mut queue = EVENTS
             .get_or_init(Mutex::default)
             .lock()
@@ -144,6 +178,15 @@ pub fn flush() {
     );
     if events.is_empty() && totals.is_empty() {
         return;
+    }
+    for event in &mut events {
+        if event
+            .request_preview
+            .as_ref()
+            .is_some_and(|preview| capture_session(event.uid) != Some(preview.session))
+        {
+            event.request_preview = None;
+        }
     }
     let totals: Vec<_> = totals.into_iter().map(|(timestamp, (total, blocked))| serde_json::json!({"timestamp":timestamp,"total":total,"blocked":blocked})).collect();
     let sink = SINK
@@ -165,6 +208,18 @@ pub fn event(
     cached: bool,
     uid: Option<u32>,
     protocol: &str,
+) {
+    event_with_preview(domain, blocked, rule, cached, uid, protocol, None);
+}
+
+pub(crate) fn event_with_preview(
+    domain: String,
+    blocked: bool,
+    rule: Option<String>,
+    cached: bool,
+    uid: Option<u32>,
+    protocol: &str,
+    request_preview: Option<RequestPreview>,
 ) {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -198,6 +253,7 @@ pub fn event(
             cached,
             uid,
             protocol: protocol.into(),
+            request_preview,
         });
         events.len() >= 100
     };

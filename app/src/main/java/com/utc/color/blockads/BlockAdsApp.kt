@@ -24,6 +24,7 @@ import com.utc.color.blockads.feature.certificate.CertificateScreen
 import com.utc.color.blockads.feature.filters.FilterCatalogScreen
 import com.utc.color.blockads.feature.filters.FiltersScreen
 import com.utc.color.blockads.feature.home.HomeScreen
+import com.utc.color.blockads.feature.querylog.AppRequestsScreen
 import com.utc.color.blockads.feature.querylog.QueryLogScreen
 import com.utc.color.blockads.feature.settings.SettingsScreen
 import kotlinx.serialization.Serializable
@@ -42,6 +43,9 @@ private enum class Destination : NavKey {
     Catalog,
     BrowserCatalog,
 }
+
+@Serializable
+private data class AppRequests(val uid: Int?, val label: String) : NavKey
 
 private val Destination.tab
     get() =
@@ -94,18 +98,30 @@ fun BlockAdsApp(
             if (target != Destination.Home) backStack.add(target)
         }
     }
-    val current = backStack.last() as Destination
+    val current = backStack.last() as? Destination
     val https by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
     val certificate by certificates.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var httpsBusy by remember { mutableStateOf(false) }
     var protectionError by remember { mutableStateOf<String?>(null) }
-    AppTabHost(selectedTab = current.tab, onTab = selectTab, showBar = current.isTab) {
+    AppTabHost(selectedTab = current?.tab ?: AppTab.Log, onTab = selectTab, showBar = current?.isTab == true) {
         AppNavDisplay(
             backStack = backStack,
             onBack = pop,
             entryProvider =
                 entryProvider {
+                    entry<AppRequests> { request ->
+                        AppPage(
+                            title = request.label,
+                            onBack = pop,
+                            scrollable = false,
+                        ) {
+                            AppRequestsScreen(
+                                queries, filters, settings, apps, request.uid,
+                                isCurrent = backStack.last() == request,
+                            )
+                        }
+                    }
                     entry<Destination>(
                         metadata = { destination ->
                             if (destination.isTab) appTabMetadata(destination.tab) else emptyMap()
@@ -182,7 +198,12 @@ fun BlockAdsApp(
                                         protectionError = protectionError,
                                         onSettings = { selectTab(AppTab.Settings) },
                                     )
-                                Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
+                                Destination.Log ->
+                                    QueryLogScreen(queries, filters, settings, apps) { uid, label ->
+                                        if (backStack.last() == Destination.Log) {
+                                            backStack.add(AppRequests(uid, label))
+                                        }
+                                    }
                                 Destination.Filters ->
                                     FiltersScreen(
                                         filters,

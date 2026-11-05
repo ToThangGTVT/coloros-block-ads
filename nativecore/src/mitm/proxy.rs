@@ -1,5 +1,8 @@
 //! TLS-verified upstream and streaming HTTP/1.1 + HTTP/2 proxy with bounded HTML-head rewriting.
-use super::{ca, eligible, reject_client};
+use super::{
+    ca, eligible, reject_client,
+    request_preview::{Capture, PreviewBody},
+};
 use crate::{
     policy::Owner,
     sockets::{self, Protector, Stats},
@@ -466,13 +469,12 @@ async fn forward(
     let (redirect, rewritten) = decision
         .as_ref()
         .map_or((None, None), |d| (d.redirect.clone(), d.rewritten.clone()));
-    crate::dns::event(
-        domain.into(),
+    let capture = Capture::start(
+        &request,
+        domain,
+        owner.uid,
         blocked,
         decision.map(|d| d.rule),
-        false,
-        owner.uid,
-        "https",
     );
     if blocked {
         // `$redirect`: a harmless stand-in (empty script, 1x1 image, ad library stub) keeps
@@ -510,7 +512,15 @@ async fn forward(
         return empty(StatusCode::BAD_REQUEST);
     };
     request.headers_mut().insert(hyper::header::HOST, host);
-    let request = request.map(|body| body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync());
+    let request = request.map(|body| match capture {
+        Some(capture) => PreviewBody {
+            inner: body,
+            capture: Some(capture),
+        }
+        .map_err(|e| -> BoxError { Box::new(e) })
+        .boxed_unsync(),
+        None => body.map_err(|e| -> BoxError { Box::new(e) }).boxed_unsync(),
+    });
     let response = tokio::time::timeout(
         Duration::from_secs(30),
         send_upstream(request, &upstream, domain, owner.uid, &url, &path),

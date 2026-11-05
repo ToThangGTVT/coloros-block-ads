@@ -74,7 +74,10 @@ interface QueryDao {
         uid: Int = -1,
     ): PagingSource<Int, QueryEntity>
 
-    @Insert suspend fun insertBatch(events: List<QueryEntity>)
+    @Query("SELECT * FROM queries WHERE uid IS :uid AND (:status = -1 OR blocked = :status) ORDER BY timestamp DESC, id DESC")
+    fun appPagingSource(uid: Int?, status: Int): PagingSource<Int, QueryEntity>
+
+    @Insert suspend fun insertBatch(events: List<QueryEntity>): List<Long>
 
     @Query("SELECT * FROM queries WHERE domain = :domain ORDER BY id DESC LIMIT 1")
     suspend fun latest(domain: String): QueryEntity?
