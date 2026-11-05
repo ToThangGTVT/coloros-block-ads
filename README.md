@@ -1,48 +1,48 @@
 # Open AdBlock
 
-Chặn quảng cáo và trình theo dõi trên Android bằng VPN cục bộ. **Android 13 trở lên, không cần root.**
+Block ads and trackers on Android with a local VPN. **Android 13 or later. No root required.**
 
-## Cài đặt
+## Installation
 
-1. Tải APK tại [bản phát hành mới nhất](https://github.com/ToThangGTVT/coloros-block-ads/releases/latest). Đa số máy dùng **arm64-v8a**; máy ARM 32-bit dùng **armeabi-v7a**.
-2. Mở APK và cho phép cài từ nguồn này nếu Android yêu cầu.
-3. Mở Open AdBlock → **Trang chủ** → bật VPN → chấp nhận yêu cầu kết nối VPN.
-4. Nếu chưa có bộ lọc, vào **Bộ lọc → Chọn danh sách chặn** để bật danh sách, rồi **Cập nhật tất cả**.
+1. Download an APK from the [latest release](https://github.com/ToThangGTVT/coloros-block-ads/releases/latest). Most devices use **arm64-v8a**; 32-bit ARM devices use **armeabi-v7a**.
+2. Open the APK and allow installation from this source if Android asks.
+3. Open Open AdBlock → **Home**, turn on protection, and accept the VPN connection request.
+4. If no filter rules are loaded, open **Filters → Choose from catalog**, enable a list, then tap **Update all**.
 
-Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình thường.
+Once Home shows **Protecting**, you can use your device as usual.
 
-## Các mục chính
+## Main features
 
-| Mục | Dùng để |
+| Screen | What you can do |
 | --- | --- |
-| **Trang chủ** | Bật/tắt bảo vệ, xem số lượt chặn. |
-| **Nhật ký** | Xem kết nối, tìm tên miền và chặn/cho phép nhanh. |
-| **Bộ lọc** | Chọn, cập nhật danh sách chặn hoặc thêm quy tắc riêng. |
-| **Tường lửa** | Cho phép hoặc chặn mạng từng ứng dụng khi VPN bật. |
-| **Cài đặt** | Chọn DNS, chỉnh ghi log, sao lưu và kiểm tra cập nhật. |
+| **Home** | Turn protection on or off and view blocking statistics. |
+| **Log** | Inspect connections, search domains, and quickly block or allow them. |
+| **Filters** | Choose and update filter lists or add custom rules. |
+| **Firewall** | Allow or block network access for individual apps while the VPN is on. |
+| **Settings** | Choose a DNS server, configure logging, back up settings, and check for updates. |
 
-## Ngôn ngữ
+## Languages
 
-Ứng dụng hỗ trợ **Tiếng Việt** và **English**, mặc định theo ngôn ngữ thiết bị (dùng tiếng Anh nếu chưa hỗ trợ ngôn ngữ đó). Đổi tại **Cài đặt → Giao diện → Ngôn ngữ**, hoặc mục ngôn ngữ ứng dụng trong cài đặt Android.
+The app supports **English** and **Vietnamese**. It follows your device language by default and falls back to English for unsupported languages. Change it in **Settings → Appearance → Language**, or in Android's per-app language settings.
 
-## Ảnh màn hình
+## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="240" alt="Trang chủ Open AdBlock đang bảo vệ">
-  <img src="docs/screenshots/filters.png" width="240" alt="Chọn và cập nhật bộ lọc">
-  <img src="docs/screenshots/firewall.png" width="240" alt="Tường lửa theo ứng dụng">
+  <img src="docs/screenshots/home.png" width="240" alt="Open AdBlock Home dashboard">
+  <img src="docs/screenshots/filters.png" width="240" alt="Filter list selection and updates">
+  <img src="docs/screenshots/firewall.png" width="240" alt="Per-app network access controls in Firewall">
 </p>
 
-*Ảnh chụp bản 1.0.3 trên máy giả lập Android.*
+*Captured in English from version 1.1.5 (debug build) on an Android device.*
 
-## Lưu ý
+## Notes
 
-- Chỉ dùng được một VPN cùng lúc. VPN của Open AdBlock chạy trên máy, không phải dịch vụ đổi IP.
-- Không chặn được mọi quảng cáo, chẳng hạn quảng cáo dùng chung máy chủ với nội dung.
-- Nếu app bị dừng nền, vào **Cài đặt → Ưu tiên chạy ngầm**. Nếu có cảnh báo Private DNS, tắt DNS riêng trong cài đặt Android để lọc đầy đủ hơn.
-- Log/thống kê cập nhật theo lô khoảng 5 giây, có thể sớm hơn khi nhiều kết nối. Lọc HTTPS là tùy chọn nâng cao, mặc định tắt.
-- Có thể ẩn phần tử quảng cáo trong Chrome bằng [quy tắc CSS theo website](docs/cosmetic-filtering.md), cần cấu hình lọc HTTPS và cài CA.
+- Android allows only one active VPN at a time. Open AdBlock's VPN runs locally on your device; it does not change your public IP address.
+- Some ads cannot be blocked, including ads served from the same servers as the content you want to access.
+- If Android stops the app in the background, open **Settings → Keep running in the background**. If a Private DNS warning appears, turn off Private DNS in Android settings for full DNS filtering.
+- Logs and statistics update in batches roughly every five seconds, or sooner during heavy traffic. HTTPS filtering is an advanced option and is off by default.
+- You can hide ad elements in Chrome using [website-specific CSS rules](docs/cosmetic-filtering.md). This requires HTTPS filtering and an installed CA certificate.
 
-Cập nhật tại **Cài đặt → Cập nhật ứng dụng → Kiểm tra cập nhật GitHub**.
+Check for updates in **Settings → App updates → Check GitHub for updates**.
 
-[Hướng dẫn build](docs/build.md) · [Thông tin phát hành](docs/releases.md) · [Giấy phép thư viện](THIRD_PARTY_LICENSES.md)
+[Build instructions](docs/build.md) · [Release information](docs/releases.md) · [Third-party licenses](THIRD_PARTY_LICENSES.md)
