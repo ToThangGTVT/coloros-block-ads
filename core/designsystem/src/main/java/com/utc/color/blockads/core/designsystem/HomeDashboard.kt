@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -227,7 +228,11 @@ fun AppHomeDashboard(
                 },
             cornerRadius = 0.dp,
             insideMargin = PaddingValues(0.dp),
-            colors = CardDefaults.defaultColors(color = palette.surfaceContainer),
+            // COUI's dark container is translucent. Use the page surface as its
+            // base so the hero doesn't show through when the panel is expanded.
+            colors = CardDefaults.defaultColors(
+                color = palette.surfaceContainer.compositeOver(palette.surface),
+            ),
         ) {
             Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.width(36.dp).height(4.dp).background(palette.onSurface.copy(alpha = 0.18f), CircleShape))
