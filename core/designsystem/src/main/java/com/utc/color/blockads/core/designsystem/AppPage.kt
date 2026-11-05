@@ -14,6 +14,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -184,6 +185,7 @@ fun AppPage(
     title: String,
     onBack: (() -> Unit)? = null,
     scrollable: Boolean = true,
+    showTopBar: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val strings = rememberAppStrings()
@@ -200,7 +202,8 @@ fun AppPage(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
         topBar = {
-            BlurredBar(backdrop) {
+            if (showTopBar)
+            BlurredBar(backdrop, blurEnabled = scrollable) {
                 TopAppBar(
                     title = title,
                     color = Color.Transparent,
@@ -254,8 +257,15 @@ fun AppPage(
 private fun BlurredBar(
     backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
+    blurEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    // Fixed content starts below the bar; sampling its backdrop would pull
+    // the segmented control's green fill upward into the title area.
+    if (!blurEnabled) {
+        Box(modifier.background(COUITheme.colorScheme.surface)) { content() }
+        return
+    }
     Box(
         modifier.textureBlur(
             backdrop = backdrop,

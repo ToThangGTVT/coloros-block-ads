@@ -1,10 +1,13 @@
 package com.utc.color.blockads.core.designsystem
 
+import android.graphics.Canvas
+import android.graphics.Paint
 import com.utc.color.blockads.core.common.R as L10n
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -15,6 +18,8 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.IAxisValueFormatter
+import com.github.mikephil.charting.charts.LineChart as AndroidLineChart
+import com.github.mikephil.charting.renderer.LineChartRenderer
 import com.utc.color.blockads.core.common.TrafficDay
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.time.Instant
@@ -45,7 +50,7 @@ fun AppTrafficChart(days: List<TrafficDay>) {
     val series =
         remember(days, palette.primary, palette.error, strings.configuration.locales[0]) {
             // Total first so the blocked area, always within it, is drawn on top.
-            fun area(label: String, color: androidx.compose.ui.graphics.Color, value: (TrafficDay) -> Long) =
+            fun area(label: String, color: androidx.compose.ui.graphics.Color, fillAlpha: Float, value: (TrafficDay) -> Long) =
                 LineDataSet(
                         days.mapIndexed { index, day ->
                             Entry(index.toFloat(), value(day).toFloat())
@@ -56,7 +61,7 @@ fun AppTrafficChart(days: List<TrafficDay>) {
                         colors = listOf(color.toArgb())
                         // Horizontal bezier stays smooth without dipping below zero.
                         mode = LineDataSet.Mode.HORIZONTAL_BEZIER
-                        lineWidth = 2f
+                        lineWidth = 4f
                         isDrawCirclesEnabled = false
                         isDrawValuesEnabled = false
                         isHighlightEnabled = false
@@ -65,19 +70,19 @@ fun AppTrafficChart(days: List<TrafficDay>) {
                             android.graphics.drawable.GradientDrawable(
                                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                                 intArrayOf(
-                                    color.copy(alpha = 0.4f).toArgb(),
+                                    color.copy(alpha = fillAlpha).toArgb(),
                                     color.copy(alpha = 0f).toArgb(),
                                 ),
                             )
                     }
             LineData(
-                area(strings.getString(L10n.string.all), palette.primary) { it.total },
-                area(strings.getString(L10n.string.blocked), palette.error) { it.blocked },
+                area(strings.getString(L10n.string.all), palette.primary, 0.28f) { it.total },
+                area(strings.getString(L10n.string.blocked), palette.error, 0.14f) { it.blocked },
             )
         }
     LineChart(
         data = series,
-        modifier = Modifier.fillMaxWidth().height(AppSpacing.page * 12),
+        modifier = Modifier.fillMaxWidth().height(280.dp),
         contentDescription =
             strings.getString(L10n.string.traffic_week_description) +
                 days
@@ -86,10 +91,15 @@ fun AppTrafficChart(days: List<TrafficDay>) {
                     }
                     .joinToString("; "),
         setup = {
+            renderer = TrafficLineRenderer(this)
             description.isEnabled = false
             axisRight.isEnabled = false
             isScaleEnabled = false
             isTouchEnabled = false
+            // A zero-valued line is centered on the plot's bottom edge. Let its
+            // lower half render into the reserved inset instead of clipping it.
+            isClipDataToContentEnabled = false
+            extraBottomOffset = 6f
             xAxis.position = XAxis.XAxisPosition.BOTTOM
             xAxis.granularity = 1f
             xAxis.isDrawGridLinesEnabled = false
@@ -98,6 +108,7 @@ fun AppTrafficChart(days: List<TrafficDay>) {
             axisLeft.axisMinimum = 0f
             axisLeft.isDrawAxisLineEnabled = false
             axisLeft.granularity = 1f
+            axisLeft.labelCount = 4
         },
         update = {
             xAxis.textColor = palette.onSurface.toArgb()
@@ -110,7 +121,7 @@ fun AppTrafficChart(days: List<TrafficDay>) {
             axisLeft.textColor = palette.onSurface.toArgb()
             axisLeft.typeface = font
             axisLeft.textSize = textSize
-            axisLeft.gridColor = palette.onSurface.copy(alpha = 0.12f).toArgb()
+            axisLeft.gridColor = palette.onSurface.copy(alpha = 0.06f).toArgb()
             axisLeft.axisLineColor = palette.onSurface.copy(alpha = 0.12f).toArgb()
             xAxis.axisLineColor = palette.onSurface.copy(alpha = 0.12f).toArgb()
             legend.textColor = palette.onSurface.toArgb()
@@ -120,4 +131,30 @@ fun AppTrafficChart(days: List<TrafficDay>) {
                 (days.maxOfOrNull { it.total } ?: 0).coerceAtLeast(1).toFloat() * 1.15f
         },
     )
+}
+
+/** Rounded line starts and a single solid marker at the newest day of each series. */
+private class TrafficLineRenderer(private val view: AndroidLineChart) :
+    LineChartRenderer(view, view.animator, view.viewPortHandler) {
+    private val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val markerPosition = FloatArray(2)
+    private val markerRadius = 5f * view.resources.displayMetrics.density
+
+    init {
+        paintRender.strokeCap = Paint.Cap.ROUND
+        paintRender.strokeJoin = Paint.Join.ROUND
+    }
+
+    override fun drawExtras(c: Canvas) {
+        super.drawExtras(c)
+        view.lineData?.dataSets?.forEach { dataSet ->
+            if (!dataSet.isVisible || dataSet.entryCount == 0) return@forEach
+            val last = dataSet.getEntryForIndex(dataSet.entryCount - 1) ?: return@forEach
+            markerPosition[0] = last.x
+            markerPosition[1] = last.y * view.animator.phaseY
+            view.getTransformer(dataSet.axisDependency).pointValuesToPixel(markerPosition)
+            markerPaint.color = dataSet.getColor(dataSet.entryCount - 1)
+            c.drawCircle(markerPosition[0], markerPosition[1], markerRadius, markerPaint)
+        }
+    }
 }

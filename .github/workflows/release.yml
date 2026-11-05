@@ -71,7 +71,7 @@ jobs:
             echo "Release $TAG already exists; keeping its signed APKs unchanged. Build artifacts are available on this run. Increase versionName/versionCode to publish the next version."
             exit 0
           fi
-          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "BlockAds $TAG" --generate-notes --draft
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "Open AdBlock $TAG" --generate-notes --draft
           gh release edit "$TAG" --draft=false --latest
       - name: Remove signing key
         if: always()

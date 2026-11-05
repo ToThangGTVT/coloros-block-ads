@@ -16,6 +16,11 @@ fun HomeScreen(
     queries: QueryLogRepository,
     onPrivateDns: () -> Unit,
     onProtection: (Boolean) -> Unit,
+    httpsEnabled: Boolean,
+    httpsToggleEnabled: Boolean,
+    onHttpsProtection: (Boolean) -> Unit,
+    protectionError: String?,
+    onSettings: () -> Unit,
 ) {
     val strings = rememberAppStrings()
     val stats by queries.today.collectAsStateWithLifecycle()
@@ -25,44 +30,47 @@ fun HomeScreen(
         tunnel.status in
             listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
     val number = remember(strings.configuration.locales[0]) { java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
-    AppColumn {
-        AppProtectionCard(
-            title =
-                when (tunnel.status) {
-                    TunnelStatus.Off -> strings.getString(L10n.string.vpn_off)
-                    TunnelStatus.Connecting -> strings.getString(L10n.string.connecting)
-                    TunnelStatus.Connected ->
-                        if (filter.loaded > 0) strings.getString(L10n.string.protecting) else strings.getString(L10n.string.vpn_no_rules)
-                    TunnelStatus.Reconnecting -> strings.getString(L10n.string.network_waiting)
-                    TunnelStatus.Revoked -> strings.getString(L10n.string.vpn_revoked)
-                    TunnelStatus.Error -> strings.getString(L10n.string.vpn_connection_failed)
-                },
-            checked = enabled,
-            enabled = tunnel.status != TunnelStatus.Connecting,
-            onChange = onProtection,
-        ) {
-            AppHint(
-                if (filter.loading) strings.getString(L10n.string.filters_preparing)
-                else strings.getQuantityString(L10n.plurals.rules_in_use, filter.loaded, number.format(filter.loaded))
-            )
-            tunnel.detail?.let { AppHint(it) }
-            filter.error?.let { AppHint(it) }
-        }
-        if (tunnel.privateDns)
-            AppCard {
+    val statusTitle = when (tunnel.status) {
+        TunnelStatus.Off -> strings.getString(L10n.string.home_protection_off)
+        TunnelStatus.Connecting -> strings.getString(L10n.string.connecting)
+        TunnelStatus.Connected -> if (filter.loaded > 0) strings.getString(L10n.string.protecting) else strings.getString(L10n.string.vpn_no_rules)
+        TunnelStatus.Reconnecting -> strings.getString(L10n.string.network_waiting)
+        TunnelStatus.Revoked -> strings.getString(L10n.string.vpn_revoked)
+        TunnelStatus.Error -> strings.getString(L10n.string.vpn_connection_failed)
+    }
+    val rules = if (filter.loading) strings.getString(L10n.string.filters_preparing)
+        else strings.getQuantityString(L10n.plurals.rules_in_use, filter.loaded, number.format(filter.loaded))
+    AppHomeDashboard(
+        title = statusTitle,
+        checked = enabled,
+        canToggle = tunnel.status != TunnelStatus.Connecting,
+        rules = rules,
+        total = stats.total,
+        blocked = stats.blocked,
+        onProtection = onProtection,
+        httpsEnabled = httpsEnabled,
+        httpsToggleEnabled = httpsToggleEnabled,
+        onHttpsProtection = onHttpsProtection,
+        onSettings = onSettings,
+        notices = {
+            protectionError?.let { AppCard { AppHint(it) } }
+            tunnel.detail?.let { AppCard { AppHint(it) } }
+            filter.error?.let { AppCard { AppHint(it) } }
+            if (tunnel.privateDns) AppCard {
                 AppText(strings.getString(L10n.string.private_dns_on), prominent = true)
                 AppHint(strings.getString(L10n.string.private_dns_hint))
                 AppAction(strings.getString(L10n.string.open_settings), primary = true, onClick = onPrivateDns)
             }
-        AppSectionTitle(strings.getString(L10n.string.today))
-        AppCard { AppStatistics(stats.total, stats.blocked) }
-        AppSectionTitle(strings.getString(L10n.string.last_seven_days))
-        AppCard { AppTrafficChart(week) }
-        AppSectionTitle(strings.getString(L10n.string.most_blocked))
-        if (top.isEmpty()) AppCard { AppHint(strings.getString(L10n.string.none_yet)) }
-        else AppDomainBreakdown(
-            domains = top.map { it.domain to it.count },
-            otherCount = (top.first().totalBlocked - top.sumOf { it.count }).coerceAtLeast(0),
-        )
-    }
+        },
+        statistics = {
+            AppText(strings.getString(L10n.string.last_seven_days), prominent = true)
+            AppTrafficChart(week)
+            AppText(strings.getString(L10n.string.most_blocked), prominent = true)
+            if (top.isEmpty()) AppHint(strings.getString(L10n.string.none_yet))
+            else AppDomainBreakdown(
+                domains = top.map { it.domain to it.count },
+                otherCount = (top.first().totalBlocked - top.sumOf { it.count }).coerceAtLeast(0),
+            )
+        },
+    )
 }

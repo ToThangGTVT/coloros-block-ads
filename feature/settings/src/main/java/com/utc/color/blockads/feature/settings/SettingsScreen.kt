@@ -363,7 +363,7 @@ fun SettingsScreen(
         item(key = "settings-12", contentType = "settings-section") {
             AppCard {
                 AppText(
-                    "BlockAds ${remember(context) { com.utc.color.blockads.core.data.GitHubUpdateRepository(context).currentVersion }}",
+                    "${strings.getString(L10n.string.app_display_name)} ${remember(context) { com.utc.color.blockads.core.data.GitHubUpdateRepository(context).currentVersion }}",
                     prominent = true,
                 )
                 AppHint("Rust JNI · $engineVersion")

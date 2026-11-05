@@ -75,7 +75,7 @@ fun CertificateScreen(
         AppPreferenceGroup {
             if (state.created)
                 AppArrowPreference(strings.getString(L10n.string.ca_export), strings.getString(L10n.string.ca_export_hint)) {
-                    export.launch("BlockAds-CA.crt")
+                    export.launch("OpenAdBlock-CA.crt")
                 }
             AppArrowPreference(strings.getString(L10n.string.open_settings), strings.getString(L10n.string.ca_install_path)) {
                 runCatching {

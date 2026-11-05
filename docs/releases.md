@@ -174,3 +174,13 @@ Tag `v1.1.0` không có release: workflow dừng ở một test kết nối lạ
 - Mặc định theo ngôn ngữ thiết bị, dùng tiếng Anh nếu ngôn ngữ đó chưa được hỗ trợ. Có thể đổi ngôn ngữ riêng của ứng dụng trong cài đặt Android.
 - Định dạng số, ngày và số ít/số nhiều theo ngôn ngữ đang chọn; thông báo VPN cập nhật khi đổi ngôn ngữ.
 - Đã kiểm tra build/lint debug, 7 unit test của core/common và core/data cùng 3 kiểm thử ngôn ngữ trên máy ảo, gồm đổi Việt–Anh, giữ lựa chọn sau khi tạo lại màn hình và quay về Theo hệ thống.
+
+## 1.1.5 — Open AdBlock và giao diện green
+
+- Đổi tên hiển thị thành Open AdBlock, đồng bộ launcher, Home, thông báo, phiên VPN và phần giới thiệu; giữ package để tiếp tục cập nhật ứng dụng hiện có.
+- Theme COUI chuyển sang lime và xanh rừng; cập nhật icon launcher ở các mật độ màn hình.
+- Làm lại Home với nút bộ lọc hình khiên, thống kê hôm nay và panel kéo lên/xuống có tab Tác vụ / Thống kê.
+- Tác vụ gồm hai công tắc DNS và HTTPS; bật HTTPS mở thiết lập khi chưa có chứng chỉ hoặc ứng dụng được chọn.
+- Biểu đồ 7 ngày dùng nét dày, gradient, đầu nét bo tròn và chấm ở ngày mới nhất; sửa nét bị cắt tại giá trị 0.
+- Đồng bộ tab con Nhật ký/Bộ lọc theo Home, đổi nền ô nhập/ô chọn sang trắng và sửa màu tab bị blur vào tiêu đề.
+- Đã kiểm tra build debug/release, lint release, 7 unit test core/common và core/data; kiểm thử panel trên điện thoại xác nhận hai mô tả, công tắc và kéo mở/thu gọn hoạt động.

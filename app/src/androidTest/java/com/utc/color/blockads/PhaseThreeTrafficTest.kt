@@ -149,8 +149,8 @@ class PhaseThreeTrafficTest {
             compose.onNodeWithText(appString(L10n.string.settings)).performClick()
             compose.onNodeWithTag("page-list").performScrollToNode(hasText(appString(L10n.string.apps)))
             compose.onNodeWithText(appString(L10n.string.apps)).performClick()
-            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput("BlockAds")
-            compose.onNodeWithText(appString(L10n.string.app_policy_title, "BlockAds")).assertExists()
+            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput(appString(L10n.string.app_display_name))
+            compose.onNodeWithText(appString(L10n.string.app_policy_title, appString(L10n.string.app_display_name))).assertExists()
         } finally {
             model.tunnel.stop()
             withTimeout(15000) { model.tunnel.state.first { it.status == TunnelStatus.Off } }

@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -40,14 +41,18 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownArrowEndAction
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
 import io.github.suqi8.coui.kmp.basic.Switch
+import io.github.suqi8.coui.kmp.basic.SwitchDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -113,11 +118,11 @@ fun AppText(text: String, prominent: Boolean = false) {
  * Short secondary line (footnote, summary color) for hints that should not compete with content.
  */
 @Composable
-fun AppHint(text: String) {
+fun AppHint(text: String, color: Color = COUITheme.colorScheme.onSurfaceVariantSummary) {
     Text(
         text = text,
         style = COUITheme.textStyles.footnote1,
-        color = COUITheme.colorScheme.onSurfaceVariantSummary,
+        color = color,
     )
 }
 
@@ -145,19 +150,52 @@ fun AppProtectionCard(
     checked: Boolean,
     enabled: Boolean,
     onChange: (Boolean) -> Unit,
-    details: @Composable ColumnScope.() -> Unit,
+    details: @Composable ColumnScope.(Color) -> Unit,
 ) {
-    AppCard {
+    val palette = COUITheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 24.dp,
+        insideMargin = PaddingValues(0.dp),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        if (checked) listOf(AppBrandColors.Forest, Color(0xFF15563D), Color(0xFF28734A))
+                        else listOf(palette.onSurface.copy(alpha = 0.06f), palette.onSurface.copy(alpha = 0.03f))
+                    )
+                )
+                .heightIn(min = 144.dp)
+                .padding(24.dp),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                AppText(title, prominent = true)
-                details()
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(8.dp).background(if (checked) AppBrandColors.Lime else palette.onSurfaceVariantSummary, CircleShape))
+                    Text(
+                        title,
+                        style = COUITheme.textStyles.title2.copy(fontWeight = FontWeight.Bold),
+                        color = if (checked) Color.White else palette.onSurface,
+                    )
+                }
+                details(if (checked) Color.White.copy(alpha = 0.78f) else palette.onSurfaceVariantSummary)
             }
-            Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+            Switch(
+                checked = checked,
+                onCheckedChange = onChange,
+                enabled = enabled,
+                colors = SwitchDefaults.switchColors(
+                    checkedTrackColor = AppBrandColors.Lime,
+                    checkedThumbColor = AppBrandColors.Forest,
+                    disabledCheckedTrackColor = AppBrandColors.Lime.copy(alpha = 0.5f),
+                    disabledCheckedThumbColor = AppBrandColors.Forest,
+                ),
+            )
         }
     }
 }
@@ -165,31 +203,48 @@ fun AppProtectionCard(
 @Composable
 fun AppStatistics(total: Long, blocked: Long) {
     val strings = rememberAppStrings()
-    androidx.compose.foundation.layout.Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+    val number = remember(strings.configuration.locales[0]) {
+        java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0])
+    }
+    val palette = COUITheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        listOf(
-                strings.getString(L10n.string.total_requests) to java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]).format(total),
-                strings.getString(L10n.string.blocked) to java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]).format(blocked),
+        AppSectionTitle(strings.getString(L10n.string.today))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 24.dp,
+            insideMargin = PaddingValues(24.dp),
+            colors = CardDefaults.defaultColors(color = AppBrandColors.Lime.copy(alpha = if (appUsesDarkColors()) 0.1f else 0.24f)),
+        ) {
+            Text(
+                text = number.format(blocked),
+                style = COUITheme.textStyles.title2.copy(fontSize = 48.sp, lineHeight = 56.sp, fontWeight = FontWeight.Bold),
+                color = palette.primary,
+            )
+            AppText(strings.getString(L10n.string.blocked))
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            listOf(
+                strings.getString(L10n.string.total_requests) to number.format(total),
                 strings.getString(L10n.string.block_rate) to
                     (if (total == 0L) "0%"
-                    else
-                        String.format(
-                            strings.configuration.locales[0],
-                            "%.1f%%",
-                            blocked * 100.0 / total,
-                        )),
-            )
-            .forEach { (label, value) ->
-                Column(
-                    Modifier.weight(1f),
-                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    else String.format(strings.configuration.locales[0], "%.1f%%", blocked * 100.0 / total)),
+            ).forEach { (label, value) ->
+                Card(
+                    modifier = Modifier.weight(1f),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
                 ) {
                     AppText(value, prominent = true)
                     AppHint(label)
                 }
             }
+        }
     }
 }
 
@@ -198,12 +253,16 @@ fun AppSwitchPreference(
     title: String,
     summary: String? = null,
     checked: Boolean,
+    enabled: Boolean = true,
+    insideMargin: PaddingValues = BasicComponentDefaults.InsideMargin,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     SwitchPreference(
+        insideMargin = insideMargin,
         title = title,
         summary = summary,
         checked = checked,
+        enabled = enabled,
         onCheckedChange = onCheckedChange,
     )
 }
@@ -222,11 +281,10 @@ fun AppChoicePreference(
     val strings = rememberAppStrings()
     var shown by remember { mutableStateOf(false) }
     if (compact) {
-        val palette = COUITheme.colorScheme
         val active = selected > 0
         Row(
             modifier = modifier.clip(RoundedCornerShape(12.dp))
-                .background(if (active) palette.primary.copy(alpha = 0.1f) else palette.onSurface.copy(alpha = 0.05f))
+                .background(Color.White)
                 .clickable(enabled = entries.isNotEmpty(), role = Role.DropdownList) { shown = true }
                 .semantics {
                     contentDescription = title
@@ -241,11 +299,11 @@ fun AppChoicePreference(
                 text = if (active || showSelectedValue) entries.getOrNull(selected) ?: title else title,
                 modifier = Modifier.weight(1f),
                 style = COUITheme.textStyles.body1,
-                color = if (active) palette.primary else palette.onSurface,
+                color = if (active) AppBrandColors.Green else Color(0xE6000000),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            DropdownArrowEndAction(actionColor = palette.onSurfaceVariantActions)
+            DropdownArrowEndAction(actionColor = Color(0x66000000))
         }
     } else BasicComponent(
         title = title,
@@ -365,7 +423,19 @@ fun AppTextInput(
         minLines = if (multiline) 3 else 1,
         maxLines = if (multiline) 8 else 1,
         singleLine = !multiline,
-        modifier = Modifier.fillMaxWidth(),
+        textStyle = COUITheme.textStyles.body1.copy(color = Color(0xE6000000)),
+        colors = io.github.suqi8.coui.kmp.basic.TextFieldDefaults.textFieldColors(
+            backgroundColor = Color.White,
+            labelColor = Color(0x8A000000),
+            borderColor = AppBrandColors.Green,
+            unfocusedBorderColor = Color(0x1F000000),
+            counterColor = Color(0x66000000),
+            iconColor = Color(0x8A000000),
+            disabledTextColor = Color(0x42000000),
+        ),
+        modifier = Modifier.fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp),
     )
 }
 

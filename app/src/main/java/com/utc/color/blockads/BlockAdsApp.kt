@@ -1,13 +1,17 @@
 package com.utc.color.blockads
 
 import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.utc.color.blockads.core.common.ThemeMode
 import com.utc.color.blockads.core.common.TunnelState
+import com.utc.color.blockads.core.common.TunnelStatus
+import com.utc.color.blockads.core.common.HttpsSettings
+import com.utc.color.blockads.core.common.userMessage
 import com.utc.color.blockads.core.designsystem.AppNavDisplay
 import com.utc.color.blockads.core.designsystem.AppPage
 import com.utc.color.blockads.core.designsystem.AppTab
@@ -23,6 +27,8 @@ import com.utc.color.blockads.feature.home.HomeScreen
 import com.utc.color.blockads.feature.querylog.QueryLogScreen
 import com.utc.color.blockads.feature.settings.SettingsScreen
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Serializable
 private enum class Destination : NavKey {
@@ -89,6 +95,11 @@ fun BlockAdsApp(
         }
     }
     val current = backStack.last() as Destination
+    val https by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
+    val certificate by certificates.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var httpsBusy by remember { mutableStateOf(false) }
+    var protectionError by remember { mutableStateOf<String?>(null) }
     AppTabHost(selectedTab = current.tab, onTab = selectTab, showBar = current.isTab) {
         AppNavDisplay(
             backStack = backStack,
@@ -110,8 +121,10 @@ fun BlockAdsApp(
                             }
                         AppPage(
                             title = title,
+                            showTopBar = destination != Destination.Home,
                             scrollable =
                                 destination != Destination.Log &&
+                                    destination != Destination.Home &&
                                     destination != Destination.Apps &&
                                     destination != Destination.Firewall &&
                                     destination != Destination.Catalog &&
@@ -143,6 +156,31 @@ fun BlockAdsApp(
                                             )
                                         },
                                         onProtection,
+                                        httpsEnabled = https.enabled && certificate.installed && tunnel.status in listOf(TunnelStatus.Connected, TunnelStatus.Reconnecting),
+                                        httpsToggleEnabled = !httpsBusy && tunnel.status != TunnelStatus.Connecting,
+                                        onHttpsProtection = { enabled ->
+                                            if (!httpsBusy) scope.launch {
+                                                httpsBusy = true
+                                                protectionError = null
+                                                try {
+                                                    certificates.refresh()
+                                                    if (enabled && (!certificates.state.value.created || !certificates.state.value.installed || https.apps.isEmpty())) {
+                                                        backStack.add(Destination.Certificate)
+                                                    } else {
+                                                        certificates.setEnabled(enabled)
+                                                        if (enabled && tunnel.status !in listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)) onProtection(true)
+                                                    }
+                                                } catch (cancelled: CancellationException) {
+                                                    throw cancelled
+                                                } catch (failure: Exception) {
+                                                    protectionError = failure.userMessage(strings) ?: strings.getString(L10n.string.action_failed)
+                                                } finally {
+                                                    httpsBusy = false
+                                                }
+                                            }
+                                        },
+                                        protectionError = protectionError,
+                                        onSettings = { selectTab(AppTab.Settings) },
                                     )
                                 Destination.Log -> QueryLogScreen(queries, filters, settings, apps)
                                 Destination.Filters ->

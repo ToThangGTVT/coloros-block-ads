@@ -194,7 +194,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             snapshot = current
             val builder =
                 Builder()
-                    .setSession("BlockAds")
+                    .setSession(getString(L10n.string.app_display_name))
                     .setMtu(9000) // Must match MTU in nativecore/src/tun/mod.rs.
                     .setBlocking(false)
                     .addAddress("172.19.0.1", 30)
@@ -439,7 +439,7 @@ class BlockAdsVpnService : VpnService(), SocketProtector {
             .setContentTitle(
                 if (Build.VERSION.SDK_INT >= 36 && liveUpdatesEnabled)
                     if (total > 0) getString(L10n.string.notification_block_rate, blockedPercent) else getString(L10n.string.notification_no_requests)
-                else "BlockAds"
+                else getString(L10n.string.app_display_name)
             )
             .setContentText(counters)
             .apply {

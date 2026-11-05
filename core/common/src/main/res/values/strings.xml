@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_display_name" translatable="false">Open AdBlock</string>
     <string name="apps">"Apps"</string>
     <string name="https_filtering">"HTTPS filtering"</string>
     <string name="dns_lists">"DNS lists"</string>
@@ -42,7 +43,7 @@
     <string name="apk_checksum_mismatch">"The APK\'s SHA-256 checksum does not match. Download it again."</string>
     <string name="apk_save_failed">"Could not save the APK."</string>
     <string name="apk_invalid">"Invalid APK."</string>
-    <string name="apk_wrong_app">"This APK is not a BlockAds update."</string>
+    <string name="apk_wrong_app">"This APK is not a Open AdBlock update."</string>
     <string name="apk_signature_mismatch">"The APK signature differs from the installed version. Install a GitHub release to receive future updates."</string>
     <string name="github_redirect_invalid">"GitHub redirected to an invalid address."</string>
     <string name="redirect_missing">"Missing redirect address."</string>
@@ -118,17 +119,17 @@
     <string name="vpn_stopped_unexpectedly">"The VPN tunnel stopped unexpectedly. Turn the VPN on again."</string>
     <string name="vpn_open_failed">"Could not start the VPN. Check permissions or another app\'s always-on VPN settings."</string>
     <string name="network_waiting">"Waiting for a network connection…"</string>
-    <string name="vpn_revoked_detail">"VPN permission was revoked or another VPN replaced BlockAds."</string>
+    <string name="vpn_revoked_detail">"VPN permission was revoked or another VPN replaced Open AdBlock."</string>
     <string name="today_prefix">"Today · "</string>
     <string name="blocked_lowercase">"blocked"</string>
     <string name="allowed_lowercase">"allowed"</string>
-    <string name="notification_block_rate">"BlockAds · %1$s blocked"</string>
-    <string name="notification_no_requests">"BlockAds · No requests yet"</string>
+    <string name="notification_block_rate">"Open AdBlock · %1$s blocked"</string>
+    <string name="notification_no_requests">"Open AdBlock · No requests yet"</string>
     <string name="network_waiting_short">"Waiting"</string>
     <string name="connecting_short">"Connecting"</string>
     <string name="vpn_start_failed">"Could not start the VPN service from its current state."</string>
     <string name="search_apps">"Search apps"</string>
-    <string name="firewall_help">"The firewall is active while the BlockAds VPN is on. It applies to Wi-Fi and mobile data."</string>
+    <string name="firewall_help">"The firewall is active while the Open AdBlock VPN is on. It applies to Wi-Fi and mobile data."</string>
     <string name="firewall_help_label">"Firewall help"</string>
     <string name="show_system_apps">"Show system apps"</string>
     <string name="network_apps_only">"Only apps with network access"</string>
@@ -155,7 +156,7 @@
     <string name="ca_keystore_key">"Key stored in Android Keystore"</string>
     <string name="ca_step_install">"2 · Install the CA"</string>
     <string name="ca_export">"Export CA"</string>
-    <string name="ca_export_hint">"Save BlockAds-CA.crt"</string>
+    <string name="ca_export_hint">"Save OpenAdBlock-CA.crt"</string>
     <string name="open_settings">"Open settings"</string>
     <string name="ca_install_path">"Security → Install a certificate → CA certificate"</string>
     <string name="settings_open_failed">"Could not open Settings."</string>
@@ -207,7 +208,7 @@
     <string name="browser_https_required">"Enable HTTPS filtering for your browser"</string>
     <string name="all_apps_dns_hint">"Applies to all apps through DNS"</string>
     <string name="browser_filters_help">"Block ads and hide elements on websites. Enable HTTPS filtering and select your browser in the app list. These filters do not block DNS queries."</string>
-    <string name="dns_filters_help">"Block advertising, tracking, and malware domains for filtered apps while the BlockAds VPN is on."</string>
+    <string name="dns_filters_help">"Block advertising, tracking, and malware domains for filtered apps while the Open AdBlock VPN is on."</string>
     <string name="browser_filters_help_label">"Browser filter help"</string>
     <string name="dns_filters_help_label">"DNS filter help"</string>
     <plurals name="lists_enabled">
@@ -254,7 +255,7 @@
     <string name="rules_save_failed">"Could not save rules."</string>
     <string name="vpn_off">"VPN is off"</string>
     <string name="connecting">"Connecting…"</string>
-    <string name="protecting">"Protection is active"</string>
+    <string name="protecting">"Filtering is on"</string>
     <string name="vpn_revoked">"VPN permission was revoked"</string>
     <string name="vpn_connection_failed">"Could not connect to the VPN"</string>
     <string name="filters_preparing">"Preparing filters…"</string>
@@ -282,7 +283,7 @@
     <string name="app_prefix">"App: "</string>
     <string name="block_action">"Block"</string>
     <string name="installer_open_failed">"Could not open the installer."</string>
-    <string name="install_permission_required">"Allow BlockAds to install apps to update. The downloaded APK will be kept."</string>
+    <string name="install_permission_required">"Allow Open AdBlock to install apps to update. The downloaded APK will be kept."</string>
     <string name="app_updates">"App updates"</string>
     <string name="check_github_updates">"Check GitHub for updates"</string>
     <string name="processing">"Processing…"</string>
@@ -317,7 +318,7 @@
     <string name="file_too_large">"The file exceeds 2 MB."</string>
     <string name="protection">"Protection"</string>
     <string name="background_priority">"Keep running in the background"</string>
-    <string name="battery_exempt">"Battery optimization is disabled for BlockAds"</string>
+    <string name="battery_exempt">"Battery optimization is disabled for Open AdBlock"</string>
     <string name="battery_exempt_hint">"Disable battery optimization to keep VPN protection active when the screen is off"</string>
     <string name="battery_settings_failed">"Could not open battery settings."</string>
     <string name="auto_start">"Start after reboot"</string>
@@ -375,4 +376,13 @@
     <string name="dns_adguard_doh" translatable="false">AdGuard · DoH</string>
     <string name="dns_adguard_doq" translatable="false">AdGuard · DoQ</string>
     <string name="allow_action">"Allow"</string>
+    <string name="home_protection_off">Filtering is off</string>
+    <string name="home_device_protection">Ad filtering and privacy protection</string>
+    <string name="home_blocked_today">Blocked today</string>
+    <string name="home_actions">Actions</string>
+    <string name="home_statistics">Statistics</string>
+    <string name="home_dns_protection">DNS protection</string>
+    <string name="home_https_protection">HTTPS protection</string>
+    <string name="home_dns_description">Block ads using DNS</string>
+    <string name="home_https_description">Block ads in your browser</string>
 </resources>

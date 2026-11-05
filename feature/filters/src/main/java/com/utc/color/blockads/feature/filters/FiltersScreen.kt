@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.data.SettingsRepository
 import com.utc.color.blockads.core.designsystem.*
@@ -56,7 +57,7 @@ fun FiltersScreen(
         }
     }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.padding(horizontal = AppSpacing.page)) {
+        Box(Modifier.padding(start = AppSpacing.page, end = AppSpacing.page, top = 12.dp)) {
             AppContentTabs(listOf(strings.getString(L10n.string.dns_filters), strings.getString(L10n.string.browser_filters)), tab) { tab = it }
         }
         Box(Modifier.weight(1f)) {

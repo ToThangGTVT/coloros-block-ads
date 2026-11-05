@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
@@ -28,7 +29,7 @@ fun QueryLogScreen(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val states = rememberSaveableStateHolder()
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.padding(horizontal = AppSpacing.page)) {
+        Box(Modifier.padding(start = AppSpacing.page, end = AppSpacing.page, top = 12.dp)) {
             AppContentTabs(listOf(strings.getString(L10n.string.queries), strings.getString(L10n.string.app_statistics)), tab) { tab = it }
         }
         Box(Modifier.weight(1f)) {

@@ -1,4 +1,4 @@
-# BlockAds
+# Open AdBlock
 
 Chặn quảng cáo và trình theo dõi trên Android bằng VPN cục bộ. **Android 13 trở lên, không cần root.**
 
@@ -6,7 +6,7 @@ Chặn quảng cáo và trình theo dõi trên Android bằng VPN cục bộ. **
 
 1. Tải APK tại [bản phát hành mới nhất](https://github.com/ToThangGTVT/coloros-block-ads/releases/latest). Đa số máy dùng **arm64-v8a**; máy ARM 32-bit dùng **armeabi-v7a**.
 2. Mở APK và cho phép cài từ nguồn này nếu Android yêu cầu.
-3. Mở BlockAds → **Trang chủ** → bật VPN → chấp nhận yêu cầu kết nối VPN.
+3. Mở Open AdBlock → **Trang chủ** → bật VPN → chấp nhận yêu cầu kết nối VPN.
 4. Nếu chưa có bộ lọc, vào **Bộ lọc → Chọn danh sách chặn** để bật danh sách, rồi **Cập nhật tất cả**.
 
 Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình thường.
@@ -28,7 +28,7 @@ Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình th
 ## Ảnh màn hình
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="240" alt="Trang chủ BlockAds đang bảo vệ">
+  <img src="docs/screenshots/home.png" width="240" alt="Trang chủ Open AdBlock đang bảo vệ">
   <img src="docs/screenshots/filters.png" width="240" alt="Chọn và cập nhật bộ lọc">
   <img src="docs/screenshots/firewall.png" width="240" alt="Tường lửa theo ứng dụng">
 </p>
@@ -37,7 +37,7 @@ Khi Trang chủ hiện **Đang bảo vệ**, bạn có thể dùng máy bình th
 
 ## Lưu ý
 
-- Chỉ dùng được một VPN cùng lúc. VPN của BlockAds chạy trên máy, không phải dịch vụ đổi IP.
+- Chỉ dùng được một VPN cùng lúc. VPN của Open AdBlock chạy trên máy, không phải dịch vụ đổi IP.
 - Không chặn được mọi quảng cáo, chẳng hạn quảng cáo dùng chung máy chủ với nội dung.
 - Nếu app bị dừng nền, vào **Cài đặt → Ưu tiên chạy ngầm**. Nếu có cảnh báo Private DNS, tắt DNS riêng trong cài đặt Android để lọc đầy đủ hơn.
 - Log/thống kê cập nhật theo lô khoảng 5 giây, có thể sớm hơn khi nhiều kết nối. Lọc HTTPS là tùy chọn nâng cao, mặc định tắt.

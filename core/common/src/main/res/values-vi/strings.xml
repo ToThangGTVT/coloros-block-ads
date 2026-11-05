@@ -42,7 +42,7 @@
     <string name="apk_checksum_mismatch">"APK không khớp mã SHA-256. Hãy tải lại."</string>
     <string name="apk_save_failed">"Không lưu được APK"</string>
     <string name="apk_invalid">"APK không hợp lệ"</string>
-    <string name="apk_wrong_app">"APK không phải bản cập nhật của BlockAds"</string>
+    <string name="apk_wrong_app">"APK không phải bản cập nhật của Open AdBlock"</string>
     <string name="apk_signature_mismatch">"Khác chữ ký với bản đang cài. Hãy dùng bản release từ GitHub để nhận cập nhật tiếp theo."</string>
     <string name="github_redirect_invalid">"GitHub chuyển hướng tới địa chỉ không hợp lệ"</string>
     <string name="redirect_missing">"Thiếu địa chỉ chuyển hướng"</string>
@@ -119,13 +119,13 @@
     <string name="today_prefix">"Hôm nay · "</string>
     <string name="blocked_lowercase">"đã chặn"</string>
     <string name="allowed_lowercase">"cho qua"</string>
-    <string name="notification_block_rate">"BlockAds · Chặn %1$s"</string>
-    <string name="notification_no_requests">"BlockAds · Chưa có request"</string>
+    <string name="notification_block_rate">"Open AdBlock · Chặn %1$s"</string>
+    <string name="notification_no_requests">"Open AdBlock · Chưa có request"</string>
     <string name="network_waiting_short">"Chờ mạng"</string>
     <string name="connecting_short">"Kết nối"</string>
     <string name="vpn_start_failed">"Không thể khởi động dịch vụ VPN từ trạng thái hiện tại."</string>
     <string name="search_apps">"Tìm ứng dụng"</string>
-    <string name="firewall_help">"Tường lửa chỉ có hiệu lực khi VPN BlockAds đang bật. Áp dụng cho Wi-Fi và dữ liệu di động."</string>
+    <string name="firewall_help">"Tường lửa chỉ có hiệu lực khi VPN Open AdBlock đang bật. Áp dụng cho Wi-Fi và dữ liệu di động."</string>
     <string name="firewall_help_label">"Hướng dẫn tường lửa"</string>
     <string name="show_system_apps">"Hiện app hệ thống"</string>
     <string name="network_apps_only">"Chỉ app có dùng mạng"</string>
@@ -152,7 +152,7 @@
     <string name="ca_keystore_key">"Khóa trong Android Keystore"</string>
     <string name="ca_step_install">"2 · Cài CA"</string>
     <string name="ca_export">"Xuất CA"</string>
-    <string name="ca_export_hint">"Lưu file BlockAds-CA.crt"</string>
+    <string name="ca_export_hint">"Lưu file OpenAdBlock-CA.crt"</string>
     <string name="open_settings">"Mở cài đặt"</string>
     <string name="ca_install_path">"Bảo mật → Cài chứng chỉ → Chứng chỉ CA"</string>
     <string name="settings_open_failed">"Không mở được Settings"</string>
@@ -204,7 +204,7 @@
     <string name="browser_https_required">"Cần bật lọc HTTPS cho trình duyệt"</string>
     <string name="all_apps_dns_hint">"Áp dụng cho mọi ứng dụng qua DNS"</string>
     <string name="browser_filters_help">"Chặn quảng cáo và ẩn phần tử trên trang web. Cần bật lọc HTTPS và chọn trình duyệt trong danh sách ứng dụng. Các bộ lọc này không chặn DNS."</string>
-    <string name="dns_filters_help">"Chặn tên miền quảng cáo, theo dõi và mã độc cho các ứng dụng được lọc khi VPN BlockAds đang bật."</string>
+    <string name="dns_filters_help">"Chặn tên miền quảng cáo, theo dõi và mã độc cho các ứng dụng được lọc khi VPN Open AdBlock đang bật."</string>
     <string name="browser_filters_help_label">"Hướng dẫn bộ lọc trình duyệt"</string>
     <string name="dns_filters_help_label">"Hướng dẫn bộ lọc DNS"</string>
     <plurals name="lists_enabled">
@@ -247,7 +247,7 @@
     <string name="rules_save_failed">"Không lưu được quy tắc"</string>
     <string name="vpn_off">"VPN đang tắt"</string>
     <string name="connecting">"Đang kết nối…"</string>
-    <string name="protecting">"Đang bảo vệ"</string>
+    <string name="protecting">"Bộ lọc đang bật"</string>
     <string name="vpn_revoked">"Quyền VPN đã bị thu hồi"</string>
     <string name="vpn_connection_failed">"Không thể kết nối VPN"</string>
     <string name="filters_preparing">"Đang nạp bộ lọc…"</string>
@@ -274,7 +274,7 @@
     <string name="app_prefix">"Ứng dụng: "</string>
     <string name="block_action">"Chặn"</string>
     <string name="installer_open_failed">"Không mở được trình cài đặt"</string>
-    <string name="install_permission_required">"Cần cho phép BlockAds cài ứng dụng để cập nhật. APK đã tải vẫn được giữ lại."</string>
+    <string name="install_permission_required">"Cần cho phép Open AdBlock cài ứng dụng để cập nhật. APK đã tải vẫn được giữ lại."</string>
     <string name="app_updates">"Cập nhật ứng dụng"</string>
     <string name="check_github_updates">"Kiểm tra cập nhật GitHub"</string>
     <string name="processing">"Đang xử lý…"</string>
@@ -309,7 +309,7 @@
     <string name="file_too_large">"File vượt quá 2 MB"</string>
     <string name="protection">"Bảo vệ"</string>
     <string name="background_priority">"Ưu tiên chạy ngầm"</string>
-    <string name="battery_exempt">"Đã miễn tối ưu hóa pin cho BlockAds"</string>
+    <string name="battery_exempt">"Đã miễn tối ưu hóa pin cho Open AdBlock"</string>
     <string name="battery_exempt_hint">"Miễn tối ưu hóa pin để VPN tiếp tục bảo vệ khi tắt màn hình"</string>
     <string name="battery_settings_failed">"Không mở được cài đặt pin"</string>
     <string name="auto_start">"Tự bật sau khởi động"</string>
@@ -361,4 +361,13 @@
     <string name="bootstrap_ip">"IP bootstrap"</string>
     <string name="json_file">"File JSON"</string>
     <string name="allow_action">"Cho phép"</string>
+    <string name="home_protection_off">Bộ lọc đang tắt</string>
+    <string name="home_device_protection">Lọc quảng cáo và bảo vệ quyền riêng tư</string>
+    <string name="home_blocked_today">Đã chặn hôm nay</string>
+    <string name="home_actions">Tác vụ</string>
+    <string name="home_statistics">Thống kê</string>
+    <string name="home_dns_protection">Bảo vệ DNS</string>
+    <string name="home_https_protection">Bảo vệ HTTPS</string>
+    <string name="home_dns_description">Chặn quảng cáo bằng DNS</string>
+    <string name="home_https_description">Chặn quảng cáo trong trình duyệt</string>
 </resources>

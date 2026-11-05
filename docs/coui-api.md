@@ -37,6 +37,7 @@ does not provide a theme spacing object. Blur uses COUI's radius token and the
 surface blend pattern from its example. Both bars use COUI's built-in system
 insets; horizontal display-cutout padding is applied once around the page.
 
-The requested `ThemeController(mode, keyColor = Color(0xFF3482FF))` is preserved.
-Monet therefore uses COUI's seed-generated palette rather than wallpaper colors.
-Changing that behavior later requires changing the keyColor policy centrally.
+The app uses a lime seed (`#CCF66B`) with forest green (`#0B3D2E`).
+Light and dark COUI palettes explicitly override the accent roles; a darker green
+is used for text and controls on light surfaces to preserve contrast. Monet uses
+the same lime seed rather than wallpaper colors. Brand tokens live in `AppTheme.kt`.
