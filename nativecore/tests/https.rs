@@ -635,6 +635,133 @@ async fn http2_concurrent_streams_multiplex_over_one_upstream_connection() {
     ca::set(None, vec![]);
 }
 
+/// m.youtube.com answers with ~20 KiB of headers (report-only CSP and connection allowlist);
+/// signed-in browsers send large cookies. Both exceed hyper's 16 KiB default and used to end in
+/// a 502 from the proxy.
+#[tokio::test]
+async fn large_header_blocks_pass_in_both_directions() {
+    const BIG: usize = 8 * 1024;
+    let cookie = format!("SID={}", "c".repeat(20 * 1024));
+    for client_h2 in [false, true] {
+        let domain = "large-headers.test".to_owned();
+        let (key, root) = root();
+        ca::set(Some(key), root.clone());
+        enable();
+        let (peer_root, server_config) = peer_config(&domain, true);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let expected_cookie = cookie.clone();
+        let server = tokio::spawn(async move {
+            let (raw, _) = listener.accept().await.unwrap();
+            let tls = TlsAcceptor::from(server_config).accept(raw).await.unwrap();
+            let service =
+                hyper::service::service_fn(move |request: Request<hyper::body::Incoming>| {
+                    let expected_cookie = expected_cookie.clone();
+                    async move {
+                        assert_eq!(request.headers()["cookie"], expected_cookie.as_str());
+                        let mut response = Response::builder();
+                        for name in [
+                            "content-security-policy-report-only",
+                            "connection-allowlist-report-only",
+                            "reporting-endpoints",
+                        ] {
+                            response = response.header(name, "p".repeat(BIG));
+                        }
+                        Ok::<_, Infallible>(
+                            response.body(Full::new(Bytes::from_static(b"ok"))).unwrap(),
+                        )
+                    }
+                });
+            let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
+                .max_header_list_size(1024 * 1024)
+                .serve_connection(TokioIo::new(tls), service)
+                .await;
+        });
+        let stats = Arc::new(Stats::default());
+        let guard = Arc::new(Guard(AtomicUsize::new(0)));
+        let raw = sockets::connect_tcp(address, guard.as_ref(), &stats)
+            .await
+            .unwrap();
+        let verified = TlsConnector::from(client_config(&peer_root, true))
+            .connect(ServerName::try_from(domain.clone()).unwrap(), raw)
+            .await
+            .unwrap();
+        let (front, back) = tokio::io::duplex(65536);
+        let config = proxy::prepare(&domain).await.unwrap();
+        let proxy = tokio::spawn(proxy::serve(
+            back,
+            config,
+            vec![],
+            proxy::VerifiedUpstream::new(
+                verified,
+                test_connector(
+                    address,
+                    domain.clone(),
+                    client_config(&peer_root, true),
+                    guard.clone(),
+                    stats.clone(),
+                ),
+            ),
+            domain.clone(),
+            address,
+            owner(),
+        ));
+        let tls = TlsConnector::from(client_config(&root, client_h2))
+            .connect(ServerName::try_from(domain.clone()).unwrap(), front)
+            .await
+            .unwrap();
+        let (mut client, driver) = if client_h2 {
+            let (sender, connection) =
+                hyper::client::conn::http2::Builder::new(TokioExecutor::new())
+                    .max_header_list_size(1024 * 1024)
+                    .handshake(TokioIo::new(tls))
+                    .await
+                    .unwrap();
+            (
+                Client::H2(sender),
+                tokio::spawn(async move {
+                    let _ = connection.await;
+                }),
+            )
+        } else {
+            let (sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(tls))
+                .await
+                .unwrap();
+            (
+                Client::H1(sender),
+                tokio::spawn(async move {
+                    let _ = connection.await;
+                }),
+            )
+        };
+        let response = send(
+            &mut client,
+            &domain,
+            "/",
+            &[("Accept", "text/html"), ("Cookie", cookie.as_str())],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK, "client_h2={client_h2}");
+        for name in [
+            "content-security-policy-report-only",
+            "connection-allowlist-report-only",
+            "reporting-endpoints",
+        ] {
+            assert_eq!(response.headers()[name].len(), BIG, "{name}");
+        }
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"ok");
+        drop(client);
+        driver.abort();
+        let _ = driver.await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), proxy).await;
+        server.abort();
+        let _ = server.await;
+        mitm::configure("{}");
+        ca::set(None, vec![]);
+    }
+}
+
 // Manual live-network diagnostic; excluded from normal test runs.
 
 #[tokio::test]

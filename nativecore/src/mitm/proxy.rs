@@ -30,6 +30,10 @@ use tokio::{
 use tokio_rustls::{client::TlsStream, TlsAcceptor, TlsConnector};
 pub(super) type BoxError = Box<dyn Error + Send + Sync>;
 pub(super) type Body = UnsyncBoxBody<Bytes, BoxError>;
+/// Header block limit in both directions, matching Chrome's 256 KiB. hyper defaults to 16 KiB,
+/// which m.youtube.com's response headers (~20 KiB of report-only policies) exceed: h2 then
+/// resets the stream and the browser gets a 502.
+const MAX_HEADER_LIST_SIZE: u32 = 256 * 1024;
 enum Sender {
     H1(hyper::client::conn::http1::SendRequest<Body>),
     H2(hyper::client::conn::http2::SendRequest<Body>),
@@ -139,10 +143,11 @@ async fn connection(
     uid: Option<u32>,
 ) -> io::Result<(Sender, Driver)> {
     if upstream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice()) {
-        let (sender, connection) =
-            hyper::client::conn::http2::handshake(TokioExecutor::new(), TokioIo::new(upstream))
-                .await
-                .map_err(io::Error::other)?;
+        let (sender, connection) = hyper::client::conn::http2::Builder::new(TokioExecutor::new())
+            .max_header_list_size(MAX_HEADER_LIST_SIZE)
+            .handshake(TokioIo::new(upstream))
+            .await
+            .map_err(io::Error::other)?;
         Ok((
             Sender::H2(sender),
             Driver(tokio::spawn(async move {
@@ -400,12 +405,14 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let mut builder = hyper::server::conn::http2::Builder::new(TokioExecutor::new());
         builder
             .max_concurrent_streams(32)
-            .max_header_list_size(16384)
+            .max_header_list_size(MAX_HEADER_LIST_SIZE)
             .max_send_buf_size(65536);
         tokio::select! {result=builder.serve_connection(TokioIo::new(client),service)=>finish(result)?,_=revision.changed()=>{}}
     } else {
         let mut builder = hyper::server::conn::http1::Builder::new();
-        builder.max_buf_size(16384).max_headers(100);
+        builder
+            .max_buf_size(MAX_HEADER_LIST_SIZE as usize)
+            .max_headers(100);
         tokio::select! {result=builder.serve_connection(TokioIo::new(client),service)=>finish(result)?,_=revision.changed()=>{}}
     }
     Ok(())
