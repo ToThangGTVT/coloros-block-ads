@@ -3,8 +3,8 @@ package com.utc.color.blockads
 import android.app.LocaleManager
 import android.content.res.Configuration
 import android.os.LocaleList
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
+import androidx.test.uiautomator.By
 import androidx.test.platform.app.InstrumentationRegistry
 import com.utc.color.blockads.core.common.LocalizedException
 import com.utc.color.blockads.core.common.R as L10n
@@ -15,7 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class LocalizationTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     private fun resources(language: String) =
         InstrumentationRegistry.getInstrumentation().targetContext.let { context ->
@@ -57,38 +57,38 @@ class LocalizationTest {
 
     @Test
     fun languagePickerSwitchesBothWaysAndPersistsAcrossRecreation() {
-        val manager = compose.activity.getSystemService(LocaleManager::class.java)
+        val manager = targetContext.getSystemService(LocaleManager::class.java)
         val original = manager.applicationLocales
-        fun awaitText(text: String) {
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
-        }
-        fun openLanguage(title: String) {
-            compose.onNodeWithTag("page-list").performScrollToNode(hasText(title))
-            compose.onNodeWithText(title).performClick()
-        }
+        fun openLanguage(title: String) = scrollToText("page_list", title).click()
         try {
-            compose.activityRule.scenario.onActivity {
-                it.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.forLanguageTags("en")
+            activity.scenario.onActivity {
+                if (it.resources.configuration.locales[0].language != "en") {
+                    it.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.forLanguageTags("en")
+                }
             }
-            awaitText("Settings")
-            compose.onAllNodesWithText("Settings").onLast().performClick()
+            await {
+                var language = ""
+                activity.scenario.onActivity { language = it.resources.configuration.locales[0].language }
+                language == "en"
+            }
+            visible(By.desc("Settings"))
+            openTab("settings")
             openLanguage("Language")
-            compose.onNodeWithText("Tiếng Việt").performClick()
-            awaitText("Cài đặt")
-            compose.onNodeWithTag("page-list").performScrollToNode(hasText("Ngôn ngữ"))
-            compose.onNodeWithText("Ngôn ngữ").assertExists()
+            clickText("Tiếng Việt")
+            text("Cài đặt")
+            scrollToText("page_list", "Ngôn ngữ")
             assertEquals("vi", manager.applicationLocales[0].language)
-            compose.activityRule.scenario.recreate()
-            awaitText("Cài đặt")
+            activity.scenario.recreate()
+            text("Cài đặt")
             openLanguage("Ngôn ngữ")
-            compose.onNodeWithText("English").performClick()
-            awaitText("Settings")
+            clickText("English")
+            text("Settings")
             assertEquals("en", manager.applicationLocales[0].language)
             openLanguage("Language")
-            compose.onAllNodesWithText("System default").onLast().performClick()
-            compose.waitUntil(10_000) { manager.applicationLocales.isEmpty }
+            visible(res("choice_list")).findObject(By.text("System default")).click()
+            await { manager.applicationLocales.isEmpty }
         } finally {
-            compose.activityRule.scenario.onActivity {
+            activity.scenario.onActivity {
                 it.getSystemService(LocaleManager::class.java).applicationLocales = original
             }
         }

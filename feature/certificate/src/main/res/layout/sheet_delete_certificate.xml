@@ -1,0 +1,32 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ca_delete_warning"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:paddingVertical="8dp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ca_delete_system_hint"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:paddingVertical="8dp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/ca_recreate_hint"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:paddingVertical="8dp" />
+    <com.google.android.material.button.MaterialButton
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/delete"
+        android:text="@string/ca_delete" />
+    <com.google.android.material.button.MaterialButton
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/cancel"
+        android:text="@string/cancel"
+        style="?attr/materialButtonOutlinedStyle" />
+</LinearLayout>

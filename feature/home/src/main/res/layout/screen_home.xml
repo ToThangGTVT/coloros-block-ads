@@ -1,0 +1,203 @@
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/home_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/home_gradient">
+
+    <LinearLayout
+        android:id="@+id/hero"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_home_shield"
+                android:tint="@color/brand_lime" />
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/app_display_name"
+                android:textColor="@android:color/white"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+            <ImageButton
+                android:id="@+id/home_settings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/settings"
+                android:src="@drawable/ic_settings"
+                android:tint="@android:color/white" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="188dp"
+            android:layout_height="188dp">
+            <View
+                android:id="@+id/shield_halo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/home_shield_halo"
+                android:importantForAccessibility="no"
+                android:visibility="gone" />
+            <FrameLayout
+                android:id="@+id/shield"
+                android:layout_width="136dp"
+                android:layout_height="136dp"
+                android:layout_gravity="center"
+                android:background="@drawable/home_shield_background"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:screenReaderFocusable="true">
+                <TextView
+                    android:id="@+id/shield_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:drawablePadding="2dp"
+                    android:drawableTint="@color/brand_forest"
+                    android:drawableTop="@drawable/ic_home_shield"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:paddingHorizontal="10dp"
+                    android:textColor="@color/brand_forest"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/home_device_protection"
+            android:textColor="@android:color/white"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/rules"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="6dp"
+            android:paddingBottom="16dp"
+            android:textColor="#C7FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+            <include android:id="@+id/blocked_metric" layout="@layout/home_metric"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp" android:layout_weight="1" />
+            <include android:id="@+id/total_metric" layout="@layout/home_metric"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_marginStart="4dp" android:layout_weight="1" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/home_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_panel"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        app:behavior_fitToContents="false"
+        app:behavior_hideable="false"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+
+        <FrameLayout
+            android:id="@+id/panel_handle"
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:background="?attr/selectableItemBackground"
+            android:focusable="true">
+            <View
+                android:layout_width="36dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center"
+                android:alpha="0.18"
+                android:background="@drawable/bg_panel_handle" />
+        </FrameLayout>
+        <com.utc.color.blockads.core.designsystem.CouiSegmentTabs
+            android:id="@+id/home_tabs"
+            style="@style/BlockAds.SegmentedTabs"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="4dp" />
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/home_panel_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingVertical="8dp">
+                <LinearLayout
+                    android:id="@+id/notices"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+                <LinearLayout
+                    android:id="@+id/actions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <include android:id="@+id/dns_protection" layout="@layout/preference_row" />
+                    <include android:id="@+id/https_protection" layout="@layout/preference_row" />
+                </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/statistics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+                    <TextView
+                        android:textAppearance="@style/BlockAds.Title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="8dp"
+                        android:text="@string/last_seven_days" />
+                    <TextView
+                        android:id="@+id/loading_statistics"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="8dp"
+                        android:text="@string/statistics_loading" />
+                    <com.utc.color.blockads.core.designsystem.TrafficChart
+                        android:id="@+id/traffic_chart"
+                        android:layout_width="match_parent"
+                        android:layout_height="280dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="8dp"
+                        android:text="@string/most_blocked"
+                        android:textAppearance="@style/BlockAds.Title" />
+                    <LinearLayout
+                        android:id="@+id/domain_breakdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

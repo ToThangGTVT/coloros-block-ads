@@ -389,4 +389,6 @@
     <string name="home_https_protection">Bảo vệ HTTPS</string>
     <string name="home_dns_description">Chặn quảng cáo bằng DNS</string>
     <string name="home_https_description">Chặn quảng cáo trong trình duyệt</string>
+    <string name="expand_dashboard">Mở rộng bảng điều khiển</string>
+    <string name="collapse_dashboard">Thu gọn bảng điều khiển</string>
 </resources>

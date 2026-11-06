@@ -1,6 +1,6 @@
 package com.utc.color.blockads
 
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.lifecycle.ViewModelProvider
 import com.utc.color.blockads.core.certificate.CertificateRepository
 import com.utc.color.blockads.core.enginebridge.EngineBridge
@@ -19,18 +19,18 @@ import org.junit.Assume.assumeFalse
 
 /** Backend-only: never installs the CA into the user store, so MITM must stay off. */
 class PhaseFiveHttpsTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     @Test
     fun deletingCaRemovesPrivateKeyFilesAndDisablesHttpsAndAllowsNewCa() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         val certificates = model.certificates
         certificates.awaitReady()
         val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val file = File(compose.activity.filesDir, "certificate/root-ca.der")
+        val file = File(targetContext.filesDir, "certificate/root-ca.der")
         val temporary = File(file.parentFile, "root-ca.tmp")
         // This test must never remove a CA that already belongs to the user of the device.
         assumeFalse("Existing CA must be preserved", keys.containsAlias(CertificateRepository.Alias) || file.exists() || temporary.exists())
@@ -75,7 +75,7 @@ class PhaseFiveHttpsTest {
     @Test
     fun keystoreCaIsNonExportableAndHttpsStaysOffUntilInstalled() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         val certificates = model.certificates
@@ -83,7 +83,7 @@ class PhaseFiveHttpsTest {
         assertTrue("native HTTPS API missing", EngineBridge().supportsHttps())
         val original = model.settings.https.first()
         val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val file = File(compose.activity.filesDir, "certificate/root-ca.der")
+        val file = File(targetContext.filesDir, "certificate/root-ca.der")
         val existed = keys.containsAlias(CertificateRepository.Alias) || file.exists()
         try {
             model.settings.setHttps(original.copy(enabled = false))

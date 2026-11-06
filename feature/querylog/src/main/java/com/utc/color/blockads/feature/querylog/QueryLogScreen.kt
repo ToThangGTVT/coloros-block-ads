@@ -1,399 +1,78 @@
 package com.utc.color.blockads.feature.querylog
 
-import com.utc.color.blockads.core.common.userMessage
-import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.LoadState
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
-import com.utc.color.blockads.core.data.*
-import com.utc.color.blockads.core.designsystem.*
+import android.os.Bundle
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
+import com.utc.color.blockads.core.data.AppsRepository
+import com.utc.color.blockads.core.data.QueryLogRepository
+import com.utc.color.blockads.core.data.SettingsRepository
+import com.utc.color.blockads.core.designsystem.Screen
+import com.utc.color.blockads.core.designsystem.inflater
 import com.utc.color.blockads.core.filter.FilterRepository
-import java.io.IOException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import com.utc.color.blockads.feature.querylog.databinding.ScreenQueryLogBinding
+import com.utc.color.blockads.core.common.R as Strings
 
-// Larger bursts are shown at once so the list never lags behind live traffic.
-private const val MaxAnimatedRequests = 6
-private const val RequestStaggerMillis = 70
-private val RequestOrder = compareBy(QueryEntity::timestamp, QueryEntity::id)
+class QueryLogScreen private constructor(
+    private val activity: ComponentActivity,
+    private val views: ScreenQueryLogBinding,
+    state: Bundle,
+    private val queries: QueryLogRepository,
+    private val filters: FilterRepository,
+    private val settings: SettingsRepository,
+    private val apps: AppsRepository,
+    private val onAppRequests: (Int?, String) -> Unit,
+) : Screen(activity, views.root) {
+    constructor(
+        activity: ComponentActivity, parent: ViewGroup, state: Bundle, queries: QueryLogRepository,
+        filters: FilterRepository, settings: SettingsRepository, apps: AppsRepository, onAppRequests: (Int?, String) -> Unit,
+    ) : this(
+        activity, ScreenQueryLogBinding.inflate(parent.inflater, parent, false), state, queries,
+        filters, settings, apps, onAppRequests,
+    )
 
-@Composable
-fun QueryLogScreen(
-    repository: QueryLogRepository,
-    filters: FilterRepository,
-    settings: SettingsRepository,
-    apps: AppsRepository,
-    onAppRequests: (Int?, String) -> Unit,
-) {
-    val strings = rememberAppStrings()
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    val states = rememberSaveableStateHolder()
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.padding(start = AppSpacing.page, end = AppSpacing.page, top = 12.dp)) {
-            AppContentTabs(listOf(strings.getString(L10n.string.queries), strings.getString(L10n.string.app_statistics)), tab) { tab = it }
+    private var tab = state.getInt("tab")
+    private val tabs = Array(2) { state.getBundle("logTab$it") ?: Bundle() }
+    private var content: Screen? = null
+
+    init {
+        views.logTabs.bind(listOf(context.getString(Strings.string.queries), context.getString(Strings.string.app_statistics)), tab) {
+            if (tab == it) return@bind
+            saveTab()
+            tab = it
+            render()
         }
-        Box(Modifier.weight(1f)) {
-            states.SaveableStateProvider(tab) {
-                if (tab == 0) QueryHistory(repository, filters, settings, apps)
-                else AppStatisticsTab(repository, apps, onAppRequests)
-            }
+        render()
+    }
+
+    private fun saveTab() {
+        content?.let { tabs[tab] = it.saveState() }
+    }
+
+    private fun render() {
+        content?.close()
+        val host = views.tabContent
+        host.removeAllViews()
+        content = if (tab == 0) QueryHistoryScreen(activity, host, tabs[tab], queries, filters, settings, apps)
+        else AppStatisticsTab(activity, host, tabs[tab], queries, apps, onAppRequests)
+        content?.let {
+            host.addView(it.view)
+            it.restoreViews(tabs[tab])
         }
+    }
+
+    override fun saveState() = Bundle().apply {
+        saveTab()
+        putInt("tab", tab)
+        tabs.forEachIndexed { index, state -> putBundle("logTab$index", state) }
+    }
+
+    override fun close() {
+        content?.close()
+        super.close()
     }
 }
 
-@Composable
 fun AppRequestsScreen(
-    repository: QueryLogRepository,
-    filters: FilterRepository,
-    settings: SettingsRepository,
-    apps: AppsRepository,
-    uid: Int?,
-    isCurrent: Boolean,
-) {
-    val preferredMinutes by settings.requestCaptureMinutes.collectAsStateWithLifecycle(
-        initialValue = DEFAULT_REQUEST_CAPTURE_MINUTES,
-    )
-    var activeMinutes by remember(uid) { mutableStateOf<Int?>(null) }
-    val duration = activeMinutes
-    if (duration != null && uid != null && isCurrent) {
-        DisposableEffect(repository, uid, duration) {
-            repository.setRequestCapture(uid, duration)
-            onDispose { repository.setRequestCapture(null) }
-        }
-        LaunchedEffect(uid, duration) {
-            delay(duration * 60_000L)
-            activeMinutes = null
-        }
-    }
-    QueryHistory(
-        repository, filters, settings, apps,
-        appOnly = true,
-        fixedUid = uid,
-        captureActive = duration != null && isCurrent,
-        captureControls = if (uid != null) {
-            {
-                RequestCaptureControls(settings, preferredMinutes, duration != null) { enabled ->
-                    activeMinutes = if (enabled) preferredMinutes else null
-                }
-            }
-        } else null,
-    )
-}
-
-@Composable
-private fun RequestCaptureControls(
-    settings: SettingsRepository,
-    minutes: Int,
-    capturing: Boolean,
-    onCapture: (Boolean) -> Unit,
-) {
-    val strings = rememberAppStrings()
-    val scope = rememberCoroutineScope()
-    var input by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var saving by remember { mutableStateOf(false) }
-    val title = strings.getString(
-        if (capturing) L10n.string.request_capture_next_duration else L10n.string.request_capture_duration,
-    )
-    AppPreferenceGroup {
-        AppSwitchPreference(
-            title = strings.getString(L10n.string.request_capture),
-            summary = strings.getString(L10n.string.request_capture_hint),
-            checked = capturing,
-            onCheckedChange = onCapture,
-        )
-        AppArrowPreference(title, strings.getQuantityString(L10n.plurals.request_capture_minutes, minutes, minutes)) {
-            input = minutes.toString()
-            error = null
-        }
-    }
-    AppBottomSheet(
-        show = input != null,
-        title = title,
-        onDismiss = { if (!saving) input = null },
-    ) {
-        input?.let { value ->
-            AppColumn {
-                val rangeLabel = strings.getString(L10n.string.request_capture_minute_range, MAX_REQUEST_CAPTURE_MINUTES)
-                AppTextInput(
-                    value = value,
-                    label = rangeLabel,
-                    error = error != null,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                ) {
-                    if (!saving) {
-                        input = it
-                        error = null
-                    }
-                }
-                error?.let { AppHint(it) }
-                AppAction(strings.getString(L10n.string.save), primary = true) {
-                    val newMinutes = input?.trim()?.toIntOrNull()
-                    if (newMinutes == null || newMinutes !in 1..MAX_REQUEST_CAPTURE_MINUTES) {
-                        error = strings.getString(L10n.string.request_capture_invalid_minutes, MAX_REQUEST_CAPTURE_MINUTES)
-                    } else if (!saving) {
-                        saving = true
-                        scope.launch {
-                            try {
-                                settings.setRequestCaptureMinutes(newMinutes)
-                                input = null
-                            } catch (failure: IOException) {
-                                error = failure.userMessage(strings) ?: strings.getString(L10n.string.action_failed)
-                            } finally {
-                                saving = false
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun QueryHistory(
-    repository: QueryLogRepository,
-    filters: FilterRepository,
-    settings: SettingsRepository,
-    apps: AppsRepository,
-    appOnly: Boolean = false,
-    fixedUid: Int? = null,
-    captureActive: Boolean = false,
-    captureControls: (@Composable () -> Unit)? = null,
-) {
-    val strings = rememberAppStrings()
-    val installed by apps.apps.collectAsStateWithLifecycle()
-    var appUid by rememberSaveable { mutableIntStateOf(-1) }
-    val choices = remember(installed) { installed.distinctBy { it.uid } }
-    var status by rememberSaveable { mutableIntStateOf(0) }
-    val appByUid = remember(installed) { installed.associateBy { it.uid } }
-    val choiceLabels = remember(choices, strings.configuration.locales[0]) { listOf(strings.getString(L10n.string.all)) + choices.map { it.label } }
-    val locale = strings.configuration.locales[0]
-    val timeFormat = remember(locale, appOnly) {
-        if (appOnly) java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.MEDIUM, locale)
-        else java.text.DateFormat.getTimeInstance(java.text.DateFormat.DEFAULT, locale)
-    }
-    val rows =
-        remember(repository, status, appUid, appOnly, fixedUid) {
-                val blocked = listOf(-1, 1, 0)[status]
-                if (appOnly) repository.appPages(fixedUid, blocked)
-                else repository.searchPages("", blocked, appUid)
-            }
-            .collectAsLazyPagingItems()
-    var selected by remember { mutableStateOf<QueryEntity?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val snapshot = rows.itemSnapshotList
-    val head = snapshot.items.firstOrNull()?.takeIf { snapshot.placeholdersBefore == 0 }
-    // Newest request already on screen; anything newer in this snapshot just arrived.
-    var shownHead by remember(rows) { mutableStateOf<QueryEntity?>(null) }
-    val previous = shownHead
-    val arrivals =
-        if (head == null || previous == null) 0
-        else snapshot.items.indexOfFirst { RequestOrder.compare(it, previous) <= 0 }
-            .let { if (it < 0) snapshot.items.size else it }
-    // Paging may hand new rows to the list before this recomposes; the list then keeps the old head
-    // in view at index `arrivals`. Treat that as still following the head.
-    val atTop = !listState.canScrollBackward || (
-        arrivals > 0 &&
-            listState.firstVisibleItemIndex == arrivals &&
-            listState.firstVisibleItemScrollOffset == 0
-        )
-    val animatedArrivals = if (atTop && arrivals <= MaxAnimatedRequests) arrivals else 0
-    SideEffect {
-        // Keep following the head like a console instead of the old first row's key.
-        if (atTop && arrivals > 0) listState.requestScrollToItem(0)
-        if (head != null) shownHead = head
-    }
-    Column(Modifier.fillMaxSize().padding(horizontal = AppSpacing.page)) {
-        if (captureControls != null) {
-            Spacer(Modifier.height(AppSpacing.gap))
-            captureControls()
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = AppSpacing.gap),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.gap),
-        ) {
-            AppChoicePreference(
-                strings.getString(L10n.string.status), listOf(strings.getString(L10n.string.all), strings.getString(L10n.string.blocked), strings.getString(L10n.string.allowed)), status,
-                compact = true, modifier = Modifier.weight(1f),
-            ) { status = it }
-            if (!appOnly) AppChoicePreference(
-                strings.getString(L10n.string.apps),
-                choiceLabels,
-                (choices.indexOfFirst { it.uid == appUid } + 1).coerceAtLeast(0),
-                compact = true, modifier = Modifier.weight(1f),
-            ) { index ->
-                appUid = if (index == 0) -1 else choices[index - 1].uid
-            }
-        }
-        val refresh = rows.loadState.refresh
-        if (rows.itemCount == 0) {
-            AppCard {
-                when (refresh) {
-                    LoadState.Loading -> AppHint(strings.getString(L10n.string.requests_loading))
-                    is LoadState.Error -> AppHint(refresh.error.userMessage(strings) ?: strings.getString(L10n.string.action_failed))
-                    is LoadState.NotLoading ->
-                        AppHint(strings.getString(if (appOnly) L10n.string.app_requests_empty else L10n.string.logs_empty))
-                }
-            }
-        }
-        error?.let { AppText(it) }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                state = listState,
-                contentPadding = PaddingValues(bottom = 56.dp + AppSpacing.gap),
-            ) {
-                items(
-                    count = rows.itemCount,
-                    key = rows.itemKey { it.id },
-                    contentType = { "query" },
-                ) { index ->
-                    val row = rows[index]
-                    if (row == null) {
-                        // Unloaded pages retain their positions for jumps back to the start.
-                        Spacer(Modifier.fillMaxWidth().height(96.dp + AppSpacing.gap))
-                        return@items
-                    }
-                    // The oldest request of a burst opens first, newer ones follow above it.
-                    val entrance = rememberAppListEntrance(
-                        key = row.id,
-                        enabled = index < animatedArrivals,
-                        delayMillis = (animatedArrivals - 1 - index) * RequestStaggerMillis,
-                    )
-                    val app = appByUid[row.uid]
-                    val icon by
-                        produceState(
-                            app?.let { apps.cachedIcon(it.packageName) },
-                            app?.packageName,
-                        ) {
-                            value = app?.let { apps.icon(it.packageName) }
-                        }
-                    // Spacing lives inside the animated slot so it opens together with the card.
-                    Box(Modifier.appListEntrance(entrance).padding(bottom = AppSpacing.gap)) {
-                        AppQueryRow(
-                            row.domain,
-                            row.blocked,
-                            timeFormat.format(java.util.Date(row.timestamp)) +
-                                " · " +
-                                row.protocol.uppercase(),
-                            appName = app?.label ?: row.uid?.let { "UID $it" } ?: strings.getString(L10n.string.unknown),
-                            icon = icon,
-                        ) {
-                            selected = row
-                        }
-                    }
-                }
-            }
-            if (!atTop) {
-                AppBackToTopButton(
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = AppSpacing.gap),
-                    onClick = { listState.requestScrollToItem(0) },
-                )
-            }
-        }
-    }
-    val row = selected
-    AppBottomSheet(
-        show = row != null,
-        title = row?.domain ?: strings.getString(L10n.string.queries),
-        onDismiss = { selected = null },
-    ) {
-        if (row != null)
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                AppColumn {
-                    AppText(if (row.blocked) strings.getString(L10n.string.blocked) else strings.getString(L10n.string.allowed), prominent = true)
-                    AppHint(strings.getString(L10n.string.matched_rule, row.matchedRule ?: strings.getString(L10n.string.no_matching_rule)))
-                    AppHint(
-                        strings.getString(L10n.string.app_prefix) +
-                            (installed
-                                .filter { it.uid == row.uid }
-                                .joinToString { it.label }
-                                .takeIf { it.isNotBlank() }
-                                ?: row.uid?.let { "UID $it" }
-                                ?: strings.getString(L10n.string.unknown)) +
-                            " · " +
-                            row.protocol.uppercase()
-                    )
-                    if (appOnly) {
-                        AppHint(timeFormat.format(java.util.Date(row.timestamp)))
-                        val preview = if (captureActive) {
-                            key(row.id) {
-                                val flow = remember(repository, row.id) { repository.requestPreview(row.id) }
-                                val value by flow.collectAsStateWithLifecycle(initialValue = null)
-                                value
-                            }
-                        } else null
-                        if (preview == null) {
-                            AppHint(strings.getString(L10n.string.request_preview_unavailable))
-                        } else {
-                            RequestPreviewDetails(preview)
-                        }
-                    }
-                    AppButtonRow {
-                        AppButton(strings.getString(L10n.string.allow_action)) {
-                            scope.launch {
-                                runCatching {
-                                    filters.saveCustom(
-                                        settings.customRules.first() + "\n@@||${row.domain}^"
-                                    )
-                                }
-                                    .onSuccess { selected = null }
-                                    .onFailure { error = it.userMessage(strings) }
-                            }
-                        }
-                        AppButton(strings.getString(L10n.string.block_action), primary = true) {
-                            scope.launch {
-                                runCatching {
-                                    filters.saveCustom(
-                                        settings.customRules.first() + "\n||${row.domain}^"
-                                    )
-                                }
-                                    .onSuccess { selected = null }
-                                    .onFailure { error = it.userMessage(strings) }
-                            }
-                        }
-                    }
-                }
-            }
-    }
-}
-
-@Composable
-private fun RequestPreviewDetails(preview: RequestPreview) {
-    val strings = rememberAppStrings()
-    SelectionContainer {
-        AppColumn {
-            AppText("${preview.method} ${preview.path}")
-            AppHint(strings.getString(L10n.string.request_query_parameters))
-            AppText(
-                preview.query?.takeIf { it.isNotEmpty() }?.replace('&', '\n')
-                    ?: strings.getString(L10n.string.request_no_query_parameters)
-            )
-            if (preview.urlTruncated) AppHint(strings.getString(L10n.string.request_url_truncated))
-            AppHint(strings.getString(L10n.string.request_body))
-            AppText(preview.body ?: strings.getString(L10n.string.request_body_unavailable))
-            if (preview.body != null && preview.bodyTruncated) {
-                AppHint(strings.getString(L10n.string.request_body_truncated))
-            }
-        }
-    }
-}
+    activity: ComponentActivity, parent: ViewGroup, state: Bundle, queries: QueryLogRepository,
+    filters: FilterRepository, settings: SettingsRepository, apps: AppsRepository, uid: Int?,
+): Screen = QueryHistoryScreen(activity, parent, state, queries, filters, settings, apps, appOnly = true, fixedUid = uid)

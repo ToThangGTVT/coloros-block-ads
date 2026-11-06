@@ -1,0 +1,16 @@
+<resources>
+    <color name="page_background">#141915</color>
+    <color name="card_background">#202722</color>
+    <color name="text_primary">#F0F4ED</color>
+    <color name="text_secondary">#B9C3BA</color>
+    <color name="brand_primary">#CCF66B</color>
+    <color name="brand_on_primary">#0B3D2E</color>
+    <color name="brand_error">#FFB4AB</color>
+    <color name="coui_switch_track_off">#FF757575</color>
+    <color name="coui_switch_disabled_track_off">#4D757575</color>
+    <color name="coui_switch_disabled_thumb_off">#4DFFFFFF</color>
+    <color name="coui_switch_feedback">#E6FFFFFF</color>
+    <color name="coui_segment_track">#0AFFFFFF</color>
+    <color name="coui_segment_label">#66FFFFFF</color>
+    <color name="coui_segment_shadow">#1A000000</color>
+</resources>

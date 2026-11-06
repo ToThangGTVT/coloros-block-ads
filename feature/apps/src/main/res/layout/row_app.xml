@@ -1,0 +1,17 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/app_row"
+    style="@style/BlockAds.CardColumn"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+    <include android:id="@+id/identity" layout="@layout/preference_row" />
+    <include android:id="@+id/network" layout="@layout/preference_row" />
+    <include android:id="@+id/https" layout="@layout/preference_row" />
+    <include android:id="@+id/policy" layout="@layout/preference_row" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/network_hint"
+        android:text="@string/network_blocked_policy_hint"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:padding="12dp" />
+</LinearLayout>

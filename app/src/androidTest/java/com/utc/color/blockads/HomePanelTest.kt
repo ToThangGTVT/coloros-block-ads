@@ -1,55 +1,33 @@
 package com.utc.color.blockads
 
-import androidx.activity.ComponentActivity
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import com.utc.color.blockads.core.common.ThemeMode
-import com.utc.color.blockads.core.designsystem.*
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import com.utc.color.blockads.core.common.R as L10n
+import com.utc.color.blockads.core.common.R as Strings
 
 class HomePanelTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     @Test
     fun panelExpandsFromContentAndCollapsesFromHandle() {
-        var dnsChange: Boolean? = null
-        var httpsChange: Boolean? = null
-        compose.setContent {
-            AppTheme(ThemeMode.Light) {
-                AppHomeDashboard(
-                    title = "Protection active", checked = true, canToggle = true,
-                    rules = "100 rules", total = 100, blocked = 10,
-                    onProtection = { dnsChange = it }, httpsEnabled = false, httpsToggleEnabled = true,
-                    onHttpsProtection = { httpsChange = it }, onSettings = {},
-                    notices = {}, statistics = {},
-                )
-            }
-        }
-        val panel = compose.onNodeWithTag("home-panel")
-        val dns = compose.onNodeWithText(compose.activity.getString(L10n.string.home_dns_protection))
-        val https = compose.onNodeWithText(compose.activity.getString(L10n.string.home_https_protection))
-        compose.onNodeWithText(compose.activity.getString(L10n.string.home_dns_description)).assertIsDisplayed()
-        compose.onNodeWithText(compose.activity.getString(L10n.string.home_https_description)).assertIsDisplayed()
-        dns.assertIsDisplayed().performTouchInput { click(center) }
-        https.assertIsDisplayed().performTouchInput { click(center) }
-        compose.runOnIdle {
-            assertEquals(false, dnsChange)
-            assertEquals(true, httpsChange)
-        }
-        val collapsedTop = panel.fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithTag("home-panel-content").performTouchInput { swipeUp() }
-        compose.waitForIdle()
-        val expandedTop = panel.fetchSemanticsNode().boundsInRoot.top
-        assertTrue("Swiping content should raise the panel", expandedTop < collapsedTop - 50f)
-        panel.performTouchInput {
-            swipe(Offset(width / 2f, 12f), Offset(width / 2f, height * 0.85f), 400)
-        }
-        compose.waitForIdle()
-        assertEquals(collapsedTop, panel.fetchSemanticsNode().boundsInRoot.top, 2f)
+        text(appString(Strings.string.home_dns_protection))
+        text(appString(Strings.string.home_https_protection))
+        text(appString(Strings.string.home_dns_description))
+        text(appString(Strings.string.home_https_description))
+        val content = visible(res("home_panel_content")).visibleBounds
+        fun panelTop() = visible(res("home_panel")).visibleBounds.top
+        val collapsedTop = panelTop()
+        val x = content.centerX()
+        device.swipe(x, content.bottom - 25, x, content.top - 240, 20)
+        await { panelTop() < collapsedTop - 50 }
+        val handle = visible(res("panel_handle")).visibleBounds
+        device.swipe(handle.centerX(), handle.centerY(), handle.centerX(), collapsedTop + 80, 25)
+        await { panelTop() == collapsedTop }
+        assertEquals(collapsedTop, panelTop())
+        clickText(appString(Strings.string.home_statistics))
+        await { panelTop() < collapsedTop - 50 }
+        assertTrue(text(appString(Strings.string.last_seven_days)).visibleBounds.top > panelTop())
     }
 }

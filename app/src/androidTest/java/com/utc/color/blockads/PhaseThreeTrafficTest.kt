@@ -1,8 +1,7 @@
 package com.utc.color.blockads
 
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import com.utc.color.blockads.core.common.*
 import com.utc.color.blockads.core.enginebridge.EngineBridge
@@ -15,7 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class PhaseThreeTrafficTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     private val fixtureHost
         get() =
@@ -63,7 +62,7 @@ class PhaseThreeTrafficTest {
     @Test
     fun sniHttpAttributionAndAppPoliciesUseActualAndroidUid() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
@@ -71,10 +70,10 @@ class PhaseThreeTrafficTest {
         val own =
             withTimeout(5000) {
                     model.apps.apps.first {
-                        it.any { app -> app.packageName == compose.activity.packageName }
+                        it.any { app -> app.packageName == targetContext.packageName }
                     }
                 }
-                .first { it.packageName == compose.activity.packageName }
+                .first { it.packageName == targetContext.packageName }
         val custom = model.settings.customRules.first()
         val dns = model.settings.dns.first()
         model.settings.setDns(dns.copy(logging = true))
@@ -125,7 +124,7 @@ class PhaseThreeTrafficTest {
             // The VPN remains available to other apps, while this app leaves its Network.
             withTimeout(15000) {
                 val manager =
-                    compose.activity.getSystemService(android.net.ConnectivityManager::class.java)
+                    targetContext.getSystemService(android.net.ConnectivityManager::class.java)
                 while (
                     manager
                         .getNetworkCapabilities(manager.activeNetwork)
@@ -137,7 +136,7 @@ class PhaseThreeTrafficTest {
             mode(AppFilterMode.Filter)
             withTimeout(15000) {
                 val manager =
-                    compose.activity.getSystemService(android.net.ConnectivityManager::class.java)
+                    targetContext.getSystemService(android.net.ConnectivityManager::class.java)
                 while (
                     manager
                         .getNetworkCapabilities(manager.activeNetwork)
@@ -146,11 +145,10 @@ class PhaseThreeTrafficTest {
                 ) delay(100)
             }
             assertTrue(http("http.blockads.test").startsWith("HTTP/1.1 204"))
-            compose.onNodeWithText(appString(L10n.string.settings)).performClick()
-            compose.onNodeWithTag("page-list").performScrollToNode(hasText(appString(L10n.string.apps)))
-            compose.onNodeWithText(appString(L10n.string.apps)).performClick()
-            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput(appString(L10n.string.app_display_name))
-            compose.onNodeWithText(appString(L10n.string.app_policy_title, appString(L10n.string.app_display_name))).assertExists()
+            openTab("settings")
+            scrollToText("page_list", appString(L10n.string.apps)).click()
+            enterText(appString(L10n.string.app_display_name))
+            text(appString(L10n.string.app_policy_title, appString(L10n.string.app_display_name)))
         } finally {
             model.tunnel.stop()
             withTimeout(15000) { model.tunnel.state.first { it.status == TunnelStatus.Off } }

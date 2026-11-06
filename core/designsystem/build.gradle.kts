@@ -1,9 +1,9 @@
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
+    buildFeatures { viewBinding = true }
     compileSdk = 37
     defaultConfig {
         minSdk = 33
@@ -14,19 +14,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     namespace = "com.utc.color.blockads.core.designsystem"
-    buildFeatures { compose = true }
 }
 
 dependencies {
+    api(libs.androidx.activity)
+    api(libs.androidx.lifecycle.runtime.ktx)
+    api(libs.androidx.recyclerview)
+    api(libs.material)
+    implementation(libs.androidx.dynamicanimation)
     implementation(project(":core:common"))
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.mpandroidchart)
-    implementation(libs.coui.ui)
-    implementation(libs.coui.preference)
-    implementation(libs.coui.icons)
-    implementation(libs.coui.blur)
-    implementation(libs.coui.navigation3.ui)
-    api(libs.androidx.navigation3.runtime)
+    api(libs.mpandroidchart)
 }

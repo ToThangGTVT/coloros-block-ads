@@ -1,0 +1,15 @@
+<!-- Copyright 2025, compose-coui-ui contributors
+     SPDX-License-Identifier: Apache-2.0
+     Ported from the COUI 1.1.0 Basic.ArrowRight vector. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="24dp"
+    android:viewportWidth="12"
+    android:viewportHeight="24"
+    android:autoMirrored="true">
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:pathData="M5,6 L10.646,11.646 C10.842,11.842 10.842,12.158 10.646,12.354 L5,18" />
+</vector>

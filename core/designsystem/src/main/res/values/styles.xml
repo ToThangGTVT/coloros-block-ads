@@ -1,0 +1,69 @@
+<resources>
+    <style name="Theme.BlockAds.Views" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorOnPrimary">@color/brand_on_primary</item>
+        <item name="colorSecondaryContainer">@color/brand_lime</item>
+        <item name="colorOnSecondaryContainer">@color/brand_forest</item>
+        <item name="colorSurface">@color/card_background</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorError">@color/brand_error</item>
+        <item name="android:colorBackground">@color/page_background</item>
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:colorAccent">?attr/colorPrimary</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="couiSwitchThumbOff">@android:color/white</item>
+        <item name="couiSwitchDisabledThumbOn">?attr/colorOnPrimary</item>
+    </style>
+
+    <style name="Theme.BlockAds.Views.Monet">
+        <item name="colorPrimary">@android:color/system_accent1_600</item>
+        <item name="colorOnPrimary">@android:color/system_accent1_0</item>
+        <item name="colorSecondaryContainer">@android:color/system_accent2_100</item>
+        <item name="colorOnSecondaryContainer">@android:color/system_accent2_900</item>
+        <item name="couiSwitchThumbOff">?attr/colorOnPrimary</item>
+        <item name="couiSwitchDisabledThumbOn">?attr/colorSurface</item>
+    </style>
+
+    <style name="BlockAds.Title" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+    </style>
+
+    <style name="BlockAds.Hint" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <style name="BlockAds.PageColumn" parent="">
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">16dp</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="BlockAds.CardColumn" parent="">
+        <item name="android:background">@drawable/bg_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:layout_marginBottom">8dp</item>
+    </style>
+
+    <style name="BlockAds.SegmentedTabs" parent="">
+        <item name="android:background">@drawable/bg_segmented_tabs</item>
+        <item name="android:clipToOutline">true</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:padding">4dp</item>
+    </style>
+
+    <style name="BlockAds.SegmentedTabLabel" parent="">
+        <item name="android:ellipsize">end</item>
+        <item name="android:focusable">true</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:paddingHorizontal">12dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:soundEffectsEnabled">false</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+</resources>

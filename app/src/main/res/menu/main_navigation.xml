@@ -1,0 +1,7 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/home" android:icon="@drawable/ic_home" android:title="@string/home" android:contentDescription="@string/home" />
+    <item android:id="@+id/log" android:icon="@drawable/ic_log" android:title="@string/log" android:contentDescription="@string/log" />
+    <item android:id="@+id/filters" android:icon="@drawable/ic_filters" android:title="@string/filters" android:contentDescription="@string/filters" />
+    <item android:id="@+id/firewall" android:icon="@drawable/ic_firewall" android:title="@string/firewall" android:contentDescription="@string/firewall" />
+    <item android:id="@+id/settings" android:icon="@drawable/ic_settings" android:title="@string/settings" android:contentDescription="@string/settings" />
+</menu>

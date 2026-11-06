@@ -1,9 +1,8 @@
 package com.utc.color.blockads
 
+import androidx.test.ext.junit.rules.ActivityScenarioRule
+import androidx.test.uiautomator.By
 import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import com.utc.color.blockads.core.common.TunnelStatus
 import com.utc.color.blockads.core.enginebridge.EngineBridge
@@ -17,7 +16,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class PhaseTwoDnsTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
     private val fixtureHost
         get() =
             androidx.test.platform.app.InstrumentationRegistry.getArguments()
@@ -80,7 +79,7 @@ class PhaseTwoDnsTest {
                 .getString("externalNetworkChecks") == "true"
         )
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
@@ -136,7 +135,7 @@ class PhaseTwoDnsTest {
     @Test
     fun dnsBlockingHotReloadTtlAndRoomLogging() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
@@ -175,17 +174,13 @@ class PhaseTwoDnsTest {
                 while (model.queries.latest("blocked.blockads.test")?.blocked != true) delay(100)
             }
             assertNotNull(model.queries.latest("blocked.blockads.test")?.matchedRule)
-            compose.onNodeWithText(appString(L10n.string.log)).performClick()
-            val queryList = hasScrollToIndexAction() and
-                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
-            val blockedQuery =
-                hasText("blocked.blockads.test") and hasText(appString(L10n.string.blocked), substring = true)
-            compose.waitUntil(5000) {
-                compose.onAllNodes(queryList and hasAnyDescendant(hasClickAction())).fetchSemanticsNodes().isNotEmpty()
-            }
-            compose.onNode(queryList).performScrollToNode(blockedQuery)
-            compose.onAllNodes(blockedQuery).onFirst().performClick()
-            compose.onNodeWithText(appString(L10n.string.block_action)).assertExists()
+            openTab("log")
+            val domain = By.text("blocked.blockads.test")
+            val row = res("query_row").hasDescendant(domain)
+                .hasDescendant(By.textStartsWith(appString(L10n.string.blocked) + " ·"))
+            visible(res("query_row"))
+            scrollTo("query_list", row).findObject(domain).click()
+            text(appString(L10n.string.block_action))
             delay(600)
             android.os.ParcelFileDescriptor.AutoCloseInputStream(
                     androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
@@ -196,7 +191,7 @@ class PhaseTwoDnsTest {
                 )
                 .use { it.readBytes() }
             androidx.test.espresso.Espresso.pressBack()
-            compose.onNodeWithText(appString(L10n.string.home)).performClick()
+            openTab("home")
             model.filters.saveCustom(original + "\n@@||blocked.blockads.test^")
             assertEquals("203.0.113.7", address(query("blocked.blockads.test")))
             assertFalse(runCatching { model.filters.saveCustom("||bad..domain^") }.isSuccess)

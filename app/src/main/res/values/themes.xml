@@ -1,5 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.BlockAds" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.BlockAds" parent="Theme.BlockAds.Views" />
 </resources>

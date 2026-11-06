@@ -1,9 +1,7 @@
 # core/designsystem
 
-COUI theme, tokens and component wrappers. Features must not import COUI or Material components directly. COUI-specific fixes belong here.
+Shared Android Views, XML resources and light, dark and Monet themes. Use
+`PreferenceRow` for settings, `FormSheet` or `choiceSheet` for bottom sheets,
+and `Screen` to bind repository flows to the activity lifecycle.
 
-Put supplementary usage guidance behind an information icon using `AppHelpTooltip`,
-per the user's UI preference. Keep operational status, validation errors and essential
-control labels visible in the screen.
-
-See [Phase 0](../../docs/phase-0.md).
+Feature modules own their layouts and use View Binding to render state and handle input.

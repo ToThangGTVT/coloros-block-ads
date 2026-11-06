@@ -1,76 +1,223 @@
 package com.utc.color.blockads.feature.home
 
-import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.utc.color.blockads.core.certificate.CertificateRepository
 import com.utc.color.blockads.core.common.FilterStatus
+import com.utc.color.blockads.core.common.HttpsSettings
 import com.utc.color.blockads.core.common.TunnelState
 import com.utc.color.blockads.core.common.TunnelStatus
-import com.utc.color.blockads.core.data.*
-import com.utc.color.blockads.core.designsystem.*
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.data.QueryLogRepository
+import com.utc.color.blockads.core.data.SettingsRepository
+import com.utc.color.blockads.core.designsystem.Screen
+import com.utc.color.blockads.core.designsystem.button
+import com.utc.color.blockads.core.designsystem.card
+import com.utc.color.blockads.core.designsystem.dp
+import com.utc.color.blockads.core.designsystem.hint
+import com.utc.color.blockads.core.designsystem.inflater
+import com.utc.color.blockads.core.designsystem.section
+import com.utc.color.blockads.feature.home.databinding.DomainProgressBinding
+import com.utc.color.blockads.feature.home.databinding.ScreenHomeBinding
+import java.text.NumberFormat
+import kotlinx.coroutines.flow.StateFlow
+import com.utc.color.blockads.core.common.R as Strings
 
-@Composable
-fun HomeScreen(
-    tunnel: TunnelState,
-    filter: FilterStatus,
+class HomeScreen private constructor(
+    activity: ComponentActivity,
+    private val views: ScreenHomeBinding,
+    state: Bundle,
+    tunnel: StateFlow<TunnelState>,
+    filter: StateFlow<FilterStatus>,
     queries: QueryLogRepository,
-    onPrivateDns: () -> Unit,
-    onProtection: (Boolean) -> Unit,
-    httpsEnabled: Boolean,
-    httpsToggleEnabled: Boolean,
-    onHttpsProtection: (Boolean) -> Unit,
-    protectionError: String?,
+    settings: SettingsRepository,
+    private val certificates: CertificateRepository,
+    private val onProtection: (Boolean) -> Unit,
+    private val onCertificate: () -> Unit,
     onSettings: () -> Unit,
-) {
-    val strings = rememberAppStrings()
-    val stats by queries.today.collectAsStateWithLifecycle()
-    val enabled =
-        tunnel.status in
-            listOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
-    val number = remember(strings.configuration.locales[0]) { java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
-    val statusTitle = when (tunnel.status) {
-        TunnelStatus.Off -> strings.getString(L10n.string.home_protection_off)
-        TunnelStatus.Connecting -> strings.getString(L10n.string.connecting)
-        TunnelStatus.Connected -> if (filter.loaded > 0) strings.getString(L10n.string.protecting) else strings.getString(L10n.string.vpn_no_rules)
-        TunnelStatus.Reconnecting -> strings.getString(L10n.string.network_waiting)
-        TunnelStatus.Revoked -> strings.getString(L10n.string.vpn_revoked)
-        TunnelStatus.Error -> strings.getString(L10n.string.vpn_connection_failed)
-    }
-    val rules = if (filter.loading) strings.getString(L10n.string.filters_preparing)
-        else strings.getQuantityString(L10n.plurals.rules_in_use, filter.loaded, number.format(filter.loaded))
-    AppHomeDashboard(
-        title = statusTitle,
-        checked = enabled,
-        canToggle = tunnel.status != TunnelStatus.Connecting,
-        rules = rules,
-        total = stats.total,
-        blocked = stats.blocked,
-        onProtection = onProtection,
-        httpsEnabled = httpsEnabled,
-        httpsToggleEnabled = httpsToggleEnabled,
-        onHttpsProtection = onHttpsProtection,
-        onSettings = onSettings,
-        notices = {
-            protectionError?.let { AppCard { AppHint(it) } }
-            tunnel.detail?.let { AppCard { AppHint(it) } }
-            filter.error?.let { AppCard { AppHint(it) } }
-            if (tunnel.privateDns) AppCard {
-                AppText(strings.getString(L10n.string.private_dns_on), prominent = true)
-                AppHint(strings.getString(L10n.string.private_dns_hint))
-                AppAction(strings.getString(L10n.string.open_settings), primary = true, onClick = onPrivateDns)
-            }
-        },
-        statistics = {
-            val week by queries.week.collectAsStateWithLifecycle()
-            val top by queries.topDomains.collectAsStateWithLifecycle()
-            AppText(strings.getString(L10n.string.last_seven_days), prominent = true)
-            AppTrafficChart(week)
-            AppText(strings.getString(L10n.string.most_blocked), prominent = true)
-            if (top.isEmpty()) AppHint(strings.getString(L10n.string.none_yet))
-            else AppDomainBreakdown(
-                domains = top.map { it.domain to it.count },
-                otherCount = (top.first().totalBlocked - top.sumOf { it.count }).coerceAtLeast(0),
-            )
-        },
+    private val onPrivateDns: () -> Unit,
+) : Screen(activity, views.root) {
+    constructor(
+        activity: ComponentActivity, parent: ViewGroup, state: Bundle,
+        tunnel: StateFlow<TunnelState>, filter: StateFlow<FilterStatus>, queries: QueryLogRepository,
+        settings: SettingsRepository, certificates: CertificateRepository, onProtection: (Boolean) -> Unit,
+        onCertificate: () -> Unit, onSettings: () -> Unit, onPrivateDns: () -> Unit,
+    ) : this(
+        activity, ScreenHomeBinding.inflate(parent.inflater, parent, false), state, tunnel, filter,
+        queries, settings, certificates, onProtection, onCertificate, onSettings, onPrivateDns,
     )
+
+    private val behavior = BottomSheetBehavior.from(views.homePanel)
+    private val number = NumberFormat.getIntegerInstance(resources.configuration.locales[0])
+    private var selected = state.getInt("tab")
+    private var expanded = state.getBoolean("expanded")
+    private var status = tunnel.value
+    private var filters = filter.value
+    private var https = HttpsSettings()
+    private var busy = false
+    private var error: String? = null
+
+    init {
+        views.homeSettings.setOnClickListener { onSettings() }
+        views.blockedMetric.label.setText(Strings.string.home_blocked_today)
+        views.totalMetric.label.setText(Strings.string.total_requests)
+        views.homeTabs.bind(
+            listOf(context.getString(Strings.string.home_actions), context.getString(Strings.string.home_statistics)),
+            selected,
+        ) {
+            selected = it
+            views.homePanelContent.scrollTo(0, 0)
+            renderTab()
+            if (selected == 1) behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        }
+        renderTab()
+        behavior.isFitToContents = false
+        behavior.halfExpandedRatio = 0.8f
+        behavior.state = if (expanded) BottomSheetBehavior.STATE_EXPANDED else BottomSheetBehavior.STATE_COLLAPSED
+        behavior.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
+            override fun onSlide(bottomSheet: View, slideOffset: Float) = Unit
+
+            override fun onStateChanged(bottomSheet: View, newState: Int) {
+                when (newState) {
+                    BottomSheetBehavior.STATE_HALF_EXPANDED -> behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                    BottomSheetBehavior.STATE_EXPANDED, BottomSheetBehavior.STATE_COLLAPSED -> {
+                        expanded = newState == BottomSheetBehavior.STATE_EXPANDED
+                        labelHandle()
+                    }
+                }
+            }
+        })
+        views.panelHandle.setOnClickListener {
+            behavior.state = if (expanded) BottomSheetBehavior.STATE_COLLAPSED else BottomSheetBehavior.STATE_EXPANDED
+        }
+        labelHandle()
+        fun resize() {
+            val height = views.root.height
+            if (height == 0) return
+            val minPeek = context.dp(220).coerceAtMost(height)
+            behavior.peekHeight = (height - views.hero.height).coerceIn(minPeek, height)
+            behavior.expandedOffset = (views.hero.paddingTop + context.dp(48)).coerceAtMost(height - behavior.peekHeight)
+        }
+        views.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resize() }
+        views.hero.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resize() }
+        ViewCompat.setOnApplyWindowInsetsListener(views.hero) { hero, insets ->
+            hero.updatePadding(top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top)
+            insets
+        }
+        renderProtection()
+        observe(tunnel) { status = it; renderProtection() }
+        observe(filter) { filters = it; renderProtection() }
+        observe(settings.https) { https = it; renderProtection() }
+        observe(certificates.state) { renderProtection() }
+        observe(queries.today) {
+            views.blockedMetric.value.text = number.format(it.blocked)
+            views.totalMetric.value.text = number.format(it.total)
+        }
+        observe(queries.week) {
+            views.loadingStatistics.isVisible = it.isEmpty()
+            views.trafficChart.isVisible = it.isNotEmpty()
+            views.trafficChart.render(it)
+        }
+        observe(queries.topDomains) { top ->
+            val entries = top.map { it.domain to it.count }.toMutableList()
+            val other = (top.firstOrNull()?.totalBlocked ?: 0) - top.sumOf { it.count }
+            if (other > 0) entries += context.getString(Strings.string.other) to other
+            views.domainBreakdown.removeAllViews()
+            val max = entries.maxOfOrNull { it.second }
+            if (max == null) views.domainBreakdown.hint(context.getString(Strings.string.none_yet))
+            else entries.forEach { (domain, count) ->
+                val row = DomainProgressBinding.inflate(views.domainBreakdown.inflater, views.domainBreakdown, true)
+                row.domain.text = "$domain · ${number.format(count)}"
+                row.progress.progress = (1000.0 * count / max).toInt()
+            }
+        }
+    }
+
+    private fun labelHandle() {
+        views.panelHandle.contentDescription = context.getString(
+            if (expanded) Strings.string.collapse_dashboard else Strings.string.expand_dashboard,
+        )
+    }
+
+    private fun renderTab() {
+        views.actions.isVisible = selected == 0
+        views.statistics.isVisible = selected == 1
+    }
+
+    private fun renderProtection() {
+        val checked = status.status in running
+        val canToggle = status.status != TunnelStatus.Connecting
+        views.shieldHalo.isVisible = status.status == TunnelStatus.Off
+        views.shieldLabel.setText(
+            when (status.status) {
+                TunnelStatus.Off -> Strings.string.home_protection_off
+                TunnelStatus.Connecting -> Strings.string.connecting
+                TunnelStatus.Connected -> if (filters.loaded > 0) Strings.string.protecting else Strings.string.vpn_no_rules
+                TunnelStatus.Reconnecting -> Strings.string.network_waiting
+                TunnelStatus.Revoked -> Strings.string.vpn_revoked
+                TunnelStatus.Error -> Strings.string.vpn_connection_failed
+            },
+        )
+        views.shield.isSelected = checked
+        views.shield.isEnabled = canToggle
+        views.shield.setOnClickListener { onProtection(!checked) }
+        views.rules.text = if (filters.loading) context.getString(Strings.string.filters_preparing) else
+            resources.getQuantityString(Strings.plurals.rules_in_use, filters.loaded, number.format(filters.loaded))
+        views.dnsProtection.root.bind(
+            context.getString(Strings.string.home_dns_protection), context.getString(Strings.string.home_dns_description),
+            checked = checked, enabled = canToggle,
+        ) { onProtection(!checked) }
+        val httpsOn = https.enabled && certificates.state.value.installed && checked && canToggle
+        views.httpsProtection.root.bind(
+            context.getString(Strings.string.home_https_protection), context.getString(Strings.string.home_https_description),
+            checked = httpsOn, enabled = !busy && canToggle,
+        ) { setHttps(!httpsOn) }
+
+        views.notices.removeAllViews()
+        listOfNotNull(error, status.detail, filters.error).forEach { views.notices.card().hint(it) }
+        if (status.privateDns) views.notices.card().apply {
+            section(context.getString(Strings.string.private_dns_on))
+            hint(context.getString(Strings.string.private_dns_hint))
+            button(context.getString(Strings.string.open_settings), onPrivateDns)
+        }
+    }
+
+    private fun setHttps(enabled: Boolean) {
+        busy = true
+        error = null
+        renderProtection()
+        action(
+            success = { busy = false; renderProtection() },
+            failure = {
+                busy = false
+                error = it.userMessage(resources) ?: context.getString(Strings.string.action_failed)
+                renderProtection()
+            },
+        ) {
+            certificates.refresh()
+            val ca = certificates.state.value
+            if (enabled && (!ca.created || !ca.installed || https.apps.isEmpty())) {
+                onCertificate()
+            } else {
+                certificates.setEnabled(enabled)
+                if (enabled && status.status !in running) onProtection(true)
+            }
+        }
+    }
+
+    override fun saveState() = super.saveState().apply {
+        putInt("tab", selected)
+        putBoolean("expanded", expanded)
+    }
+
+    private companion object {
+        val running = setOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
+    }
 }

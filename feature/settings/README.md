@@ -1,5 +1,5 @@
 # feature/settings
 
-Phase 0 COUI preference screen for persisted themes and secondary navigation. Protection/DNS/data options come with the relevant native phase.
-
-See [Phase 0](../../docs/phase-0.md).
+XML settings screen for protection, DNS, appearance, configuration backups,
+log retention and app updates. View Binding connects the preference rows to the
+shared repositories.

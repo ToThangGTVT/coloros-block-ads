@@ -1,7 +1,7 @@
 package com.utc.color.blockads
 
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.utc.color.blockads.core.filter.CatalogSource
@@ -16,7 +16,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class FilterCatalogTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     @Test
     fun adGuardRegistryListCanBeAddedAndRemoved() = runBlocking {
@@ -24,7 +24,7 @@ class FilterCatalogTest {
             InstrumentationRegistry.getArguments().getString("externalNetworkChecks") == "true"
         )
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
@@ -53,7 +53,7 @@ class FilterCatalogTest {
             InstrumentationRegistry.getArguments().getString("externalNetworkChecks") == "true"
         )
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()

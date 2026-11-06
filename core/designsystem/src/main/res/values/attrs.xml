@@ -1,0 +1,4 @@
+<resources>
+    <attr name="couiSwitchThumbOff" format="color|reference" />
+    <attr name="couiSwitchDisabledThumbOn" format="color|reference" />
+</resources>

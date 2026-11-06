@@ -1,169 +1,172 @@
 package com.utc.color.blockads.feature.certificate
 
-import com.utc.color.blockads.core.common.userMessage
-import com.utc.color.blockads.core.common.R as L10n
-import androidx.activity.compose.rememberLauncherForActivityResult
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.view.doOnAttach
+import androidx.core.view.isVisible
 import com.utc.color.blockads.core.certificate.CertificateRepository
-import com.utc.color.blockads.core.common.*
-import com.utc.color.blockads.core.data.*
-import com.utc.color.blockads.core.designsystem.*
-import kotlinx.coroutines.*
+import com.utc.color.blockads.core.common.HttpsSettings
+import com.utc.color.blockads.core.common.InstalledApp
+import com.utc.color.blockads.core.common.userMessage
+import com.utc.color.blockads.core.data.AppsRepository
+import com.utc.color.blockads.core.data.SettingsRepository
+import com.utc.color.blockads.core.designsystem.FormSheet
+import com.utc.color.blockads.core.designsystem.PreferenceIcon
+import com.utc.color.blockads.core.designsystem.Screen
+import com.utc.color.blockads.core.designsystem.inflater
+import com.utc.color.blockads.core.designsystem.preference
+import com.utc.color.blockads.core.designsystem.showMessage
+import com.utc.color.blockads.feature.certificate.databinding.ScreenCertificateBinding
+import com.utc.color.blockads.feature.certificate.databinding.SheetDeleteCertificateBinding
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import com.utc.color.blockads.core.common.R as Strings
 
-@Composable
-fun CertificateScreen(
-    repository: CertificateRepository,
-    settings: SettingsRepository,
+class CertificateScreen private constructor(
+    activity: ComponentActivity,
+    private val views: ScreenCertificateBinding,
+    state: Bundle,
+    private val repository: CertificateRepository,
+    private val settings: SettingsRepository,
     apps: AppsRepository,
     onApps: () -> Unit,
-) {
-    val strings = rememberAppStrings()
-    val state by repository.state.collectAsStateWithLifecycle()
-    val config by settings.https.collectAsStateWithLifecycle(initialValue = HttpsSettings())
-    val installed by apps.apps.collectAsStateWithLifecycle()
-    var feedback by remember { mutableStateOf<String?>(null) }
-    var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    var deleting by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    fun action(success: String? = null, block: suspend () -> Unit) {
-        scope.launch {
-            runCatching { block() }
-                .onSuccess { feedback = success }
-                .onFailure { feedback = it.userMessage(strings) ?: strings.getString(L10n.string.action_failed) }
+) : Screen(activity, views.root) {
+    constructor(
+        activity: ComponentActivity, parent: ViewGroup, state: Bundle, repository: CertificateRepository,
+        settings: SettingsRepository, apps: AppsRepository, onApps: () -> Unit,
+    ) : this(activity, ScreenCertificateBinding.inflate(parent.inflater, parent, false), state, repository, settings, apps, onApps)
+
+    private var config = HttpsSettings()
+    private var installed = apps.apps.value
+    private var feedback: String? = null
+    private var confirmingDelete = state.getBoolean("confirmDelete")
+    private var deleting = false
+    private var creating = false
+    private val export = result("certificate.export", ActivityResultContracts.CreateDocument("application/x-x509-ca-cert")) { uri ->
+        if (uri != null) perform(Strings.string.ca_exported) {
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(repository.exportCertificate()) }
+                    ?: error(context.getString(Strings.string.file_open_failed))
+            }
         }
     }
-    val export =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.CreateDocument("application/x-x509-ca-cert")
-        ) { uri ->
-            if (uri != null)
-                action(strings.getString(L10n.string.ca_exported)) {
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use {
-                            it.write(repository.exportCertificate())
-                        } ?: error(strings.getString(L10n.string.file_open_failed))
-                    }
-                }
-        }
-    AppColumn {
-        AppCard {
-            AppHint(strings.getString(L10n.string.https_trust_hint))
-            AppHint(strings.getString(L10n.string.https_sensitive_hint))
-            AppHint(strings.getString(L10n.string.https_css_hint))
-        }
-        (feedback ?: state.error)?.let { AppCard { AppText(it) } }
-        AppSectionTitle(strings.getString(L10n.string.ca_step_create))
-        AppCard {
-            if (!state.created) {
-                AppHint(strings.getString(L10n.string.ca_key_hint))
-                AppAction(strings.getString(L10n.string.ca_create), primary = true) { action(strings.getString(L10n.string.ca_created)) { repository.create() } }
-            } else {
-                AppText(
-                    if (state.hardwareBacked) strings.getString(L10n.string.ca_hardware_key)
-                    else strings.getString(L10n.string.ca_keystore_key)
-                )
-                AppHint("SHA-256 ${state.fingerprint}")
+
+    init {
+        views.addApps.root.bind(context.getString(Strings.string.add_apps), trailingIcon = PreferenceIcon.Arrow, action = onApps)
+        views.openSettings.root.bind(
+            context.getString(Strings.string.open_settings), context.getString(Strings.string.ca_install_path), trailingIcon = PreferenceIcon.Arrow,
+        ) {
+            runCatching { context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }.onFailure {
+                feedback = context.getString(Strings.string.settings_open_failed)
+                renderCertificate()
             }
         }
-        AppSectionTitle(strings.getString(L10n.string.ca_step_install))
-        AppPreferenceGroup {
-            if (state.created)
-                AppArrowPreference(strings.getString(L10n.string.ca_export), strings.getString(L10n.string.ca_export_hint)) {
-                    export.launch("OpenAdBlock-CA.crt")
-                }
-            AppArrowPreference(strings.getString(L10n.string.open_settings), strings.getString(L10n.string.ca_install_path)) {
-                runCatching {
-                    context.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS)
-                    )
-                }
-                    .onFailure { feedback = strings.getString(L10n.string.settings_open_failed) }
-            }
-            AppArrowPreference(
-                strings.getString(L10n.string.check_again),
-                if (state.installed) strings.getString(L10n.string.ca_installed) else strings.getString(L10n.string.ca_not_installed),
-            ) {
-                action { repository.refresh() }
-            }
+        views.createCa.setOnClickListener {
+            creating = true
+            renderCertificate()
+            perform(Strings.string.ca_created, onFinished = { creating = false }) { repository.create() }
         }
-        AppSectionTitle(strings.getString(L10n.string.ca_step_apps))
-        AppPreferenceGroup {
-            installed
-                .filter { it.packageName in HttpsSettings().apps || it.packageName in config.apps }
-                .forEach { app ->
-                    AppSwitchPreference(
-                        app.label,
-                        app.packageName,
-                        app.packageName in config.apps,
-                    ) { checked ->
-                        action {
-                            val saved = settings.https.first()
-                            settings.setHttps(
-                                saved.copy(
-                                    apps =
-                                        if (checked) (saved.apps + app.packageName).distinct()
-                                        else saved.apps - app.packageName
-                                )
-                            )
-                        }
-                    }
-                }
-            AppArrowPreference(strings.getString(L10n.string.add_apps), onClick = onApps)
+        views.exportCa.root.bind(
+            context.getString(Strings.string.ca_export), context.getString(Strings.string.ca_export_hint), trailingIcon = PreferenceIcon.Arrow,
+        ) { export.launch("OpenAdBlock-CA.crt") }
+        renderCertificate()
+        renderApps()
+        observe(repository.state) { renderCertificate() }
+        observe(settings.https) {
+            config = it
+            renderCertificate()
+            renderApps()
         }
-        AppPreferenceGroup {
-            AppSwitchPreference(
-                strings.getString(L10n.string.https_enable),
-                strings.getString(L10n.string.https_enable_hint),
-                config.enabled && state.installed,
-            ) { enabled ->
-                action { repository.setEnabled(enabled) }
-            }
+        observe(apps.apps) {
+            installed = it
+            renderApps()
         }
-        AppPreferenceGroup {
-            AppArrowPreference(
-                if (deleting) strings.getString(L10n.string.ca_deleting) else strings.getString(L10n.string.ca_delete_saved),
-                strings.getString(L10n.string.ca_delete_hint),
-            ) {
-                if (!deleting) confirmDelete = true
-            }
+        if (confirmingDelete) view.doOnAttach {
+            it.post { if (it.isAttachedToWindow && confirmingDelete) confirmDelete() }
         }
-        AppHint(strings.getString(L10n.string.ca_uninstall_hint))
     }
-    AppBottomSheet(
-        show = confirmDelete,
-        title = strings.getString(L10n.string.ca_delete_confirm),
-        onDismiss = { confirmDelete = false },
+
+    private fun renderCertificate() {
+        val state = repository.state.value
+        views.feedback.showMessage(feedback ?: state.error)
+        views.createHint.isVisible = !state.created
+        views.createCa.isVisible = !state.created
+        views.createCa.isEnabled = !creating && !deleting
+        views.keyStatus.isVisible = state.created
+        views.keyStatus.setText(if (state.hardwareBacked) Strings.string.ca_hardware_key else Strings.string.ca_keystore_key)
+        views.fingerprint.showMessage(state.fingerprint?.takeIf { state.created }?.let { "SHA-256 $it" })
+        views.exportCa.root.isVisible = state.created
+        views.checkAgain.root.bind(
+            context.getString(Strings.string.check_again),
+            context.getString(if (state.installed) Strings.string.ca_installed else Strings.string.ca_not_installed),
+            trailingIcon = PreferenceIcon.Arrow,
+        ) { perform { repository.refresh() } }
+        val enabled = config.enabled && state.installed
+        views.httpsEnable.root.bind(
+            context.getString(Strings.string.https_enable), context.getString(Strings.string.https_enable_hint),
+            checked = enabled, enabled = !deleting,
+        ) { perform { repository.setEnabled(!enabled) } }
+        views.deleteSaved.root.bind(
+            context.getString(if (deleting) Strings.string.ca_deleting else Strings.string.ca_delete_saved),
+            context.getString(Strings.string.ca_delete_hint), trailingIcon = PreferenceIcon.Arrow, enabled = !creating && !deleting,
+        ) { confirmDelete() }
+    }
+
+    private fun renderApps() {
+        views.selectedApps.removeAllViews()
+        installed.filter { it.packageName in HttpsSettings().apps || it.packageName in config.apps }.forEach(::addApp)
+    }
+
+    private fun addApp(app: InstalledApp) {
+        val selected = app.packageName in config.apps
+        views.selectedApps.preference().bind(app.label, app.packageName, checked = selected) {
+            perform {
+                val saved = settings.https.first()
+                val packages = if (selected) saved.apps - app.packageName else (saved.apps + app.packageName).distinct()
+                settings.setHttps(saved.copy(apps = packages))
+            }
+        }
+    }
+
+    private fun confirmDelete() {
+        confirmingDelete = true
+        val sheet = FormSheet(context, context.getString(Strings.string.ca_delete_confirm))
+        val content = SheetDeleteCertificateBinding.inflate(sheet.content.inflater, sheet.content, true)
+        sheet.dialog.setOnDismissListener { confirmingDelete = false }
+        content.cancel.setOnClickListener { sheet.dialog.dismiss() }
+        content.delete.setOnClickListener {
+            sheet.dialog.dismiss()
+            deleting = true
+            renderCertificate()
+            perform(Strings.string.ca_deleted, Strings.string.ca_delete_failed, onFinished = { deleting = false }) {
+                repository.delete()
+            }
+        }
+        show(sheet.dialog)
+    }
+
+    override fun saveState() = super.saveState().apply {
+        putBoolean("confirmDelete", confirmingDelete)
+    }
+
+    private fun perform(
+        success: Int? = null,
+        fallback: Int = Strings.string.action_failed,
+        onFinished: () -> Unit = {},
+        block: suspend () -> Unit,
     ) {
-        AppColumn {
-            AppText(strings.getString(L10n.string.ca_delete_warning))
-            AppHint(strings.getString(L10n.string.ca_delete_system_hint))
-            AppHint(strings.getString(L10n.string.ca_recreate_hint))
-            AppButtonRow {
-                AppButton(strings.getString(L10n.string.cancel)) { confirmDelete = false }
-                AppButton(strings.getString(L10n.string.ca_delete), primary = true) {
-                    confirmDelete = false
-                    if (!deleting) {
-                        deleting = true
-                        scope.launch {
-                            try {
-                                repository.delete()
-                                feedback = strings.getString(L10n.string.ca_deleted)
-                            } catch (error: Exception) {
-                                if (error is CancellationException) throw error
-                                feedback = error.userMessage(strings) ?: strings.getString(L10n.string.ca_delete_failed)
-                            } finally {
-                                deleting = false
-                            }
-                        }
-                    }
-                }
-            }
+        fun finish(message: String?) {
+            onFinished()
+            feedback = message
+            renderCertificate()
         }
+        action({ finish(success?.let(context::getString)) }, {
+            finish(it.userMessage(resources) ?: context.getString(fallback))
+        }, block)
     }
 }

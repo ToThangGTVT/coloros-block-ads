@@ -1,10 +1,10 @@
 package com.utc.color.blockads
 
+import androidx.test.ext.junit.rules.ActivityScenarioRule
+import androidx.test.uiautomator.By
 import com.utc.color.blockads.core.common.R as L10n
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import com.utc.color.blockads.core.common.*
 import java.io.ByteArrayOutputStream
@@ -18,7 +18,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class FirewallTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     private fun dns(): ByteArray =
         DatagramSocket().use { socket ->
@@ -60,15 +60,15 @@ class FirewallTest {
     @Test
     fun firewallPersistsOverridesTunnelBypassAndRestoresNetwork() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
         model.trafficPolicy.awaitReady()
         val own =
             model.apps.apps
-                .first { apps -> apps.any { it.packageName == compose.activity.packageName } }
-                .first { it.packageName == compose.activity.packageName }
+                .first { apps -> apps.any { it.packageName == targetContext.packageName } }
+                .first { it.packageName == targetContext.packageName }
         val original = model.settings.exportConfiguration()
         suspend fun applied(blocked: Boolean) {
             withTimeout(5000) {
@@ -78,7 +78,7 @@ class FirewallTest {
             }
         }
         suspend fun routed(vpn: Boolean) {
-            val manager = compose.activity.getSystemService(ConnectivityManager::class.java)
+            val manager = targetContext.getSystemService(ConnectivityManager::class.java)
             withTimeout(15000) {
                 while (
                     model.tunnel.state.value.status != TunnelStatus.Connected ||
@@ -97,10 +97,10 @@ class FirewallTest {
             assertTrue(dns().takeLast(4).all { it == 0.toByte() })
             assertTrue(http().contains("blockads-phase1"))
 
-            compose.onNodeWithText(appString(L10n.string.firewall)).performClick()
-            compose.onNodeWithText(appString(L10n.string.search_apps)).performTextInput("com.utc.color.blockads")
-            androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose.onNodeWithText(appString(L10n.string.allow_network)).performClick()
+            openTab("firewall")
+            enterText(own.packageName)
+            val row = visible(res("app_row").hasDescendant(By.text(own.packageName)))
+            row.findObject(By.text(appString(L10n.string.allow_network))).click()
             applied(true)
             assertTrue(runCatching { dns() }.exceptionOrNull() is SocketTimeoutException)
             assertFalse(runCatching { http() }.getOrDefault("").contains("blockads-phase1"))

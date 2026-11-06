@@ -1,0 +1,113 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <com.utc.color.blockads.core.designsystem.CouiSegmentTabs
+        android:id="@+id/filter_tabs"
+        style="@style/BlockAds.SegmentedTabs"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp" />
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:id="@+id/page_list"
+        android:fillViewport="true">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.PageColumn">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                style="@style/BlockAds.CardColumn">
+                <include android:id="@+id/overview" layout="@layout/preference_row" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:id="@+id/list_count"
+                    android:textAppearance="@style/BlockAds.Hint"
+                    android:paddingHorizontal="12dp"
+                    android:paddingBottom="8dp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:id="@+id/loading"
+                    android:text="@string/filters_loading"
+                    android:textAppearance="@style/BlockAds.Hint"
+                    android:padding="12dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/error"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                style="@style/BlockAds.CardColumn">
+                <include android:id="@+id/catalog" layout="@layout/preference_row" />
+                <include android:id="@+id/add_url" layout="@layout/preference_row" />
+            </LinearLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/added_lists"
+                android:textAppearance="@style/BlockAds.Title"
+                android:accessibilityHeading="true"
+                android:padding="12dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/empty"
+                android:orientation="vertical"
+                style="@style/BlockAds.CardColumn">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/filters_empty"
+                    android:textAppearance="@style/BlockAds.Hint"
+                    android:padding="12dp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/filters_empty_hint"
+                    android:textAppearance="@style/BlockAds.Hint"
+                    android:padding="12dp" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/added"
+                android:orientation="vertical" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/shared_management"
+                android:textAppearance="@style/BlockAds.Title"
+                android:accessibilityHeading="true"
+                android:padding="12dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                style="@style/BlockAds.CardColumn">
+                <include android:id="@+id/update_all" layout="@layout/preference_row" />
+                <include android:id="@+id/custom_rules" layout="@layout/preference_row" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:id="@+id/unsupported"
+                    android:textAppearance="@style/BlockAds.Hint"
+                    android:padding="12dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

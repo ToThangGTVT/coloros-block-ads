@@ -405,4 +405,6 @@
     <string name="home_https_protection">HTTPS protection</string>
     <string name="home_dns_description">Block ads using DNS</string>
     <string name="home_https_description">Block ads in your browser</string>
+    <string name="expand_dashboard">Expand dashboard</string>
+    <string name="collapse_dashboard">Collapse dashboard</string>
 </resources>

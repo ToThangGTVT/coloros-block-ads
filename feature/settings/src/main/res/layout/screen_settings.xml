@@ -1,0 +1,183 @@
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:id="@+id/page_list" android:fillViewport="true">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        style="@style/BlockAds.PageColumn">
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/feedback"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:padding="12dp"
+            android:visibility="gone" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/protection"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/background_priority" layout="@layout/preference_row" />
+            <include android:id="@+id/auto_start" layout="@layout/preference_row" />
+            <include android:id="@+id/ipv6" layout="@layout/preference_row" />
+            <include android:id="@+id/block_quic" layout="@layout/preference_row" />
+            <include android:id="@+id/apps" layout="@layout/preference_row" />
+            <include android:id="@+id/https_filtering" layout="@layout/preference_row" />
+            <include android:id="@+id/always_on" layout="@layout/preference_row" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/notifications"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/notifications"
+                android:textAppearance="@style/BlockAds.Title"
+                android:accessibilityHeading="true"
+                android:padding="12dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                style="@style/BlockAds.CardColumn">
+                <include android:id="@+id/notification_help" layout="@layout/preference_row" />
+                <include android:id="@+id/live_updates" layout="@layout/preference_row" />
+                <include android:id="@+id/notification_settings" layout="@layout/preference_row" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="DNS"
+            android:padding="12dp"
+            android:accessibilityHeading="true"
+            android:textAppearance="@style/BlockAds.Title" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/upstream" layout="@layout/preference_row" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/custom_dns"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:visibility="gone">
+                <include android:id="@+id/dns_url" layout="@layout/form_input" />
+                <include android:id="@+id/bootstrap_ip" layout="@layout/form_input" />
+                <com.google.android.material.button.MaterialButton
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:id="@+id/save_dns"
+                    android:text="@string/save" />
+            </LinearLayout>
+            <include android:id="@+id/block_response" layout="@layout/preference_row" />
+            <include android:id="@+id/connection_log" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/appearance"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/language" layout="@layout/preference_row" />
+            <include android:id="@+id/theme" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/theme_error"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:padding="12dp"
+            android:visibility="gone" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/data"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/retention" layout="@layout/preference_row" />
+            <include android:id="@+id/export_configuration" layout="@layout/preference_row" />
+            <include android:id="@+id/import_configuration" layout="@layout/preference_row" />
+            <include android:id="@+id/clear_logs" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_updates"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/check_updates" layout="@layout/preference_row" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/update_message"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp"
+                android:visibility="gone" />
+            <com.google.android.material.button.MaterialButton
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/update_action"
+                android:text="@string/install_update"
+                android:layout_marginHorizontal="12dp"
+                android:visibility="gone" />
+            <include android:id="@+id/view_github" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/about"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/version"
+                android:padding="12dp"
+                android:textAppearance="@style/BlockAds.Title" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/engine_version"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:paddingHorizontal="12dp"
+                android:paddingBottom="12dp" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

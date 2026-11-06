@@ -1,0 +1,30 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" style="@style/BlockAds.PageColumn">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        style="@style/BlockAds.CardColumn">
+        <include android:id="@+id/period" layout="@layout/preference_row" />
+        <include android:id="@+id/sort" layout="@layout/preference_row" />
+    </LinearLayout>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/app_statistics_hint"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:padding="8dp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/status"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:padding="12dp"
+        android:visibility="gone" />
+    <androidx.recyclerview.widget.RecyclerView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:id="@+id/app_statistics_list"
+        android:clipToPadding="false" />
+</LinearLayout>

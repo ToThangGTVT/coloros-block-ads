@@ -1,264 +1,245 @@
 package com.utc.color.blockads.feature.filters
 
+import android.os.Bundle
+import android.text.InputType
+import android.view.ViewGroup
+import android.widget.EditText
+import androidx.activity.ComponentActivity
+import androidx.core.view.isVisible
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.utc.color.blockads.core.common.FilterList
 import com.utc.color.blockads.core.common.userMessage
-import com.utc.color.blockads.core.common.R as L10n
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.utc.color.blockads.core.data.SettingsRepository
-import com.utc.color.blockads.core.designsystem.*
+import com.utc.color.blockads.core.designsystem.FormSheet
+import com.utc.color.blockads.core.designsystem.PreferenceIcon
+import com.utc.color.blockads.core.designsystem.Screen
+import com.utc.color.blockads.core.designsystem.button
+import com.utc.color.blockads.core.designsystem.card
+import com.utc.color.blockads.core.designsystem.inflater
+import com.utc.color.blockads.core.designsystem.input
+import com.utc.color.blockads.core.designsystem.preference
+import com.utc.color.blockads.core.designsystem.showMessage
 import com.utc.color.blockads.core.filter.FilterRepository
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
+import com.utc.color.blockads.feature.filters.databinding.ScreenFiltersBinding
+import java.text.DateFormat
+import java.text.NumberFormat
+import java.util.Date
+import com.utc.color.blockads.core.common.R as Strings
 
-@Composable
-fun FiltersScreen(
-    filters: FilterRepository,
+class FiltersScreen private constructor(
+    activity: ComponentActivity,
+    private val views: ScreenFiltersBinding,
+    state: Bundle,
+    private val filters: FilterRepository,
     settings: SettingsRepository,
-    onCatalog: () -> Unit,
-    onBrowserCatalog: () -> Unit,
-) {
-    val strings = rememberAppStrings()
-    val lists by filters.lists.collectAsStateWithLifecycle(initialValue = emptyList())
-    val status by filters.status.collectAsStateWithLifecycle()
-    val saved by settings.customRules.collectAsStateWithLifecycle(initialValue = "")
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    val states = rememberSaveableStateHolder()
-    val browser = tab == 1
-    val visibleLists = remember(lists, browser) { lists.filter { it.browser == browser } }
-    var custom by rememberSaveable { mutableStateOf<String?>(null) }
-    var dnsUrl by rememberSaveable { mutableStateOf("") }
-    var browserUrl by rememberSaveable { mutableStateOf("") }
-    // Capture the target type when opening the sheet, independent of the selected tab.
-    var addingBrowser by rememberSaveable { mutableStateOf<Boolean?>(null) }
-    var editingCustom by rememberSaveable { mutableStateOf(false) }
-    var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var sheetError by rememberSaveable { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val dateFormat = remember(strings.configuration.locales[0]) { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.DEFAULT, java.text.DateFormat.DEFAULT, strings.configuration.locales[0]) }
-    val numberFormat = remember(strings.configuration.locales[0]) { java.text.NumberFormat.getIntegerInstance(strings.configuration.locales[0]) }
-    fun action(block: suspend () -> Unit) {
-        scope.launch {
-            try {
-                block()
-                error = null
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                error = failure.userMessage(strings) ?: strings.getString(L10n.string.operation_failed)
+    private val onCatalog: (Boolean) -> Unit,
+) : Screen(activity, views.root) {
+    constructor(
+        activity: ComponentActivity, parent: ViewGroup, state: Bundle, filters: FilterRepository,
+        settings: SettingsRepository, onCatalog: (Boolean) -> Unit,
+    ) : this(activity, ScreenFiltersBinding.inflate(parent.inflater, parent, false), state, filters, settings, onCatalog)
+
+    private val locale = resources.configuration.locales[0]
+    private val date = DateFormat.getDateTimeInstance(DateFormat.DEFAULT, DateFormat.DEFAULT, locale)
+    private val number = NumberFormat.getIntegerInstance(locale)
+    private var selected = state.getInt("tab")
+    private val scrollPositions = state.getIntArray("scrolls") ?: IntArray(2)
+    private val urlDrafts = state.getStringArray("urls") ?: arrayOf("", "")
+    private var customDraft: String? = state.getString("rulesDraft")
+    private var editor = state.getString("editor")?.let(Editor::valueOf)
+    private var activeInput: EditText? = null
+    private var savedRules = ""
+    private var lists = emptyList<FilterList>()
+    private var status = filters.status.value
+    private var error: String? = null
+    private var initialScrollRestored = false
+
+    init {
+        views.filterTabs.bind(listOf(context.getString(Strings.string.dns_filters), context.getString(Strings.string.browser_filters)), selected) {
+            if (selected == it) return@bind
+            scrollPositions[selected] = views.pageList.scrollY
+            selected = it
+            render()
+            restoreScroll()
+        }
+        views.customRules.root.bind(
+            context.getString(Strings.string.custom_rules), context.getString(Strings.string.custom_rules_shared), trailingIcon = PreferenceIcon.Arrow,
+        ) { editRules() }
+        observe(filters.lists) { lists = it; render(); restoreInitialScroll() }
+        observe(filters.status) { status = it; renderStatus() }
+        observe(settings.customRules) {
+            savedRules = it
+            if (activeInput == null) when (editor) {
+                Editor.Dns -> addUrl(false)
+                Editor.Browser -> addUrl(true)
+                Editor.Rules -> editRules()
+                null -> Unit
             }
         }
+        render()
     }
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.padding(start = AppSpacing.page, end = AppSpacing.page, top = 12.dp)) {
-            AppContentTabs(listOf(strings.getString(L10n.string.dns_filters), strings.getString(L10n.string.browser_filters)), tab) { tab = it }
+
+    private fun restoreInitialScroll() {
+        if (!initialScrollRestored) {
+            initialScrollRestored = true
+            restoreScroll()
         }
-        Box(Modifier.weight(1f)) {
-            states.SaveableStateProvider(tab) {
-                AppLazyList {
-                    item(key = "overview", contentType = "card") {
-                        AppCard {
-                            AppColumn {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(
-                                        Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(AppSpacing.gap),
-                                    ) {
-                                        AppText(
-                                            if (browser) strings.getString(L10n.string.web_filtering)
-                                            else strings.getString(L10n.string.domain_blocking),
-                                            prominent = true,
-                                        )
-                                        AppHint(
-                                            if (browser) strings.getString(L10n.string.browser_https_required)
-                                            else strings.getString(L10n.string.all_apps_dns_hint)
-                                        )
-                                    }
-                                    AppHelpTooltip(
-                                        text =
-                                            if (browser)
-                                                strings.getString(L10n.string.browser_filters_help)
-                                            else
-                                                strings.getString(L10n.string.dns_filters_help),
-                                        label =
-                                            if (browser) strings.getString(L10n.string.browser_filters_help_label)
-                                            else strings.getString(L10n.string.dns_filters_help_label),
-                                    )
-                                }
-                                AppText(
-                                    strings.getQuantityString(L10n.plurals.lists_enabled, visibleLists.size, visibleLists.count { it.enabled }, visibleLists.size)
-                                )
-                                if (status.loading) AppHint(strings.getString(L10n.string.filters_loading))
-                            }
-                        }
-                    }
-                    (error ?: status.error)?.let { message ->
-                        item(key = "error", contentType = "card") { AppCard { AppText(message) } }
-                    }
-                    item(key = "sources", contentType = "card") {
-                        AppPreferenceGroup {
-                            AppArrowPreference(
-                                strings.getString(L10n.string.choose_from_catalog),
-                                if (browser) strings.getString(L10n.string.adguard_browser_filters)
-                                else strings.getString(L10n.string.adguard_dns_lists),
-                                if (browser) onBrowserCatalog else onCatalog,
-                            )
-                            AppArrowPreference(strings.getString(L10n.string.add_by_url), strings.getString(L10n.string.filter_url_hint)) {
-                                sheetError = null
-                                addingBrowser = browser
-                            }
-                        }
-                    }
-                    item(key = "lists-title", contentType = "title") {
-                        AppSectionTitle(strings.getString(L10n.string.added_lists))
-                    }
-                    if (visibleLists.isEmpty()) {
-                        item(key = "empty", contentType = "card") {
-                            AppCard {
-                                AppText(strings.getString(L10n.string.filters_empty))
-                                AppHint(strings.getString(L10n.string.filters_empty_hint))
-                            }
-                        }
-                    }
-                    items(visibleLists, key = { it.id }, contentType = { "filter" }) { list ->
-                        AppPreferenceGroup {
-                            AppSwitchPreference(
-                                title = list.name,
-                                summary =
-                                    list.error
-                                        ?: (strings.getQuantityString(L10n.plurals.filter_rules_prefix, list.ruleCount, numberFormat.format(list.ruleCount)) +
-                                            if (list.updatedAt == 0L) strings.getString(L10n.string.not_downloaded)
-                                            else dateFormat.format(java.util.Date(list.updatedAt))),
-                                checked = list.enabled,
-                                onCheckedChange = { action { filters.setEnabled(list.id, it) } },
-                            )
-                        }
-                    }
-                    item(key = "shared-title", contentType = "title") {
-                        AppSectionTitle(strings.getString(L10n.string.shared_management))
-                    }
-                    item(key = "shared-actions", contentType = "card") {
-                        AppPreferenceGroup {
-                            AppArrowPreference(
-                                strings.getString(L10n.string.update_all),
-                                strings.getQuantityString(L10n.plurals.loaded_rules_summary, status.loaded, numberFormat.format(status.loaded)),
-                            ) {
-                                if (!status.loading) action { filters.updateAll() }
-                            }
-                            AppArrowPreference(
-                                strings.getString(L10n.string.custom_rules),
-                                strings.getString(L10n.string.custom_rules_shared),
-                            ) {
-                                sheetError = null
-                                editingCustom = true
-                            }
-                            if (status.ignored > 0)
-                                AppGroupContent {
-                                    AppHint(
-                                        strings.getQuantityString(L10n.plurals.unsupported_rules_ignored, status.ignored, numberFormat.format(status.ignored))
-                                    )
-                                }
-                        }
-                    }
-                }
+    }
+
+    private fun restoreScroll() {
+        val tab = selected
+        views.pageList.post { if (tab == selected) views.pageList.scrollTo(0, scrollPositions[tab]) }
+    }
+
+    private fun render() {
+        val browser = selected == 1
+        val visible = lists.filter { it.browser == browser }
+        views.overview.root.bind(
+            context.getString(if (browser) Strings.string.web_filtering else Strings.string.domain_blocking),
+            context.getString(if (browser) Strings.string.browser_https_required else Strings.string.all_apps_dns_hint),
+            trailingIcon = PreferenceIcon.Info,
+        ) {
+            val title = if (browser) Strings.string.browser_filters_help_label else Strings.string.dns_filters_help_label
+            val description = if (browser) Strings.string.browser_filters_help else Strings.string.dns_filters_help
+            show(MaterialAlertDialogBuilder(context).setTitle(title).setMessage(description)
+                .setPositiveButton(android.R.string.ok, null).create())
+        }
+        views.listCount.text = resources.getQuantityString(
+            Strings.plurals.lists_enabled, visible.size, visible.count { it.enabled }, visible.size,
+        )
+        views.catalog.root.bind(
+            context.getString(Strings.string.choose_from_catalog),
+            context.getString(if (browser) Strings.string.adguard_browser_filters else Strings.string.adguard_dns_lists),
+            trailingIcon = PreferenceIcon.Arrow,
+        ) { onCatalog(browser) }
+        views.addUrl.root.bind(context.getString(Strings.string.add_by_url),
+            context.getString(Strings.string.filter_url_hint), trailingIcon = PreferenceIcon.Arrow) { addUrl(browser) }
+        views.empty.isVisible = visible.isEmpty()
+        views.added.removeAllViews()
+        visible.forEach { list ->
+            val summary = list.error ?: resources.getQuantityString(
+                Strings.plurals.filter_rules_prefix, list.ruleCount, number.format(list.ruleCount),
+            ) + if (list.updatedAt == 0L) context.getString(Strings.string.not_downloaded) else date.format(Date(list.updatedAt))
+            views.added.card().preference().bind(list.name, summary, checked = list.enabled) {
+                perform { filters.setEnabled(list.id, !list.enabled) }
             }
         }
+        renderStatus()
     }
-    val addBrowser = addingBrowser
-    AppBottomSheet(
-        show = addBrowser != null,
-        title = if (addBrowser == true) strings.getString(L10n.string.add_browser_filter) else strings.getString(L10n.string.add_dns_filter),
-        onDismiss = { if (!busy) addingBrowser = null },
+
+    private fun renderStatus() {
+        views.loading.isVisible = status.loading
+        views.error.showMessage(error ?: status.error)
+        views.updateAll.root.bind(
+            context.getString(Strings.string.update_all),
+            resources.getQuantityString(Strings.plurals.loaded_rules_summary, status.loaded, number.format(status.loaded)),
+            trailingIcon = PreferenceIcon.Arrow, enabled = !status.loading,
+        ) { perform { filters.updateAll() } }
+        views.unsupported.showMessage(status.ignored.takeIf { it > 0 }?.let {
+            resources.getQuantityString(Strings.plurals.unsupported_rules_ignored, it, number.format(it))
+        })
+    }
+
+    private fun perform(block: suspend () -> Unit) {
+        action({ error = null; renderStatus() }, {
+            error = it.userMessage(resources) ?: context.getString(Strings.string.operation_failed)
+            renderStatus()
+        }, block)
+    }
+
+    private fun addUrl(browser: Boolean) {
+        val tab = if (browser) 1 else 0
+        showEditor(
+            target = if (browser) Editor.Browser else Editor.Dns,
+            title = if (browser) Strings.string.add_browser_filter else Strings.string.add_dns_filter,
+            hint = Strings.string.filter_url,
+            initial = urlDrafts[tab],
+            type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+            save = Strings.string.add_filter,
+            pending = Strings.string.adding,
+            fallback = Strings.string.filter_add_failed,
+            remember = { urlDrafts[tab] = it.orEmpty() },
+        ) { filters.addUrl(it, browser = browser) }
+    }
+
+    private fun editRules() {
+        showEditor(
+            target = Editor.Rules,
+            title = Strings.string.custom_rules,
+            hint = Strings.string.one_rule_per_line,
+            initial = customDraft ?: savedRules,
+            type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+            save = Strings.string.save_rules,
+            pending = Strings.string.saving,
+            fallback = Strings.string.rules_save_failed,
+            remember = { customDraft = it },
+            help = Strings.string.custom_rules_help,
+        ) { filters.saveCustom(it) }
+    }
+
+    private fun showEditor(
+        target: Editor, title: Int, hint: Int, initial: String, type: Int, save: Int, pending: Int, fallback: Int,
+        remember: (String?) -> Unit, help: Int? = null, submit: suspend (String) -> Unit,
     ) {
-        if (addBrowser != null)
-            AppColumn {
-                AppTextInput(
-                    value = if (addBrowser) browserUrl else dnsUrl,
-                    label = strings.getString(L10n.string.filter_url),
-                    error = sheetError != null,
-                    onChange = {
-                        if (addBrowser) browserUrl = it else dnsUrl = it
-                        sheetError = null
-                    },
-                )
-                sheetError?.let { AppText(it) }
-                AppAction(if (busy) strings.getString(L10n.string.adding) else strings.getString(L10n.string.add_filter), primary = true) {
-                    if (!busy) {
-                        val url = if (addBrowser) browserUrl else dnsUrl
-                        busy = true
-                        scope.launch {
-                            try {
-                                filters.addUrl(url, browser = addBrowser)
-                                if (addBrowser) browserUrl = "" else dnsUrl = ""
-                                addingBrowser = null
-                                sheetError = null
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (failure: Exception) {
-                                sheetError = failure.userMessage(strings) ?: strings.getString(L10n.string.filter_add_failed)
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    }
-                }
-            }
-    }
-    AppBottomSheet(
-        show = editingCustom,
-        title = strings.getString(L10n.string.custom_rules),
-        onDismiss = { if (!busy) editingCustom = false },
-    ) {
-        AppColumn {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { AppHint(strings.getString(L10n.string.custom_rules_shared)) }
-                AppHelpTooltip(
-                    text =
-                        strings.getString(L10n.string.custom_rules_help),
-                    label = strings.getString(L10n.string.custom_rules_help_label),
-                )
-            }
-            AppTextInput(
-                value = custom ?: saved,
-                label = strings.getString(L10n.string.one_rule_per_line),
-                multiline = true,
-                error = sheetError != null,
-                onChange = {
-                    custom = it
-                    sheetError = null
-                },
+        val sheet = FormSheet(context, context.getString(title))
+        help?.let {
+            sheet.content.preference().bind(
+                context.getString(Strings.string.custom_rules_help_label),
+                context.getString(it),
+                trailingIcon = PreferenceIcon.Info,
             )
-            sheetError?.let { AppText(it) }
-            AppAction(if (busy) strings.getString(L10n.string.saving) else strings.getString(L10n.string.save_rules), primary = true) {
-                if (!busy) {
-                    val rules = custom ?: saved
-                    busy = true
-                    scope.launch {
-                        try {
-                            filters.saveCustom(rules)
-                            custom = null
-                            editingCustom = false
-                            sheetError = null
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: Exception) {
-                            sheetError = failure.userMessage(strings) ?: strings.getString(L10n.string.rules_save_failed)
-                        } finally {
-                            busy = false
-                        }
-                    }
-                }
-            }
         }
+        val input = sheet.content.input(context.getString(hint), initial, type)
+        editor = target
+        activeInput = input.input
+        if (help != null) {
+            input.input.minLines = 3
+            input.input.maxLines = 8
+        }
+        var saved = false
+        val button = sheet.content.button(context.getString(save))
+        button.setOnClickListener {
+            val value = input.input.text.toString()
+            sheet.setBusy(true)
+            input.input.isEnabled = false
+            button.isEnabled = false
+            button.setText(pending)
+            action(
+                success = { saved = true; remember(null); sheet.dialog.dismiss() },
+                failure = {
+                    sheet.setBusy(false)
+                    input.input.isEnabled = true
+                    input.root.error = it.userMessage(resources) ?: context.getString(fallback)
+                    button.setText(save)
+                    button.isEnabled = true
+                },
+            ) { submit(value) }
+        }
+        sheet.dialog.setOnDismissListener {
+            if (!saved) remember(input.input.text.toString())
+            activeInput = null
+            editor = null
+        }
+        show(sheet.dialog)
     }
+
+    override fun saveState() = super.saveState().apply {
+        scrollPositions[selected] = views.pageList.scrollY
+        putInt("tab", selected)
+        putIntArray("scrolls", scrollPositions.copyOf())
+        val urls = urlDrafts.copyOf()
+        val draft = activeInput?.text?.toString()
+        if (draft != null) when (editor) {
+            Editor.Dns -> urls[0] = draft
+            Editor.Browser -> urls[1] = draft
+            else -> Unit
+        }
+        putString("editor", editor?.name)
+        putStringArray("urls", urls)
+        val rules = if (editor == Editor.Rules) draft ?: customDraft else customDraft
+        // The persisted rules can be up to 1 MB. Keep the saved-state parcel small.
+        putString("rulesDraft", rules?.takeIf { it.length <= 64_000 })
+    }
+
+    private enum class Editor { Dns, Browser, Rules }
 }

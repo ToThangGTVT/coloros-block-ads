@@ -1,22 +1,19 @@
 # Third-party dependencies
 
-Phase 0 license review, recorded before integration. Every new network dependency
-and its transitive dependencies must be reviewed before later phases use it.
+Current Android dependencies and license records from earlier development phases.
 
 | Dependency | Version | License | Source |
 | --- | --- | --- | --- |
-| COUI ui/core/preference/icons/blur/navigation3-ui/shader/squircle | 1.1.0 | Apache-2.0 | https://github.com/suqi8/coui/blob/main/LICENSE |
-| AndroidX Compose, Activity, Lifecycle, Navigation3 runtime, Room, DataStore, WorkManager, Paging | version catalog | Apache-2.0 | https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt |
-| Kotlin, Coroutines, Serialization | version catalog | Apache-2.0 | https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt |
+| COUI icons, switch and segmented tabs | 1.1.0 | Apache-2.0 | https://github.com/suqi8/coui/blob/main/LICENSE |
+| Material Components for Android | 1.13.0 | Apache-2.0 | https://github.com/material-components/material-components-android/blob/1.13.0/LICENSE |
+| AndroidX Activity, Lifecycle, RecyclerView, Room, DataStore, WorkManager, Paging | version catalog | Apache-2.0 | https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt |
+| Kotlin, Coroutines | version catalog | Apache-2.0 | https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt |
 | Rust standard library | 1.99.1 | MIT OR Apache-2.0 (plus bundled third-party notices) | https://github.com/rust-lang/rust/blob/1.99.1/COPYRIGHT |
 | jni | 0.21.1 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-rs/tree/v0.21.1 |
 | Dagger / Hilt | 2.60.1 | Apache-2.0 | https://github.com/google/dagger/blob/master/LICENSE.txt |
-| MaterialKolor / Material Color Utilities, via COUI | COUI transitive | Apache-2.0 | https://github.com/jordond/MaterialKolor/blob/main/LICENSE |
 | JUnit | 4.13.2 | EPL-1.0 | https://github.com/junit-team/junit4/blob/main/LICENSE-junit.txt |
 
-License texts for COUI (including upstream Miuix attribution) and JNI are in
-`licenses/`. COUI has transitive Material window-size utilities; this application
-does not use Material 3 display components.
+License texts for JNI and the COUI ports are in `licenses/`.
 
 Network stack, DNS and rule-engine crates are not selected in Phase 0. Their
 licenses and transitive dependencies require review before Phase 1/2. Native code
@@ -336,17 +333,12 @@ packet payload can be printed by netstack diagnostic calls.
 - User patterns are capped by length, count, compiled program and DFA cache size.
   URL/header bytes are used only in memory for policy; query log stores host metadata.
 
-## Phase 4 chart dependency (review before integration)
+## Chart and profile dependencies
 
-MPAndroidChart **v4.0.1**, `com.github.PhilJay.MPAndroidChart:MPChartCompose:v4.0.1`
-(with MPChartLib transitively), Apache-2.0.
-Source and API examples: https://github.com/PhilJay/MPAndroidChart/tree/v4.0.1.
-License text: licenses/MPAndroidChart-Apache-2.0.txt. Integrated at the user's
-explicit request. Compose wrapper lives only in core/designsystem, with
-COUI colors, typography, spacing and accessible text summaries. JitPack is
-restricted to the com.github.PhilJay.MPAndroidChart group; no chart implementation leaks into
-feature modules. AndroidX Benchmark 1.5.0 / ProfileInstaller 1.4.1 / UIAutomator
-2.4.0 are Apache-2.0 and used for profile generation/install.
+MPAndroidChart **v4.0.1**, `com.github.PhilJay.MPAndroidChart:MPChartLib:v4.0.1`,
+uses Apache-2.0. The license and notice are in `licenses/`. The shared chart View
+lives in `core/designsystem`. JitPack is restricted to the MPAndroidChart group.
+AndroidX Benchmark, ProfileInstaller and UIAutomator also use Apache-2.0.
 
 ## Phase 5 TLS/HTTP dependencies (review before integration)
 

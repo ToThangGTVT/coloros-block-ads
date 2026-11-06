@@ -1,0 +1,67 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" style="@style/BlockAds.PageColumn">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/capture_controls"
+        android:orientation="vertical"
+        style="@style/BlockAds.CardColumn">
+        <include android:id="@+id/capture" layout="@layout/preference_row" />
+        <include android:id="@+id/capture_duration" layout="@layout/preference_row" />
+    </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        style="@style/BlockAds.CardColumn">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+            <include
+                android:id="@+id/status_filter"
+                layout="@layout/preference_row"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+            <include
+                android:id="@+id/app_filter"
+                layout="@layout/preference_row"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+        </LinearLayout>
+    </LinearLayout>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/message"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:padding="12dp"
+        android:visibility="gone" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/error"
+        android:textAppearance="@style/BlockAds.Hint"
+        android:padding="12dp"
+        android:visibility="gone" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <androidx.recyclerview.widget.RecyclerView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:id="@+id/query_list"
+            android:clipToPadding="false"
+            android:paddingBottom="60dp" />
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/back_to_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="8dp"
+            android:contentDescription="@string/back_to_top"
+            app:srcCompat="@drawable/ic_back_to_top"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

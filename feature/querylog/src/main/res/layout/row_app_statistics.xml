@@ -1,0 +1,29 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" style="@style/BlockAds.CardColumn">
+    <include android:id="@+id/identity" layout="@layout/preference_row" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="12dp">
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/blocked_progress"
+            android:max="1000"
+            android:importantForAccessibility="no" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/total"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:paddingTop="4dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/blocked"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:paddingTop="2dp" />
+    </LinearLayout>
+</LinearLayout>

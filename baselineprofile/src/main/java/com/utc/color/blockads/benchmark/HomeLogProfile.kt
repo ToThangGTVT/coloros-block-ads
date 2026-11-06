@@ -27,9 +27,10 @@ class HomeLogProfile {
             filterPredicate = { rule ->
                 listOf(
                         "Lcom/utc/color/blockads/",
-                        "Lio/github/suqi8/coui/",
                         "Lcom/github/mikephil/charting/",
-                        "Landroidx/navigation3/",
+                        "Lcom/google/android/material/",
+                        "Landroidx/recyclerview/",
+                        "Landroidx/paging/",
                     )
                     .any { it in rule }
             },

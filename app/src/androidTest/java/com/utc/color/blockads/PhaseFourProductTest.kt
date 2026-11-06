@@ -1,6 +1,6 @@
 package com.utc.color.blockads
 
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.lifecycle.ViewModelProvider
 import com.utc.color.blockads.core.common.*
 import java.io.*
@@ -13,12 +13,12 @@ import org.junit.Rule
 import org.junit.Test
 
 class PhaseFourProductTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
 
     @Test
     fun configurationIsValidatedAtomicallyAndStatsWorkWithLoggingDisabled() = runBlocking {
         lateinit var model: MainViewModel
-        compose.activityRule.scenario.onActivity {
+        activity.scenario.onActivity {
             model = ViewModelProvider(it)[MainViewModel::class.java]
         }
         model.filters.awaitReady()
@@ -86,7 +86,7 @@ class PhaseFourProductTest {
             assertNull(model.queries.latest("stats.blockads.test"))
             val work =
                 withContext(Dispatchers.IO) {
-                    androidx.work.WorkManager.getInstance(compose.activity)
+                    androidx.work.WorkManager.getInstance(targetContext)
                         .getWorkInfosForUniqueWork("filter-maintenance")
                         .get()
                 }

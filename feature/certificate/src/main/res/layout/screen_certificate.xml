@@ -1,0 +1,134 @@
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:id="@+id/page_list" android:fillViewport="true">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        style="@style/BlockAds.PageColumn">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/https_trust_hint"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/https_sensitive_hint"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/https_css_hint"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/feedback"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:padding="12dp"
+            android:visibility="gone" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ca_step_create"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/create_hint"
+                android:text="@string/ca_key_hint"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp" />
+            <com.google.android.material.button.MaterialButton
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/create_ca"
+                android:text="@string/ca_create"
+                android:layout_marginHorizontal="12dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/key_status"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/fingerprint"
+                android:textAppearance="@style/BlockAds.Hint"
+                android:padding="12dp"
+                android:textIsSelectable="true" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ca_step_install"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/export_ca" layout="@layout/preference_row" />
+            <include android:id="@+id/open_settings" layout="@layout/preference_row" />
+            <include android:id="@+id/check_again" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ca_step_apps"
+            android:textAppearance="@style/BlockAds.Title"
+            android:accessibilityHeading="true"
+            android:padding="12dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/selected_apps"
+                android:orientation="vertical" />
+            <include android:id="@+id/add_apps" layout="@layout/preference_row" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/https_enable" layout="@layout/preference_row" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            style="@style/BlockAds.CardColumn">
+            <include android:id="@+id/delete_saved" layout="@layout/preference_row" />
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ca_uninstall_hint"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:padding="12dp" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
