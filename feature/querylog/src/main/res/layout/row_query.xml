@@ -1,12 +1,16 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/query_row"
-    android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="88dp" android:orientation="vertical" style="@style/BlockAds.CardColumn">
-    <include android:id="@+id/identity" layout="@layout/preference_row" />
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:id="@+id/details"
-        android:textAppearance="@style/BlockAds.Hint"
-        android:paddingHorizontal="12dp"
-        android:paddingBottom="10dp" />
-</LinearLayout>
+<com.utc.color.blockads.core.designsystem.ListEntranceLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content">
+    <!-- The card's bottom margin is the row gap; it lives inside the entrance slot. -->
+    <LinearLayout
+        android:id="@+id/query_row"
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="88dp" android:orientation="vertical" style="@style/BlockAds.CardColumn">
+        <include android:id="@+id/identity" layout="@layout/preference_row" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/details"
+            android:textAppearance="@style/BlockAds.Hint"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="10dp" />
+    </LinearLayout>
+</com.utc.color.blockads.core.designsystem.ListEntranceLayout>

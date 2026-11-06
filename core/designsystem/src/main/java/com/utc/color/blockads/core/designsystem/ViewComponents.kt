@@ -3,9 +3,12 @@ package com.utc.color.blockads.core.designsystem
 import android.content.Context
 import android.content.res.ColorStateList
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.RadioButton
 import android.widget.TextView
 import androidx.annotation.AttrRes
 import androidx.core.view.isVisible
@@ -13,10 +16,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
 import com.utc.color.blockads.core.designsystem.databinding.FormInputBinding
+import com.utc.color.blockads.core.designsystem.databinding.SheetChoiceRowBinding
 import com.utc.color.blockads.core.designsystem.databinding.SheetChoicesBinding
 import com.utc.color.blockads.core.designsystem.databinding.SheetFormBinding
 import kotlin.math.roundToInt
@@ -64,24 +66,22 @@ fun TextView.showMessage(message: CharSequence?) {
     isVisible = !message.isNullOrEmpty()
 }
 
+/** COUI panel holding a scrolling column of form rows. */
 class FormSheet(context: Context, title: CharSequence) {
-    val dialog = BottomSheetDialog(context)
+    val dialog = CouiBottomSheet(context, title)
     private val views = SheetFormBinding.inflate(LayoutInflater.from(dialog.context))
     val content get() = views.content
 
     init {
-        views.title.text = title
         dialog.setContentView(views.root)
-        dialog.behavior.maxHeight = (context.resources.displayMetrics.heightPixels * 0.88f).roundToInt()
-        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
     }
 
     fun setBusy(busy: Boolean) {
-        dialog.setCancelable(!busy)
-        dialog.behavior.isDraggable = !busy
+        dialog.allowDismiss = !busy
     }
 }
 
+/** COUI ListPreference panel: single choice rows with a reserved check slot, then Cancel. */
 fun choiceSheet(
     context: Context,
     title: CharSequence,
@@ -89,40 +89,47 @@ fun choiceSheet(
     selected: Int,
     summary: (Int) -> String? = { null },
     onSelect: (Int) -> Unit,
-): BottomSheetDialog {
-    val dialog = BottomSheetDialog(context)
+): CouiBottomSheet {
+    val dialog = CouiBottomSheet(context, title)
     val views = SheetChoicesBinding.inflate(LayoutInflater.from(dialog.context))
-    views.title.text = title
-    views.choiceList.layoutManager = LinearLayoutManager(context)
+    views.choiceList.layoutManager = LinearLayoutManager(dialog.context)
+    val checkTint = ColorStateList.valueOf(dialog.context.color(androidx.appcompat.R.attr.colorPrimary))
     views.choiceList.adapter = object : RecyclerView.Adapter<ChoiceHolder>() {
         override fun getItemCount() = entries.size
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-            ChoiceHolder(parent.inflater.inflate(R.layout.preference_row, parent, false) as PreferenceRow)
+            ChoiceHolder(SheetChoiceRowBinding.inflate(parent.inflater, parent, false))
 
         override fun onBindViewHolder(holder: ChoiceHolder, position: Int) {
-            holder.row.bind(
-                entries[position], summary(position), trailingIcon = PreferenceIcon.Check.takeIf { position == selected },
-            ) {
+            val chosen = position == selected
+            holder.views.choiceTitle.text = entries[position]
+            holder.views.choiceSummary.showMessage(summary(position))
+            holder.views.choiceCheck.imageTintList = checkTint
+            holder.views.choiceCheck.visibility = if (chosen) View.VISIBLE else View.INVISIBLE
+            holder.views.root.isSelected = chosen
+            holder.views.root.setOnClickListener {
                 dialog.dismiss()
                 onSelect(position)
             }
-            holder.row.isSelected = position == selected
-            holder.row.backgroundTintList = ColorStateList.valueOf(
-                if (position == selected) context.color(com.google.android.material.R.attr.colorSecondaryContainer)
-                else android.graphics.Color.TRANSPARENT,
-            )
-            holder.row.setBackgroundResource(R.drawable.bg_card)
         }
     }
     views.cancel.setOnClickListener { dialog.dismiss() }
     dialog.setContentView(views.root)
-    dialog.behavior.maxHeight = (context.resources.displayMetrics.heightPixels * 0.76f).roundToInt()
-    dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
     return dialog
 }
 
-private class ChoiceHolder(val row: PreferenceRow) : RecyclerView.ViewHolder(row)
+private class ChoiceHolder(val views: SheetChoiceRowBinding) : RecyclerView.ViewHolder(views.root) {
+    init {
+        views.root.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = RadioButton::class.java.name
+                info.isCheckable = true
+                info.isChecked = host.isSelected
+            }
+        }
+    }
+}
 
 class RowAdapter<T : Any, H : RecyclerView.ViewHolder>(
     key: (T) -> Any?,

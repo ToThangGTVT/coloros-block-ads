@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
+import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.LinearLayout
 import android.widget.Switch
@@ -26,6 +27,9 @@ enum class PreferenceIcon(@DrawableRes val drawable: Int) {
 class PreferenceRow(context: Context, attrs: AttributeSet?) : LinearLayout(context, attrs) {
     private val views = PreferenceContentBinding.inflate(LayoutInflater.from(context), this)
     private var checked: Boolean? = null
+
+    /** Trailing icon, e.g. the anchor of an Info row's help tooltip. */
+    val trailingIconView: View get() = views.trailingIcon
 
     init {
         gravity = Gravity.CENTER_VERTICAL

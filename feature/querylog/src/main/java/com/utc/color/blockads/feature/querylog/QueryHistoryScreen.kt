@@ -27,7 +27,6 @@ import com.utc.color.blockads.core.designsystem.PreferenceIcon
 import com.utc.color.blockads.core.designsystem.Screen
 import com.utc.color.blockads.core.designsystem.button
 import com.utc.color.blockads.core.designsystem.choiceSheet
-import com.utc.color.blockads.core.designsystem.dp
 import com.utc.color.blockads.core.designsystem.hint
 import com.utc.color.blockads.core.designsystem.inflater
 import com.utc.color.blockads.core.designsystem.input
@@ -90,7 +89,7 @@ internal class QueryHistoryScreen private constructor(
 
         override fun onViewRecycled(holder: QueryHolder) {
             holder.icon?.cancel()
-            holder.itemView.animate().cancel()
+            holder.views.root.reset()
         }
     }
 
@@ -154,9 +153,11 @@ internal class QueryHistoryScreen private constructor(
         } else if (previous != null && head != null && head.id != previous.id && holder != null) {
             val offset = manager.getDecoratedTop(first) - views.queryList.paddingTop
             if (holder.query?.id == previous.id && offset >= 0) {
+                // The oldest request of a burst opens first, newer ones follow above it. Larger bursts
+                // are shown at once so the list never lags behind live traffic.
                 val arrivals = snapshot.items.takeWhile { RequestOrder.compare(it, previous) > 0 }
-                newRows = if (arrivals.size <= 6) arrivals.mapIndexed { index, row ->
-                    row.id to ((arrivals.lastIndex - index) * 70L)
+                newRows = if (arrivals.size <= MaxAnimatedRequests) arrivals.mapIndexed { index, row ->
+                    row.id to ((arrivals.lastIndex - index) * RequestStaggerMillis)
                 }.toMap() else emptyMap()
                 manager.scrollToPositionWithOffset(0, 0)
                 views.queryList.doOnNextLayout { newRows = emptyMap() }
@@ -199,9 +200,7 @@ internal class QueryHistoryScreen private constructor(
     private fun bindRow(holder: QueryHolder, row: QueryEntity?) {
         holder.query = row
         holder.icon?.cancel()
-        holder.itemView.animate().cancel()
-        holder.itemView.alpha = 1f
-        holder.itemView.translationY = 0f
+        holder.views.root.reset()
         val binding = holder.views
         binding.root.visibility = if (row == null) View.INVISIBLE else View.VISIBLE
         if (row == null) return
@@ -215,9 +214,7 @@ internal class QueryHistoryScreen private constructor(
         binding.details.setOnClickListener { openDetails(row) }
         newRows[row.id]?.let { delay ->
             newRows = newRows - row.id
-            holder.itemView.alpha = 0f
-            holder.itemView.translationY = -context.dp(12).toFloat()
-            holder.itemView.animate().alpha(1f).translationY(0f).setStartDelay(delay).setDuration(180).start()
+            binding.root.play(delay)
         }
     }
 
@@ -350,6 +347,8 @@ internal class QueryHistoryScreen private constructor(
     private data class Selection(val status: Int, val uid: Int)
 }
 
+private const val MaxAnimatedRequests = 6
+private const val RequestStaggerMillis = 70L
 private val RequestOrder = compareBy(QueryEntity::timestamp, QueryEntity::id)
 private val QueryEntity.statusLabel get() = if (blocked) Strings.string.blocked else Strings.string.allowed
 

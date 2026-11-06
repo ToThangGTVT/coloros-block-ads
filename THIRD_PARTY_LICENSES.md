@@ -4,7 +4,7 @@ Current Android dependencies and license records from earlier development phases
 
 | Dependency | Version | License | Source |
 | --- | --- | --- | --- |
-| COUI icons, switch and segmented tabs | 1.1.0 | Apache-2.0 | https://github.com/suqi8/coui/blob/main/LICENSE |
+| COUI icons, switch, segmented tabs, bottom sheet and tooltip | 1.1.0 | Apache-2.0 | https://github.com/suqi8/coui/blob/main/LICENSE |
 | Material Components for Android | 1.13.0 | Apache-2.0 | https://github.com/material-components/material-components-android/blob/1.13.0/LICENSE |
 | AndroidX Activity, Lifecycle, RecyclerView, Room, DataStore, WorkManager, Paging | version catalog | Apache-2.0 | https://android.googlesource.com/platform/frameworks/support/+/androidx-main/LICENSE.txt |
 | Kotlin, Coroutines | version catalog | Apache-2.0 | https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt |

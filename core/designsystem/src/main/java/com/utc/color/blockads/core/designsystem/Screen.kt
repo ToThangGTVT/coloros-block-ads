@@ -6,6 +6,7 @@ import android.os.Parcelable
 import android.util.SparseArray
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.annotation.StringRes
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.os.BundleCompat
@@ -33,6 +34,7 @@ abstract class Screen(
 
     private val launchers = mutableListOf<ActivityResultLauncher<*>>()
     private var dialog: Dialog? = null
+    private var tooltip: CouiTooltip? = null
 
     protected fun <T> observe(flow: Flow<T>, render: suspend (T) -> Unit) = scope.launch {
         activity.repeatOnLifecycle(Lifecycle.State.STARTED) { flow.collect(render) }
@@ -53,10 +55,21 @@ abstract class Screen(
     ) = activity.activityResultRegistry.register(key, contract, receive).also { launchers += it }
 
     protected fun show(dialog: Dialog) {
+        tooltip?.dismissNow()
         this.dialog?.dismiss()
         this.dialog = dialog
         dialog.show()
     }
+
+    /** COUI help tooltip below [anchor]; tapping the anchor again closes it. */
+    protected fun showHelp(anchor: View, text: CharSequence) {
+        CouiTooltip.toggle(anchor, text)?.let { shown ->
+            if (tooltip !== shown) tooltip?.dismissNow()
+            tooltip = shown
+        }
+    }
+
+    protected fun showHelp(anchor: View, @StringRes text: Int) = showHelp(anchor, context.getText(text))
 
     protected fun action(
         success: () -> Unit = {},
@@ -84,7 +97,8 @@ abstract class Screen(
     }
 
     open fun close() {
-        dialog?.dismiss()
+        tooltip?.dismissNow()
+        dialog.let { if (it is CouiBottomSheet) it.dismissNow() else it?.dismiss() }
         launchers.forEach { it.unregister() }
         scope.cancel()
     }

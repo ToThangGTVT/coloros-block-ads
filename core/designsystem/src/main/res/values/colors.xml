@@ -15,4 +15,8 @@
     <color name="coui_segment_track">#0A000000</color>
     <color name="coui_segment_label">#66000000</color>
     <color name="coui_segment_shadow">#0D000000</color>
+    <color name="coui_window_dimming">#33000000</color>
+    <color name="coui_panel_handle">#14000000</color>
+    <color name="coui_tooltip_container">#FFFFFFFF</color>
+    <color name="coui_tooltip_content">#66000000</color>
 </resources>

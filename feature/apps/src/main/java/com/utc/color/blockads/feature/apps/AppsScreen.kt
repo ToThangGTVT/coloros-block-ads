@@ -7,7 +7,6 @@ import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.utc.color.blockads.core.common.AppFilterMode
 import com.utc.color.blockads.core.common.HttpsSettings
 import com.utc.color.blockads.core.common.InstalledApp
@@ -59,12 +58,7 @@ class AppsScreen private constructor(
         views.appList.layoutManager = LinearLayoutManager(context)
         views.appList.adapter = adapter
         views.help.isVisible = firewallOnly
-        views.help.setOnClickListener {
-            show(MaterialAlertDialogBuilder(context)
-                .setTitle(Strings.string.firewall_help_label)
-                .setMessage(Strings.string.firewall_help)
-                .setPositiveButton(android.R.string.ok, null).create())
-        }
+        views.help.setOnClickListener { showHelp(it, Strings.string.firewall_help) }
         views.search.setText(state.getString("search").orEmpty())
         views.search.doAfterTextChanged { render() }
         renderSystem()

@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.core.view.isVisible
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.utc.color.blockads.core.common.FilterList
 import com.utc.color.blockads.core.common.userMessage
 import com.utc.color.blockads.core.data.SettingsRepository
@@ -99,10 +98,8 @@ class FiltersScreen private constructor(
             context.getString(if (browser) Strings.string.browser_https_required else Strings.string.all_apps_dns_hint),
             trailingIcon = PreferenceIcon.Info,
         ) {
-            val title = if (browser) Strings.string.browser_filters_help_label else Strings.string.dns_filters_help_label
-            val description = if (browser) Strings.string.browser_filters_help else Strings.string.dns_filters_help
-            show(MaterialAlertDialogBuilder(context).setTitle(title).setMessage(description)
-                .setPositiveButton(android.R.string.ok, null).create())
+            showHelp(views.overview.root.trailingIconView,
+                if (browser) Strings.string.browser_filters_help else Strings.string.dns_filters_help)
         }
         views.listCount.text = resources.getQuantityString(
             Strings.plurals.lists_enabled, visible.size, visible.count { it.enabled }, visible.size,
@@ -182,12 +179,12 @@ class FiltersScreen private constructor(
         remember: (String?) -> Unit, help: Int? = null, submit: suspend (String) -> Unit,
     ) {
         val sheet = FormSheet(context, context.getString(title))
-        help?.let {
-            sheet.content.preference().bind(
-                context.getString(Strings.string.custom_rules_help_label),
-                context.getString(it),
+        help?.let { text ->
+            val row = sheet.content.preference()
+            row.bind(
+                context.getString(Strings.string.custom_rules_shared),
                 trailingIcon = PreferenceIcon.Info,
-            )
+            ) { showHelp(row.trailingIconView, text) }
         }
         val input = sheet.content.input(context.getString(hint), initial, type)
         editor = target

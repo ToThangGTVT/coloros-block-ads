@@ -16,7 +16,6 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.utc.color.blockads.core.common.BlockResponse
 import com.utc.color.blockads.core.common.DnsSettings
 import com.utc.color.blockads.core.common.DnsUpstream
@@ -106,9 +105,7 @@ class SettingsScreen private constructor(
         }
         views.notifications.isVisible = Build.VERSION.SDK_INT >= 36
         views.notificationHelp.root.bind(context.getString(Strings.string.live_updates_help_label), trailingIcon = PreferenceIcon.Info) {
-            show(MaterialAlertDialogBuilder(context)
-                .setTitle(Strings.string.live_updates_help_label).setMessage(Strings.string.live_updates_help)
-                .setPositiveButton(android.R.string.ok, null).create())
+            showHelp(views.notificationHelp.root.trailingIconView, Strings.string.live_updates_help)
         }
         views.dnsUrl.root.hint = context.getString(Strings.string.dns_url)
         views.dnsUrl.input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
