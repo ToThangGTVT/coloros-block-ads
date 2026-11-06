@@ -140,6 +140,7 @@
     <string name="firewall_save_failed">"Could not save firewall settings."</string>
     <string name="network_blocked_policy_hint">"Network access is blocked in the Firewall tab. Filtering settings will apply when network access is allowed again."</string>
     <string name="ca_required">"CA installation required"</string>
+    <string name="https_app_unsupported">"Not supported: this app only trusts system CAs"</string>
     <string name="app_policy_title">"Policy · %1$s"</string>
     <string name="app_policy_save_failed">"Could not save the app policy."</string>
     <string name="action_failed">"Could not complete the action."</string>

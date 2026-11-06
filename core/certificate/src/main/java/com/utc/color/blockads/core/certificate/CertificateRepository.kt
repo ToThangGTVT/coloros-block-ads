@@ -8,6 +8,7 @@ import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import com.utc.color.blockads.core.common.*
 import com.utc.color.blockads.core.data.SettingsRepository
+import com.utc.color.blockads.core.data.UserCaTrust
 import com.utc.color.blockads.core.enginebridge.EngineBridge
 import com.utc.color.blockads.core.enginebridge.RootCaSigner
 import java.io.File
@@ -54,7 +55,7 @@ class CertificateRepository(
                         val json =
                             JSONObject()
                                 .put("enabled", config.enabled && state.installed && state.created)
-                                .put("apps", JSONArray(config.apps))
+                                .put("apps", JSONArray(filterable(config.apps)))
                         // Never crash the process on a rejected config: fall back to MITM off.
                         if (nativeSupported && !engine.configureHttps(json.toString())) {
                             engine.configureHttps("{}")
@@ -251,13 +252,17 @@ class CertificateRepository(
                 require(state.value.created && state.value.installed) {
                     context.getString(L10n.string.ca_install_first)
                 }
-                require(settings.https.first().apps.isNotEmpty()) {
+                require(filterable(settings.https.first().apps).isNotEmpty()) {
                     context.getString(L10n.string.https_select_app)
                 }
             }
             settings.setHttps(settings.https.first().copy(enabled = enabled))
         }
     }
+
+    /** Selected apps that would reject our CA are never intercepted, even if saved earlier. */
+    private suspend fun filterable(apps: List<String>) =
+        withContext(Dispatchers.IO) { apps.filter { UserCaTrust.trusts(context, it) } }
 
     companion object {
         const val Alias = "blockads-local-ca-p256-v1"

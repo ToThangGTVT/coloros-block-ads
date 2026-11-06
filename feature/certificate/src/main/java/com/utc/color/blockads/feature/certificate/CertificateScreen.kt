@@ -43,6 +43,7 @@ class CertificateScreen private constructor(
 
     private var config = HttpsSettings()
     private var installed = apps.apps.value
+    private var unsupported = apps.httpsUnsupported.value
     private var feedback: String? = null
     private var confirmingDelete = state.getBoolean("confirmDelete")
     private var deleting = false
@@ -86,6 +87,10 @@ class CertificateScreen private constructor(
             installed = it
             renderApps()
         }
+        observe(apps.httpsUnsupported) {
+            unsupported = it
+            renderApps()
+        }
         if (confirmingDelete) view.doOnAttach {
             it.post { if (it.isAttachedToWindow && confirmingDelete) confirmDelete() }
         }
@@ -123,11 +128,17 @@ class CertificateScreen private constructor(
     }
 
     private fun addApp(app: InstalledApp) {
+        val supported = app.packageName !in unsupported
         val selected = app.packageName in config.apps
-        views.selectedApps.preference().bind(app.label, app.packageName, checked = selected) {
+        views.selectedApps.preference().bind(
+            app.label,
+            if (supported) app.packageName else context.getString(Strings.string.https_app_unsupported),
+            checked = selected && supported, enabled = supported || selected,
+        ) {
             perform {
                 val saved = settings.https.first()
-                val packages = if (selected) saved.apps - app.packageName else (saved.apps + app.packageName).distinct()
+                val packages = if (selected || !supported) saved.apps - app.packageName
+                    else (saved.apps + app.packageName).distinct()
                 settings.setHttps(saved.copy(apps = packages))
             }
         }

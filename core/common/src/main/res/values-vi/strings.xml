@@ -136,6 +136,7 @@
     <string name="firewall_save_failed">"Không lưu được cấu hình tường lửa"</string>
     <string name="network_blocked_policy_hint">"Mạng đang bị chặn trong tab Tường lửa. Cấu hình lọc sẽ áp dụng khi cho phép mạng lại."</string>
     <string name="ca_required">"Cần cài CA"</string>
+    <string name="https_app_unsupported">"Không hỗ trợ: app này chỉ tin CA hệ thống"</string>
     <string name="app_policy_title">"Chính sách · %1$s"</string>
     <string name="app_policy_save_failed">"Không lưu được chính sách ứng dụng"</string>
     <string name="action_failed">"Không thực hiện được"</string>

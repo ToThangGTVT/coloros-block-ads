@@ -46,6 +46,7 @@ class AppsScreen private constructor(
     private var policies = repository.policies.value
     private var blocked = repository.blockedApps.value
     private var https = HttpsSettings()
+    private var httpsUnsupported = repository.httpsUnsupported.value
     private val modes = AppFilterMode.entries.map { context.getString(it.titleRes) }
     private val adapter = RowAdapter(
         key = { row: AppRow -> row.app.packageName },
@@ -70,6 +71,10 @@ class AppsScreen private constructor(
             https = it.https
             render()
         }
+        observe(repository.httpsUnsupported) {
+            httpsUnsupported = it
+            render()
+        }
     }
 
     private fun renderSystem() {
@@ -91,7 +96,8 @@ class AppsScreen private constructor(
             (showSystem || !it.system) && (it.label.contains(search, true) || it.packageName.contains(search, true))
         }.map {
             AppRow(it, it.uid in blockedUids, uidCounts.getValue(it.uid) > 1,
-                it.packageName in https.apps, policies[it.packageName] ?: AppFilterMode.Filter)
+                it.packageName in https.apps, it.packageName !in httpsUnsupported,
+                policies[it.packageName] ?: AppFilterMode.Filter)
         })
     }
 
@@ -117,13 +123,16 @@ class AppsScreen private constructor(
                 checked = !row.blocked,
             ) { save(Strings.string.firewall_save_failed) { repository.setNetworkAllowed(app, row.blocked) } }
         } else {
+            // An app that only trusts system CAs would show a certificate error on every new host.
             item.https.root.bind(
-                context.getString(Strings.string.https_filtering), context.getString(Strings.string.ca_required),
-                checked = row.https,
+                context.getString(Strings.string.https_filtering),
+                context.getString(if (row.httpsSupported) Strings.string.ca_required else Strings.string.https_app_unsupported),
+                checked = row.https && row.httpsSupported, enabled = row.httpsSupported || row.https,
             ) {
                 save(Strings.string.action_failed) {
                     val saved = settings.https.first()
-                    val packages = if (row.https) saved.apps - app.packageName else (saved.apps + app.packageName).distinct()
+                    val packages = if (row.https || !row.httpsSupported) saved.apps - app.packageName
+                        else (saved.apps + app.packageName).distinct()
                     settings.setHttps(saved.copy(apps = packages))
                 }
             }
@@ -153,7 +162,8 @@ private class AppHolder(val views: RowAppBinding) : RecyclerView.ViewHolder(view
 }
 
 private data class AppRow(
-    val app: InstalledApp, val blocked: Boolean, val shared: Boolean, val https: Boolean, val mode: AppFilterMode,
+    val app: InstalledApp, val blocked: Boolean, val shared: Boolean, val https: Boolean, val httpsSupported: Boolean,
+    val mode: AppFilterMode,
 )
 
 private data class AppSettings(
