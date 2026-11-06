@@ -50,9 +50,9 @@ interface QueryDao {
         """SELECT domain, COUNT(*) AS count,
             (SELECT COUNT(*) FROM queries WHERE timestamp >= :since AND blocked = 1) AS totalBlocked
             FROM queries WHERE timestamp >= :since AND blocked = 1
-            GROUP BY domain ORDER BY count DESC LIMIT 5"""
+            GROUP BY domain ORDER BY count DESC, domain LIMIT :limit"""
     )
-    fun topDomains(since: Long): Flow<List<TopDomain>>
+    fun topDomains(since: Long, limit: Int): Flow<List<TopDomain>>
 
     @Query(
         """SELECT uid, COUNT(*) AS total,

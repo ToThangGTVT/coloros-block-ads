@@ -105,12 +105,10 @@ class QueryLogRepository(
                     com.utc.color.blockads.core.common.TrafficDay(date, 0, 0)
                 },
             )
+    /** Today's most blocked domains, highest count first, at most [limit] rows. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val topDomains =
-        days
-            .flatMapLatest { database.queries().topDomains(it) }
-            .distinctUntilChanged()
-            .stateIn(scope, SharingStarted.WhileSubscribed(10_000), emptyList())
+    fun topDomains(limit: Int): Flow<List<TopDomain>> =
+        days.flatMapLatest { database.queries().topDomains(it, limit) }.distinctUntilChanged()
 
     suspend fun clearLogs() {
         database.queries().clearLogs()

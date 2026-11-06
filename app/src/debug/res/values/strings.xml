@@ -1,0 +1,4 @@
+<resources>
+    <!-- Debug builds install beside the release app (.dev suffix); label them apart. -->
+    <string name="app_display_name" translatable="false">Open AdBlock Dev</string>
+</resources>

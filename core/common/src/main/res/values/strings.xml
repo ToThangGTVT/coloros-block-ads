@@ -268,6 +268,9 @@
     <string name="today">"Today"</string>
     <string name="last_seven_days">"Last 7 days"</string>
     <string name="most_blocked">"Most blocked"</string>
+    <string name="show_more">"Show more"</string>
+    <string name="domain_blocked_share">"%1$s · %2$s"</string>
+    <string name="domain_blocked_description">"%1$s: %2$s blocked, %3$s of today's blocks"</string>
     <string name="time_range">"Time range"</string>
     <string name="last_day">"24 hours"</string>
     <string name="seven_days">"7 days"</string>

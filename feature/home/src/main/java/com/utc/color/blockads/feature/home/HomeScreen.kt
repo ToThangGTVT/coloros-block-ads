@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isNotEmpty
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -17,6 +18,7 @@ import com.utc.color.blockads.core.common.TunnelStatus
 import com.utc.color.blockads.core.common.userMessage
 import com.utc.color.blockads.core.data.QueryLogRepository
 import com.utc.color.blockads.core.data.SettingsRepository
+import com.utc.color.blockads.core.data.TopDomain
 import com.utc.color.blockads.core.designsystem.Screen
 import com.utc.color.blockads.core.designsystem.button
 import com.utc.color.blockads.core.designsystem.card
@@ -27,9 +29,14 @@ import com.utc.color.blockads.core.designsystem.section
 import com.utc.color.blockads.feature.home.databinding.DomainProgressBinding
 import com.utc.color.blockads.feature.home.databinding.ScreenHomeBinding
 import java.text.NumberFormat
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import com.utc.color.blockads.core.common.R as Strings
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeScreen private constructor(
     activity: ComponentActivity,
     private val views: ScreenHomeBinding,
@@ -56,6 +63,10 @@ class HomeScreen private constructor(
 
     private val behavior = BottomSheetBehavior.from(views.homePanel)
     private val number = NumberFormat.getIntegerInstance(resources.configuration.locales[0])
+    private val percent = NumberFormat.getPercentInstance(resources.configuration.locales[0]).apply {
+        maximumFractionDigits = 1
+    }
+    private val topLimit = MutableStateFlow(state.getInt("topLimit", PAGE).coerceAtLeast(PAGE))
     private var selected = state.getInt("tab")
     private var expanded = state.getBoolean("expanded")
     private var status = tunnel.value
@@ -104,6 +115,8 @@ class HomeScreen private constructor(
             val minPeek = context.dp(220).coerceAtMost(height)
             behavior.peekHeight = (height - views.hero.height).coerceIn(minPeek, height)
             behavior.expandedOffset = (views.hero.paddingTop + context.dp(48)).coerceAtMost(height - behavior.peekHeight)
+            // The sheet keeps the parent's height, so its last expandedOffset pixels sit below the screen.
+            views.homePanelContent.updatePadding(bottom = behavior.expandedOffset)
         }
         views.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resize() }
         views.hero.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resize() }
@@ -125,18 +138,36 @@ class HomeScreen private constructor(
             views.trafficChart.isVisible = it.isNotEmpty()
             views.trafficChart.render(it)
         }
-        observe(queries.topDomains) { top ->
-            val entries = top.map { it.domain to it.count }.toMutableList()
-            val other = (top.firstOrNull()?.totalBlocked ?: 0) - top.sumOf { it.count }
-            if (other > 0) entries += context.getString(Strings.string.other) to other
-            views.domainBreakdown.removeAllViews()
-            val max = entries.maxOfOrNull { it.second }
-            if (max == null) views.domainBreakdown.hint(context.getString(Strings.string.none_yet))
-            else entries.forEach { (domain, count) ->
-                val row = DomainProgressBinding.inflate(views.domainBreakdown.inflater, views.domainBreakdown, true)
-                row.domain.text = "$domain · ${number.format(count)}"
-                row.progress.progress = (1000.0 * count / max).toInt()
-            }
+        views.showMoreDomains.setOnClickListener { topLimit.value += PAGE }
+        // One extra row tells whether another page exists.
+        observe(topLimit.flatMapLatest { limit -> queries.topDomains(limit + 1).map { limit to it } }) { (limit, rows) ->
+            renderTopDomains(rows.take(limit), hasMore = rows.size > limit)
+        }
+    }
+
+    private fun renderTopDomains(top: List<TopDomain>, hasMore: Boolean) {
+        val list = views.domainBreakdown
+        views.showMoreDomains.isVisible = hasMore
+        if (top.isEmpty()) {
+            list.removeAllViews()
+            list.hint(context.getString(Strings.string.none_yet))
+            return
+        }
+        if (list.isNotEmpty() && list.getChildAt(0).tag !is DomainProgressBinding) list.removeAllViews()
+        while (list.childCount > top.size) list.removeViewAt(list.childCount - 1)
+        while (list.childCount < top.size) {
+            DomainProgressBinding.inflate(list.inflater, list, true).also { it.root.tag = it }
+        }
+        val max = top.first().count.coerceAtLeast(1)
+        top.forEachIndexed { index, item ->
+            val row = list.getChildAt(index).tag as DomainProgressBinding
+            val count = number.format(item.count)
+            val share = percent.format(item.count.toDouble() / item.totalBlocked.coerceAtLeast(item.count))
+            row.domain.text = item.domain
+            row.count.text = context.getString(Strings.string.domain_blocked_share, count, share)
+            row.progress.progress = (1000.0 * item.count / max).toInt()
+            row.root.contentDescription =
+                context.getString(Strings.string.domain_blocked_description, item.domain, count, share)
         }
     }
 
@@ -215,9 +246,11 @@ class HomeScreen private constructor(
     override fun saveState() = super.saveState().apply {
         putInt("tab", selected)
         putBoolean("expanded", expanded)
+        putInt("topLimit", topLimit.value)
     }
 
     private companion object {
+        const val PAGE = 5
         val running = setOf(TunnelStatus.Connected, TunnelStatus.Connecting, TunnelStatus.Reconnecting)
     }
 }

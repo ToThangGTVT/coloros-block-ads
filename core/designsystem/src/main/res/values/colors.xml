@@ -8,6 +8,7 @@
     <color name="brand_lime">#CCF66B</color>
     <color name="brand_forest">#0B3D2E</color>
     <color name="brand_error">#B3261E</color>
+    <color name="progress_track">#E3E5E3</color>
     <color name="coui_switch_track_off">#FFE5E5E5</color>
     <color name="coui_switch_disabled_track_off">#FFF2F2F2</color>
     <color name="coui_switch_disabled_thumb_off">#42000000</color>

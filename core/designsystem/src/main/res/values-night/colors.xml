@@ -6,6 +6,7 @@
     <color name="brand_primary">#CCF66B</color>
     <color name="brand_on_primary">#0B3D2E</color>
     <color name="brand_error">#FFB4AB</color>
+    <color name="progress_track">#414842</color>
     <color name="coui_switch_track_off">#FF757575</color>
     <color name="coui_switch_disabled_track_off">#4D757575</color>
     <color name="coui_switch_disabled_thumb_off">#4DFFFFFF</color>

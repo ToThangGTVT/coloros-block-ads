@@ -259,6 +259,9 @@
     <string name="today">"Hôm nay"</string>
     <string name="last_seven_days">"7 ngày gần đây"</string>
     <string name="most_blocked">"Bị chặn nhiều nhất"</string>
+    <string name="show_more">"Xem thêm"</string>
+    <string name="domain_blocked_share">"%1$s · %2$s"</string>
+    <string name="domain_blocked_description">"%1$s: chặn %2$s lần, chiếm %3$s lượt chặn hôm nay"</string>
     <string name="time_range">"Thời gian"</string>
     <string name="last_day">"24 giờ"</string>
     <string name="seven_days">"7 ngày"</string>
